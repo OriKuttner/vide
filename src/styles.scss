@@ -1,1 +1,120 @@
-/* You can add global styles to this file, and also import other style files */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Light Theme Variables (Default) */
+:root,
+body.theme-light {
+  --bg-container: #f3f3f3;
+  --bg-header: #f3f3f3;
+  --bg-search: #ffffff;
+  --bg-sidebar: #f8f8f8;
+  --bg-badge: #e8e8e8;
+  --bg-item-hover: #ececec;
+  --bg-item-active: #e2effd;
+  --bg-tabs-bar: #ececec;
+  --bg-tab-inactive: #dedede;
+  --bg-tab-hover: #e6e6e6;
+  --bg-editor: #ffffff;
+  --bg-btn: #e6e6e6;
+  --bg-btn-hover: #dcdcdc;
+  --border-color: #e5e5e5;
+  --text-primary: #1e1e1e;
+  --text-secondary: #424242;
+  --text-muted: #717171;
+  --text-tab-inactive: #555555;
+  --text-tab-active: #007acc;
+  --text-badge: #00599c;
+  --text-item-active: #005fb8;
+  --scrollbar-bg: #f8f8f8;
+  --scrollbar-thumb: #c8c8c8;
+  --scrollbar-thumb-hover: #a8a8a8;
+
+  /* Action Buttons Colors (Light) */
+  --color-icon-save: #16a34a;
+  --color-icon-save-accent: #86efac;
+  --color-icon-folder: #d97706;
+  --color-icon-file: #0284c7;
+  --color-icon-plus: #16a34a;
+  --color-icon-grep-lens: #7c3aed;
+  --color-icon-grep-lines: #e11d48;
+  --color-icon-find-file: #0d9488;
+  --color-icon-find-lens: #ea580c;
+}
+
+/* Dark Theme Variables */
+body.theme-dark {
+  --bg-container: #1e1e1e;
+  --bg-header: #323233;
+  --bg-search: #1e1e1e;
+  --bg-sidebar: #252526;
+  --bg-badge: #333333;
+  --bg-item-hover: #2a2d2e;
+  --bg-item-active: #37373d;
+  --bg-tabs-bar: #252526;
+  --bg-tab-inactive: #2d2d2d;
+  --bg-tab-hover: #2a2d2e;
+  --bg-editor: #1e1e1e;
+  --bg-btn: #3a3d41;
+  --bg-btn-hover: #45494e;
+  --border-color: #2b2b2b;
+  --text-primary: #cccccc;
+  --text-secondary: #bbbbbb;
+  --text-muted: #8c8c8c;
+  --text-tab-inactive: #969696;
+  --text-tab-active: #ffffff;
+  --text-badge: #9cdcfe;
+  --text-item-active: #ffffff;
+  --scrollbar-bg: #1e1e1e;
+  --scrollbar-thumb: #424242;
+  --scrollbar-thumb-hover: #4f4f4f;
+
+  /* Action Buttons Colors (Dark) */
+  --color-icon-save: #4ade80;
+  --color-icon-save-accent: #bbf7d0;
+  --color-icon-folder: #facc15;
+  --color-icon-file: #38bdf8;
+  --color-icon-plus: #4ade80;
+  --color-icon-grep-lens: #a78bfa;
+  --color-icon-grep-lines: #fb7185;
+  --color-icon-find-file: #2dd4bf;
+  --color-icon-find-lens: #fb923c;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--bg-container);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dynamic scrollbars matching active theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}

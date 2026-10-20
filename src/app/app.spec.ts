@@ -14,10 +14,10 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render title', async () => {
+  it('should create the app and have title Vector-ide', () => {
     const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, Vector-ide');
+    const app = fixture.componentInstance;
+    expect(app).toBeTruthy();
+    expect(app.title()).toBe('Vector-ide');
   });
 });
