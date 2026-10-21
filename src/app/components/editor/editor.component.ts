@@ -182,10 +182,49 @@ ${rawContent}
               this.switchToFile(active);
             }
           });
+        } else {
+          const editor = this.editorInstance;
+          if (editor) {
+            untracked(() => {
+              if (editor.getModel()) {
+                editor.setModel(null);
+              }
+            });
+          }
         }
       },
       { allowSignalWrites: true }
     );
+
+    // Effect to dispose and release Monaco models for closed tabs to prevent memory leaks
+    effect(() => {
+      const tabs = this.workspaceService.openTabs();
+      const openIds = new Set(tabs.map((t) => t.id));
+      const editor = this.editorInstance;
+
+      // Clean up fileModels for tabs that were closed
+      for (const [fileId, model] of this.fileModels.entries()) {
+        if (!openIds.has(fileId)) {
+          if (editor && editor.getModel() === model) {
+            editor.setModel(null);
+          }
+          if (!model.isDisposed()) {
+            model.dispose();
+          }
+          this.fileModels.delete(fileId);
+        }
+      }
+
+      // Clean up originalDiffModels for tabs that were closed
+      for (const [fileId, model] of this.originalDiffModels.entries()) {
+        if (!openIds.has(fileId)) {
+          if (!model.isDisposed()) {
+            model.dispose();
+          }
+          this.originalDiffModels.delete(fileId);
+        }
+      }
+    });
 
     // Effect to reactively update editor font size when zoom changes
     effect(() => {
@@ -229,6 +268,9 @@ ${rawContent}
           this.diffEditorInstance?.layout();
         }, 0);
       } else {
+        if (this.diffEditorInstance) {
+          this.diffEditorInstance.setModel(null);
+        }
         setTimeout(() => {
           this.editorInstance?.layout();
         }, 0);
@@ -788,9 +830,9 @@ ${rawContent}
       let origModel = this.originalDiffModels.get(file.id);
       const originalText = file.originalContent !== undefined ? file.originalContent : file.content;
 
-      if (!origModel) {
+      if (!origModel || origModel.isDisposed()) {
         const existing = monaco.editor.getModel(origUri);
-        if (existing) {
+        if (existing && !existing.isDisposed()) {
           origModel = existing;
         } else {
           origModel = monaco.editor.createModel(originalText, file.language, origUri);
@@ -888,7 +930,7 @@ ${rawContent}
 
   private getOrCreateModel(file: WorkspaceFile): monaco.editor.ITextModel {
     let model = this.fileModels.get(file.id);
-    if (!model) {
+    if (!model || model.isDisposed()) {
       const safeId = encodeURIComponent(file.id || file.path || file.name);
       const uri = monaco.Uri.parse(`inmemory://workspace/${safeId}`);
       const existing = monaco.editor.getModel(uri);
@@ -903,7 +945,9 @@ ${rawContent}
       }
 
       const textModel: monaco.editor.ITextModel =
-        existing ?? monaco.editor.createModel(file.content ?? '', initialLang, uri);
+        (existing && !existing.isDisposed())
+          ? existing
+          : monaco.editor.createModel(file.content ?? '', initialLang, uri);
 
       if (file.isIndentationCustom && file.tabSize !== undefined) {
         textModel.updateOptions({
