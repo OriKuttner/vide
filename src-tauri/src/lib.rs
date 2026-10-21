@@ -33,6 +33,7 @@ pub struct GitCommitItem {
     pub author: String,
     pub date: String,
     pub message: String,
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -240,7 +241,7 @@ fn get_git_commits(repo_path: String, limit: Option<usize>) -> Result<Vec<GitCom
             "log",
             "-n",
             &max_count,
-            "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1e",
+            "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1f%D%x1e",
         ])
         .output()
         .map_err(|e| format!("Failed to execute git log: {}", e))?;
@@ -267,12 +268,26 @@ fn get_git_commits(repo_path: String, limit: Option<usize>) -> Result<Vec<GitCom
         }
         let parts: Vec<&str> = record.split('\x1f').collect();
         if parts.len() >= 5 {
+            let mut tags = Vec::new();
+            if parts.len() >= 6 {
+                let decs = parts[5];
+                for item in decs.split(',') {
+                    let trimmed = item.trim();
+                    if let Some(tag) = trimmed.strip_prefix("tag:") {
+                        let clean = tag.trim();
+                        if !clean.is_empty() {
+                            tags.push(clean.to_string());
+                        }
+                    }
+                }
+            }
             commits.push(GitCommitItem {
                 hash: parts[0].to_string(),
                 short_hash: parts[1].to_string(),
                 author: parts[2].to_string(),
                 date: parts[3].to_string(),
                 message: parts[4].to_string(),
+                tags,
             });
         }
     }
@@ -528,6 +543,161 @@ fn git_push(repo_path: String) -> Result<String, String> {
     } else {
         Ok(stdout_str)
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitBranchItem {
+    pub name: String,
+    pub is_current: bool,
+    pub is_remote: bool,
+}
+
+#[tauri::command]
+fn get_git_branches(repo_path: String) -> Result<Vec<GitBranchItem>, String> {
+    let clean_repo = expand_path(&repo_path);
+    let output = Command::new("git")
+        .args(["-C", &clean_repo, "branch", "-a", "--format=%(refname:short)|%(HEAD)"])
+        .output()
+        .map_err(|e| format!("Failed to list git branches: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let mut branches = Vec::new();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split('|').collect();
+        let name = parts[0].trim();
+        if name.contains("HEAD") {
+            continue;
+        }
+        let head_flag = parts.get(1).map(|s| s.trim()).unwrap_or("");
+        let is_current = head_flag == "*";
+        let is_remote = name.starts_with("origin/");
+
+        branches.push(GitBranchItem {
+            name: name.to_string(),
+            is_current,
+            is_remote,
+        });
+    }
+
+    Ok(branches)
+}
+
+#[tauri::command]
+fn switch_git_branch(repo_path: String, branch_name: String) -> Result<String, String> {
+    let clean_repo = expand_path(&repo_path);
+    let trimmed = branch_name.trim();
+    if trimmed.is_empty() {
+        return Err("Branch name cannot be empty".to_string());
+    }
+
+    let target = if let Some(local_name) = trimmed.strip_prefix("origin/") {
+        local_name
+    } else {
+        trimmed
+    };
+
+    let output = Command::new("git")
+        .args(["-C", &clean_repo, "checkout", target])
+        .output()
+        .map_err(|e| format!("Failed to switch branch: {}", e))?;
+
+    if !output.status.success() {
+        let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let out_msg = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Err(if !err_msg.is_empty() { err_msg } else { out_msg });
+    }
+
+    let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Ok(if !out.is_empty() { out } else { err })
+}
+
+#[tauri::command]
+fn create_git_branch(repo_path: String, new_branch_name: String, switch_to: bool) -> Result<String, String> {
+    let clean_repo = expand_path(&repo_path);
+    let trimmed = new_branch_name.trim();
+    if trimmed.is_empty() {
+        return Err("Branch name cannot be empty".to_string());
+    }
+
+    let output = if switch_to {
+        Command::new("git")
+            .args(["-C", &clean_repo, "checkout", "-b", trimmed])
+            .output()
+    } else {
+        Command::new("git")
+            .args(["-C", &clean_repo, "branch", trimmed])
+            .output()
+    }
+    .map_err(|e| format!("Failed to create branch: {}", e))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if !err.is_empty() { err } else { "Failed to create branch".to_string() });
+    }
+
+    Ok(format!("Branch '{}' created successfully", trimmed))
+}
+
+#[tauri::command]
+fn get_git_tags(repo_path: String) -> Result<Vec<String>, String> {
+    let clean_repo = expand_path(&repo_path);
+    let output = Command::new("git")
+        .args(["-C", &clean_repo, "tag", "--sort=-creatordate"])
+        .output()
+        .map_err(|e| format!("Failed to list git tags: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let tags = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    Ok(tags)
+}
+
+#[tauri::command]
+fn create_git_tag(repo_path: String, tag_name: String, message: Option<String>) -> Result<String, String> {
+    let clean_repo = expand_path(&repo_path);
+    let trimmed_tag = tag_name.trim();
+    if trimmed_tag.is_empty() {
+        return Err("Tag name cannot be empty".to_string());
+    }
+
+    let mut args = vec!["-C", &clean_repo, "tag"];
+    let clean_msg = message.as_deref().unwrap_or("").trim();
+    if !clean_msg.is_empty() {
+        args.push("-a");
+        args.push(trimmed_tag);
+        args.push("-m");
+        args.push(clean_msg);
+    } else {
+        args.push(trimmed_tag);
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| format!("Failed to create tag: {}", e))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if !err.is_empty() { err } else { "Failed to create tag".to_string() });
+    }
+
+    Ok(format!("Tag '{}' created successfully", trimmed_tag))
 }
 
 #[tauri::command]
@@ -1360,6 +1530,11 @@ pub fn run() {
             check_ai_model_status,
             download_ai_model,
             cancel_ai_model_download,
+            get_git_branches,
+            switch_git_branch,
+            create_git_branch,
+            get_git_tags,
+            create_git_tag,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

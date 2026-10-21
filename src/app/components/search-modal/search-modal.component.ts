@@ -10,7 +10,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WorkspaceService, GrepResult } from '../../services/workspace.service';
 import { AiService } from '../../services/ai.service';
-import { WorkspaceFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
+import { WorkspaceFile, isOmniFluxFile, isPhpFile, isPerlFile, GitBranchItem } from '../../models/file.model';
 
 export interface LanguageItem {
   id: string;
@@ -376,6 +376,101 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
               @if (languageResults().length === 0) {
                 <div class="no-results">No languages matching query</div>
               }
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'git-branches') {
+            <div class="results-list">
+              @if (workspaceService.isLoadingBranches()) {
+                <div class="searching-indicator">
+                  <div class="mini-spinner"></div>
+                  <span>Loading Git branches...</span>
+                </div>
+              } @else {
+                @if (canCreateBranchFromInput()) {
+                  <div class="result-item branch-action-item create-action" (click)="createAndSwitchBranch(inputValue().trim())">
+                    <span class="file-badge branch-badge">➕</span>
+                    <span class="file-name">Create new branch: <strong>{{ inputValue().trim() }}</strong></span>
+                  </div>
+                }
+
+                <div class="result-item branch-action-item tag-action" (click)="openCreateTagModal()">
+                  <span class="file-badge tag-badge">🏷️</span>
+                  <span class="file-name">Create new Tag...</span>
+                </div>
+
+                @if (filteredBranches().length > 0) {
+                  <div class="results-meta">BRANCHES ({{ filteredBranches().length }})</div>
+                  @for (branch of filteredBranches(); track branch.name) {
+                    <div
+                      class="result-item branch-item"
+                      [class.current]="branch.is_current"
+                      (click)="selectBranch(branch)"
+                    >
+                      <span class="file-badge branch-badge">{{ branch.is_remote ? '☁' : '⎇' }}</span>
+                      <span class="file-name">{{ branch.name }}</span>
+                      @if (branch.is_current) {
+                        <span class="branch-status-pill current">✓ current</span>
+                      }
+                      @if (branch.is_remote) {
+                        <span class="branch-status-pill remote">remote</span>
+                      }
+                    </div>
+                  }
+                }
+
+                @if (filteredTags().length > 0) {
+                  <div class="results-meta">TAGS ({{ filteredTags().length }})</div>
+                  @for (tag of filteredTags(); track tag) {
+                    <div
+                      class="result-item tag-item"
+                      (click)="selectTag(tag)"
+                      [title]="'Checkout tag ' + tag"
+                    >
+                      <span class="file-badge tag-badge">🏷️</span>
+                      <span class="file-name">{{ tag }}</span>
+                      <span class="tag-checkout-hint">Checkout</span>
+                    </div>
+                  }
+                }
+
+                @if (filteredBranches().length === 0 && filteredTags().length === 0 && !canCreateBranchFromInput()) {
+                  <div class="no-results">No branches or tags matching "{{ inputValue() }}"</div>
+                }
+              }
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'git-create-tag') {
+            <div class="tag-modal-body">
+              <div class="tag-field-group">
+                <label class="tag-field-label">Tag Message / Annotation (Optional)</label>
+                <input
+                  type="text"
+                  class="modal-input"
+                  [ngModel]="tagMessage()"
+                  (ngModelChange)="tagMessage.set($event)"
+                  (keydown.enter)="submitCreateTag()"
+                  (keydown.escape)="close()"
+                />
+              </div>
+              <div class="modal-actions-row">
+                <button
+                  type="button"
+                  class="btn-modal-cancel"
+                  (click)="close()"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  class="btn-modal-submit"
+                  [disabled]="!inputValue().trim()"
+                  (click)="submitCreateTag()"
+                >
+                  Create Tag
+                </button>
+              </div>
             </div>
           }
 
@@ -771,6 +866,128 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
         text-align: center;
         color: var(--text-muted, #717171);
         font-size: 13px;
+      }
+
+      .branch-badge {
+        background-color: rgba(0, 122, 204, 0.15) !important;
+        color: #007acc !important;
+        font-weight: 700;
+      }
+
+      .branch-status-pill {
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 10px;
+        padding: 1px 7px;
+        margin-left: auto;
+
+        &.current {
+          background-color: #2ea043;
+          color: #ffffff;
+        }
+
+        &.remote {
+          background-color: #6e7681;
+          color: #ffffff;
+        }
+      }
+
+      .tag-badge {
+        background-color: rgba(16, 185, 129, 0.15) !important;
+        color: #10b981 !important;
+        font-weight: 700;
+      }
+
+      .tag-checkout-hint {
+        font-size: 11px;
+        color: var(--text-muted, #717171);
+        margin-left: auto;
+      }
+
+      .branch-action-item {
+        border-radius: 4px;
+        margin-bottom: 6px;
+        cursor: pointer;
+
+        &.create-action {
+          background-color: rgba(0, 122, 204, 0.08);
+          border: 1px dashed #007acc;
+          color: #007acc;
+
+          &:hover {
+            background-color: rgba(0, 122, 204, 0.16);
+          }
+        }
+
+        &.tag-action {
+          background-color: rgba(16, 185, 129, 0.08);
+          border: 1px dashed #10b981;
+          color: #10b981;
+
+          &:hover {
+            background-color: rgba(16, 185, 129, 0.16);
+          }
+        }
+      }
+
+      .tag-modal-body {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+
+        .tag-field-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+
+          .tag-field-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary, #555555);
+          }
+        }
+
+        .modal-actions-row {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 6px;
+
+          .btn-modal-cancel {
+            padding: 7px 14px;
+            border: 1px solid var(--border-color, #ccc);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-primary, #1e1e1e);
+            font-size: 13px;
+            cursor: pointer;
+
+            &:hover {
+              background-color: var(--bg-item-hover, #ececec);
+            }
+          }
+
+          .btn-modal-submit {
+            padding: 7px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #238636;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+
+            &:hover:not(:disabled) {
+              background: #2ea043;
+            }
+
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          }
+        }
       }
 
       .config-card {
@@ -1184,6 +1401,11 @@ export class SearchModalComponent {
   // Language selection state
   public languageResults = signal<LanguageItem[]>(SUPPORTED_LANGUAGES);
 
+  // Git Branches & Tags state
+  public filteredBranches = signal<GitBranchItem[]>([]);
+  public filteredTags = signal<string[]>([]);
+  public tagMessage = signal<string>('');
+
   private searchDebounceTimer?: any;
 
   constructor() {
@@ -1196,6 +1418,11 @@ export class SearchModalComponent {
           this.fileResults.set(this.workspaceService.findFiles(''));
         } else if (mode === 'change-language') {
           this.languageResults.set(SUPPORTED_LANGUAGES);
+        } else if (mode === 'git-branches') {
+          this.filteredBranches.set(this.workspaceService.gitBranches());
+          this.filteredTags.set(this.workspaceService.gitTags());
+        } else if (mode === 'git-create-tag') {
+          this.tagMessage.set('');
         } else if (mode === 'indentation') {
           this.selectedIndentType.set(this.workspaceService.indentType());
           this.selectedTabSize.set(this.workspaceService.tabSize());
@@ -1213,6 +1440,21 @@ export class SearchModalComponent {
               this.inputField?.nativeElement.select();
             }
           }, 50);
+        }
+      }
+    });
+
+    effect(() => {
+      const branches = this.workspaceService.gitBranches();
+      const tags = this.workspaceService.gitTags();
+      if (this.workspaceService.activeModal() === 'git-branches') {
+        const q = this.inputValue().trim().toLowerCase();
+        if (!q) {
+          this.filteredBranches.set(branches);
+          this.filteredTags.set(tags);
+        } else {
+          this.filteredBranches.set(branches.filter((b) => b.name.toLowerCase().includes(q)));
+          this.filteredTags.set(tags.filter((t) => t.toLowerCase().includes(q)));
         }
       }
     });
@@ -1276,6 +1518,10 @@ export class SearchModalComponent {
         return 'Configure Indentation';
       case 'change-language':
         return 'Select Language Mode';
+      case 'git-branches':
+        return 'Git: Switch or Create Branch';
+      case 'git-create-tag':
+        return 'Git: Create Tag';
       case 'unsaved-changes':
         return 'Save Changes?';
       case 'ai-settings':
@@ -1305,6 +1551,10 @@ export class SearchModalComponent {
         return 'Type file name to filter:';
       case 'change-language':
         return 'Select language mode (type to filter):';
+      case 'git-branches':
+        return 'Select a branch to checkout, or type a new name to create:';
+      case 'git-create-tag':
+        return 'Enter tag name (e.g. v1.0.0):';
       default:
         return 'Search:';
     }
@@ -1329,6 +1579,17 @@ export class SearchModalComponent {
               l.extensions.toLowerCase().includes(q)
           )
         );
+      }
+    } else if (mode === 'git-branches') {
+      const q = val.trim().toLowerCase();
+      const all = this.workspaceService.gitBranches();
+      const allTags = this.workspaceService.gitTags();
+      if (!q) {
+        this.filteredBranches.set(all);
+        this.filteredTags.set(allTags);
+      } else {
+        this.filteredBranches.set(all.filter((b) => b.name.toLowerCase().includes(q)));
+        this.filteredTags.set(allTags.filter((t) => t.toLowerCase().includes(q)));
       }
     } else if (mode === 'grep') {
       clearTimeout(this.searchDebounceTimer);
@@ -1366,12 +1627,77 @@ export class SearchModalComponent {
       if (langs.length > 0) {
         this.selectLanguage(langs[0].id);
       }
+    } else if (mode === 'git-branches') {
+      if (!val) {
+        const first = this.filteredBranches()[0];
+        if (first) {
+          this.selectBranch(first);
+        } else {
+          const firstTag = this.filteredTags()[0];
+          if (firstTag) this.selectTag(firstTag);
+        }
+      } else {
+        const exact = this.workspaceService.gitBranches().find((b) => b.name.toLowerCase() === val.toLowerCase());
+        const exactTag = this.workspaceService.gitTags().find((t) => t.toLowerCase() === val.toLowerCase());
+        if (exact) {
+          this.selectBranch(exact);
+        } else if (exactTag) {
+          this.selectTag(exactTag);
+        } else {
+          this.createAndSwitchBranch(val);
+        }
+      }
+    } else if (mode === 'git-create-tag') {
+      this.submitCreateTag();
     } else if (mode === 'grep') {
       const results = this.grepResults();
       if (results.length > 0) {
         this.workspaceService.jumpToLine(results[0].file, results[0].lineNumber);
       }
     }
+  }
+
+  public canCreateBranchFromInput(): boolean {
+    const q = this.inputValue().trim();
+    if (!q) return false;
+    const inBranches = this.workspaceService.gitBranches().some(
+      (b) => b.name.toLowerCase() === q.toLowerCase() || b.name.toLowerCase() === `origin/${q.toLowerCase()}`
+    );
+    const inTags = this.workspaceService.gitTags().some((t) => t.toLowerCase() === q.toLowerCase());
+    return !inBranches && !inTags;
+  }
+
+  public selectBranch(branch: GitBranchItem): void {
+    if (branch.is_current) {
+      this.close();
+      return;
+    }
+    this.close();
+    this.workspaceService.switchGitBranch(branch.name);
+  }
+
+  public selectTag(tagName: string): void {
+    this.close();
+    this.workspaceService.switchGitBranch(tagName);
+  }
+
+  public createAndSwitchBranch(name: string): void {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    this.close();
+    this.workspaceService.createGitBranch(trimmed, true);
+  }
+
+  public openCreateTagModal(): void {
+    this.workspaceService.openModal('git-create-tag');
+  }
+
+  public submitCreateTag(): void {
+    const name = this.inputValue().trim();
+    if (!name) return;
+    const msg = this.tagMessage().trim();
+    this.close();
+    this.workspaceService.createGitTag(name, msg || undefined);
   }
 
   public async setFolderQuickPath(path: string): Promise<void> {

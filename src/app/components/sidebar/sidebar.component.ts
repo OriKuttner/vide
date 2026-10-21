@@ -519,7 +519,14 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             <div class="git-header-left">
               <span class="git-panel-title">SOURCE CONTROL</span>
               @if (workspaceService.gitBranch()) {
-                <span class="git-branch-tag">⎇ {{ workspaceService.gitBranch() }}</span>
+                <button
+                  type="button"
+                  class="git-branch-tag"
+                  (click)="workspaceService.openModal('git-branches')"
+                  title="Switch or create Git branch"
+                >
+                  ⎇ {{ workspaceService.gitBranch() }} ▾
+                </button>
                 @if (workspaceService.gitSyncStatus()?.has_remote) {
                   @if ((workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
                     <span class="git-sync-tag ahead" title="{{ workspaceService.gitSyncStatus()?.ahead }} commit(s) ahead">
@@ -772,6 +779,11 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                         <div class="commit-row-top">
                           <span class="commit-hash">{{ commit.shortHash }}</span>
                           <span class="commit-msg">{{ commit.message }}</span>
+                          @if (commit.tags && commit.tags.length > 0) {
+                            @for (tag of commit.tags; track tag) {
+                              <span class="commit-tag-badge" [title]="'Tag: ' + tag">🏷️ {{ tag }}</span>
+                            }
+                          }
                         </div>
                         <div class="commit-row-meta">
                           <span class="commit-author">{{ commit.author }}</span>
@@ -1809,6 +1821,17 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             padding: 2px 7px;
             border-radius: 3px;
             font-weight: 600;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: background 0.15s ease;
+
+            &:hover {
+              background: rgba(0, 122, 204, 0.24);
+            }
           }
 
           .git-sync-tag {
@@ -2323,6 +2346,17 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                   white-space: nowrap;
                   overflow: hidden;
                   text-overflow: ellipsis;
+                }
+
+                .commit-tag-badge {
+                  font-size: 10px;
+                  background: rgba(16, 185, 129, 0.15);
+                  color: #10b981;
+                  padding: 1px 5px;
+                  border-radius: 3px;
+                  font-weight: 600;
+                  flex-shrink: 0;
+                  margin-left: auto;
                 }
               }
 

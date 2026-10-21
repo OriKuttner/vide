@@ -260,6 +260,7 @@ export interface GitCommit {
   author: string;
   date: string;
   message: string;
+  tags?: string[];
 }
 
 export interface GitSyncStatus {
@@ -268,4 +269,10 @@ export interface GitSyncStatus {
   upstream?: string | null;
   ahead: number;
   behind: number;
+}
+
+export interface GitBranchItem {
+  name: string;
+  is_current: boolean;
+  is_remote: boolean;
 }

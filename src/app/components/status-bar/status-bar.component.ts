@@ -12,9 +12,14 @@ import { AiService } from '../../services/ai.service';
     <footer class="status-bar">
       <div class="left-group">
         @if (workspaceService.gitBranch()) {
-          <span class="status-item branch" [title]="'Current Git Branch: ' + workspaceService.gitBranch()">
+          <button
+            type="button"
+            class="status-btn branch-btn"
+            (click)="workspaceService.openModal('git-branches')"
+            [title]="'Current Git Branch: ' + workspaceService.gitBranch() + ' (Click to switch or create branch)'"
+          >
             <span class="icon">⎇</span> {{ workspaceService.gitBranch() }}
-          </span>
+          </button>
         }
 
         <button

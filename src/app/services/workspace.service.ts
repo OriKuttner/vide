@@ -10,6 +10,7 @@ import {
   CliFileToOpen,
   GitCommit,
   GitSyncStatus,
+  GitBranchItem,
 } from '../models/file.model';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
@@ -109,7 +110,7 @@ export class WorkspaceService {
 
   // Active search/modal mode
   readonly activeModal = signal<
-    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | null
+    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | null
   >(null);
   readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
   readonly pendingDeleteFile = signal<WorkspaceFile | null>(null);
@@ -124,6 +125,9 @@ export class WorkspaceService {
 
   // Git Branch (default null)
   readonly gitBranch = signal<string | null>(null);
+  readonly gitBranches = signal<GitBranchItem[]>([]);
+  readonly gitTags = signal<string[]>([]);
+  readonly isLoadingBranches = signal<boolean>(false);
   readonly recentCommits = signal<GitCommit[]>([]);
   readonly isCommitting = signal<boolean>(false);
   readonly isLoadingCommits = signal<boolean>(false);
@@ -569,6 +573,7 @@ export class WorkspaceService {
               author: string;
               date: string;
               message: string;
+              tags?: string[];
             }>
           >('get_git_commits', { repoPath, limit: 15 });
 
@@ -579,6 +584,7 @@ export class WorkspaceService {
               author: c.author,
               date: c.date,
               message: c.message,
+              tags: c.tags || [],
             }))
           );
         } catch (err) {
@@ -686,6 +692,109 @@ export class WorkspaceService {
       return false;
     } finally {
       this.ngZone.run(() => this.isPushing.set(false));
+    }
+  }
+
+  public async loadGitBranches(): Promise<GitBranchItem[]> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      this.gitBranches.set([]);
+      return [];
+    }
+
+    this.isLoadingBranches.set(true);
+    try {
+      const repoPath = this.nativeWorkspacePath()!;
+      const list = await invoke<GitBranchItem[]>('get_git_branches', { repoPath });
+      this.ngZone.run(() => this.gitBranches.set(list));
+      return list;
+    } catch (err: any) {
+      console.warn('Failed to get git branches:', err);
+      return [];
+    } finally {
+      this.ngZone.run(() => this.isLoadingBranches.set(false));
+    }
+  }
+
+  public async switchGitBranch(branchName: string): Promise<boolean> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      return false;
+    }
+
+    const repoPath = this.nativeWorkspacePath()!;
+    try {
+      await invoke<string>('switch_git_branch', { repoPath, branchName });
+      this.ngZone.run(() => {
+        this.showNotification(`✓ Switched to branch '${branchName}'`);
+      });
+      await this.refreshAll();
+      return true;
+    } catch (err: any) {
+      const msg = typeof err === 'string' ? err : err?.message || 'Branch switch failed';
+      this.ngZone.run(() => {
+        this.showNotification(`Error switching branch: ${msg}`);
+      });
+      return false;
+    }
+  }
+
+  public async createGitBranch(newBranchName: string, switchTo = true): Promise<boolean> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      return false;
+    }
+
+    const repoPath = this.nativeWorkspacePath()!;
+    try {
+      await invoke<string>('create_git_branch', { repoPath, newBranchName, switchTo });
+      this.ngZone.run(() => {
+        this.showNotification(`✓ Created and switched to branch '${newBranchName}'`);
+      });
+      await this.refreshAll();
+      return true;
+    } catch (err: any) {
+      const msg = typeof err === 'string' ? err : err?.message || 'Create branch failed';
+      this.ngZone.run(() => {
+        this.showNotification(`Error creating branch: ${msg}`);
+      });
+      return false;
+    }
+  }
+
+  public async createGitTag(tagName: string, message?: string): Promise<boolean> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      return false;
+    }
+
+    const repoPath = this.nativeWorkspacePath()!;
+    try {
+      await invoke<string>('create_git_tag', { repoPath, tagName, message: message || null });
+      this.ngZone.run(() => {
+        this.showNotification(`✓ Created tag '${tagName}'`);
+      });
+      await this.refreshAll();
+      return true;
+    } catch (err: any) {
+      const msg = typeof err === 'string' ? err : err?.message || 'Create tag failed';
+      this.ngZone.run(() => {
+        this.showNotification(`Error creating tag: ${msg}`);
+      });
+      return false;
+    }
+  }
+
+  public async loadGitTags(): Promise<string[]> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      this.gitTags.set([]);
+      return [];
+    }
+
+    try {
+      const repoPath = this.nativeWorkspacePath()!;
+      const tags = await invoke<string[]>('get_git_tags', { repoPath });
+      this.ngZone.run(() => this.gitTags.set(tags));
+      return tags;
+    } catch (err) {
+      console.warn('Failed to load git tags:', err);
+      return [];
     }
   }
 
@@ -831,10 +940,11 @@ export class WorkspaceService {
           const branch = await invoke<string>('get_git_branch', { repoPath });
           this.gitBranch.set(branch);
           if (branch) {
-            await Promise.all([this.loadRecentCommits(), this.loadGitSyncStatus()]);
+            await Promise.all([this.loadRecentCommits(), this.loadGitSyncStatus(), this.loadGitTags()]);
           } else {
             this.recentCommits.set([]);
             this.gitSyncStatus.set(null);
+            this.gitTags.set([]);
           }
         } catch {
           this.gitBranch.set(null);
@@ -1457,10 +1567,16 @@ export class WorkspaceService {
       | 'ai-download'
       | 'delete-file-confirm'
       | 'git-untrack-confirm'
+      | 'git-branches'
+      | 'git-create-tag'
   ): void {
     if (mode === 'grep') {
       this.setSidebarView('search');
       return;
+    }
+    if (mode === 'git-branches') {
+      this.loadGitBranches();
+      this.loadGitTags();
     }
     this.activeModal.set(mode);
   }
