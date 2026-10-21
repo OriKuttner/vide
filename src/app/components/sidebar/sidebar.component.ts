@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, ViewChild, ElementRef, effect } from '@angular/core';
+import { Component, inject, signal, computed, ViewChild, ElementRef, effect, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';
 import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
@@ -502,7 +502,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
           @if (workspaceService.gitBranch()) {
             @if (workspaceService.changedFiles().length > 0) {
               <div class="git-commit-box">
-                @if (workspaceService.isCommitting()) {
+                @if (isCommitting() || workspaceService.isCommitting()) {
                   <div class="git-progress-bar">
                     <div class="progress-bar-indicator"></div>
                   </div>
@@ -512,7 +512,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                   <textarea
                     class="commit-textarea"
                     [value]="commitMessage()"
-                    [disabled]="workspaceService.isCommitting()"
+                    [disabled]="isCommitting() || workspaceService.isCommitting()"
                     (input)="onCommitMessageChange($event)"
                     (keydown.control.enter)="submitCommit()"
                     (keydown.meta.enter)="submitCommit()"
@@ -522,10 +522,11 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                 <button
                   type="button"
                   class="btn-commit"
-                  [disabled]="!canCommit() || workspaceService.isCommitting()"
+                  [class.loading]="isCommitting() || workspaceService.isCommitting()"
+                  [disabled]="!canCommit() || isCommitting() || workspaceService.isCommitting()"
                   (click)="submitCommit()"
                 >
-                  @if (workspaceService.isCommitting()) {
+                  @if (isCommitting() || workspaceService.isCommitting()) {
                     <span class="btn-spinner"></span>
                     <span>Committing...</span>
                   } @else {
@@ -535,7 +536,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
               </div>
             } @else if (workspaceService.gitSyncStatus()?.has_remote && (workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
               <div class="git-commit-box">
-                @if (workspaceService.isPushing()) {
+                @if (isPushing() || workspaceService.isPushing()) {
                   <div class="git-progress-bar">
                     <div class="progress-bar-indicator push"></div>
                   </div>
@@ -543,12 +544,13 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                 <button
                   type="button"
                   class="btn-push"
-                  [disabled]="workspaceService.isPushing()"
+                  [class.loading]="isPushing() || workspaceService.isPushing()"
+                  [disabled]="isPushing() || workspaceService.isPushing()"
                   (click)="submitPush()"
                 >
-                  @if (workspaceService.isPushing()) {
+                  @if (isPushing() || workspaceService.isPushing()) {
                     <span class="btn-spinner"></span>
-                    <span>Pushing...</span>
+                    <span>Pushing to remote...</span>
                   } @else {
                     <svg class="push-icon" viewBox="0 0 16 16" fill="currentColor">
                       <path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/>
@@ -1672,20 +1674,21 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             top: 0;
             left: 0;
             right: 0;
-            height: 2.5px;
-            background: rgba(0, 122, 204, 0.15);
+            height: 3px;
+            background: rgba(0, 0, 0, 0.08);
             overflow: hidden;
-            z-index: 10;
+            z-index: 25;
 
             .progress-bar-indicator {
               width: 45%;
               height: 100%;
               background: #007acc;
               border-radius: 2px;
-              animation: gitProgressAnim 1.2s infinite ease-in-out;
+              animation: gitProgressAnim 1s infinite ease-in-out;
 
               &.push {
-                background: #238636;
+                background: #2ea043;
+                box-shadow: 0 0 6px rgba(46, 160, 67, 0.7);
               }
             }
           }
@@ -1730,7 +1733,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             background-color: #007acc;
             color: #ffffff;
             border: none;
-            padding: 6px 12px;
+            padding: 7px 12px;
             font-size: 12px;
             font-weight: 600;
             border-radius: 4px;
@@ -1738,22 +1741,28 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 7px;
             transition: background-color 0.15s ease, opacity 0.15s ease;
 
             &:hover:not(:disabled) {
               background-color: #0062a3;
             }
 
-            &:disabled {
+            &:disabled:not(.loading) {
               opacity: 0.5;
               cursor: not-allowed;
             }
 
+            &.loading {
+              opacity: 1 !important;
+              cursor: wait !important;
+              pointer-events: none;
+            }
+
             .btn-spinner {
-              width: 12px;
-              height: 12px;
-              border: 2px solid rgba(255, 255, 255, 0.35);
+              width: 14px;
+              height: 14px;
+              border: 2px solid rgba(255, 255, 255, 0.4);
               border-top-color: #ffffff;
               border-radius: 50%;
               animation: spin 0.65s linear infinite;
@@ -1772,6 +1781,10 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
 
             &:hover:not(:disabled) {
               background-color: #2ea043;
+            }
+
+            &.loading {
+              background-color: #238636 !important;
             }
           }
         }
@@ -2328,9 +2341,14 @@ export class SidebarComponent {
     this.workspaceService.revertFile(file.id);
   }
 
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly ngZone = inject(NgZone);
+
   // Git Commit & History state
   public commitMessage = signal<string>('');
   public commitsExpanded = signal<boolean>(true);
+  public readonly isPushing = signal<boolean>(false);
+  public readonly isCommitting = signal<boolean>(false);
 
   public canCommit = computed(() => {
     return (
@@ -2346,17 +2364,40 @@ export class SidebarComponent {
 
   public async submitCommit(): Promise<void> {
     const msg = this.commitMessage().trim();
-    if (!msg || !this.canCommit() || this.workspaceService.isCommitting()) return;
+    if (!msg || !this.canCommit() || this.isCommitting() || this.workspaceService.isCommitting()) return;
 
-    const success = await this.workspaceService.commitChanges(msg);
-    if (success) {
-      this.commitMessage.set('');
+    this.isCommitting.set(true);
+    this.cdr.detectChanges();
+    await new Promise((r) => setTimeout(r, 40));
+
+    try {
+      const success = await this.workspaceService.commitChanges(msg);
+      if (success) {
+        this.commitMessage.set('');
+      }
+    } finally {
+      this.ngZone.run(() => {
+        this.isCommitting.set(false);
+        this.cdr.detectChanges();
+      });
     }
   }
 
   public async submitPush(): Promise<void> {
-    if (this.workspaceService.isPushing()) return;
-    await this.workspaceService.pushChanges();
+    if (this.isPushing() || this.workspaceService.isPushing()) return;
+
+    this.isPushing.set(true);
+    this.cdr.detectChanges();
+    await new Promise((r) => setTimeout(r, 40));
+
+    try {
+      await this.workspaceService.pushChanges();
+    } finally {
+      this.ngZone.run(() => {
+        this.isPushing.set(false);
+        this.cdr.detectChanges();
+      });
+    }
   }
 
   public toggleCommitsExpanded(): void {

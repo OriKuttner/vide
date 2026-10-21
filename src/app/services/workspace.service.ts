@@ -1,4 +1,4 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject, NgZone } from '@angular/core';
 import {
   WorkspaceFile,
   FileTreeNode,
@@ -61,6 +61,7 @@ const BACKGROUND_INDEX_IGNORED_DIRS = new Set([
   providedIn: 'root',
 })
 export class WorkspaceService {
+  private readonly ngZone = inject(NgZone);
   readonly workspaceName = signal<string>('NO FOLDER OPENED');
   readonly isRealWorkspace = signal<boolean>(false);
   readonly statusNotification = signal<string>('');
@@ -452,20 +453,24 @@ export class WorkspaceService {
       return false;
     }
 
-    this.isCommitting.set(true);
+    this.ngZone.run(() => this.isCommitting.set(true));
     try {
       await invoke<string>('create_git_commit', { repoPath, message: cleanMsg });
-      this.showNotification('Committed successfully');
+      this.ngZone.run(() => {
+        this.showNotification('Committed successfully');
+      });
       await this.refreshGitStatus();
       await this.loadRecentCommits();
       await this.loadGitSyncStatus();
       return true;
     } catch (err: any) {
       console.error('Failed to commit changes:', err);
-      this.showNotification(`Commit failed: ${err.message || err}`);
+      this.ngZone.run(() => {
+        this.showNotification(`Commit failed: ${err.message || err}`);
+      });
       return false;
     } finally {
-      this.isCommitting.set(false);
+      this.ngZone.run(() => this.isCommitting.set(false));
     }
   }
 
@@ -478,10 +483,10 @@ export class WorkspaceService {
     try {
       const repoPath = this.nativeWorkspacePath()!;
       const status = await invoke<GitSyncStatus>('get_git_sync_status', { repoPath });
-      this.gitSyncStatus.set(status);
+      this.ngZone.run(() => this.gitSyncStatus.set(status));
     } catch (err) {
       console.warn('Failed to load git sync status:', err);
-      this.gitSyncStatus.set(null);
+      this.ngZone.run(() => this.gitSyncStatus.set(null));
     }
   }
 
@@ -492,10 +497,12 @@ export class WorkspaceService {
     }
 
     const repoPath = this.nativeWorkspacePath()!;
-    this.isPushing.set(true);
+    this.ngZone.run(() => this.isPushing.set(true));
     try {
       await invoke<string>('git_push', { repoPath });
-      this.showNotification('Pushed changes successfully to remote');
+      this.ngZone.run(() => {
+        this.showNotification('Pushed changes successfully to remote');
+      });
       await this.refreshGitStatus();
       await this.loadRecentCommits();
       await this.loadGitSyncStatus();
@@ -503,10 +510,12 @@ export class WorkspaceService {
     } catch (err: any) {
       console.error('Failed to push changes:', err);
       const msg = typeof err === 'string' ? err : err?.message || 'Push failed';
-      this.showNotification(`Push failed: ${msg}`);
+      this.ngZone.run(() => {
+        this.showNotification(`Push failed: ${msg}`);
+      });
       return false;
     } finally {
-      this.isPushing.set(false);
+      this.ngZone.run(() => this.isPushing.set(false));
     }
   }
 
