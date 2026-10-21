@@ -120,3 +120,27 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+
+/* VS Code Diff View Highlights */
+.monaco-diff-editor,
+.monaco-editor {
+  .line-insert {
+    background-color: rgba(46, 160, 67, 0.20) !important;
+  }
+  .char-insert {
+    background-color: rgba(46, 160, 67, 0.35) !important;
+  }
+  .gutter-insert {
+    background-color: rgba(46, 160, 67, 0.50) !important;
+  }
+  .line-delete {
+    background-color: rgba(248, 81, 73, 0.14) !important;
+  }
+  .char-delete,
+  .inline-deleted-text {
+    background-color: rgba(248, 81, 73, 0.28) !important;
+  }
+  .gutter-delete {
+    background-color: rgba(248, 81, 73, 0.45) !important;
+  }
+}

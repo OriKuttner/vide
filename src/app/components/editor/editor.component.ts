@@ -1143,13 +1143,13 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         'editorLineNumber.activeForeground': '#0b216f',
         'editor.selectionBackground': '#add6ff',
         'editor.inactiveSelectionBackground': '#e5ebf1',
-        // Meld-style diff colors
-        'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.22)',
-        'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.10)',
-        'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.22)',
-        'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.10)',
-        'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.4)',
-        'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.4)',
+        // VS Code style diff colors
+        'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.35)',
+        'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.20)',
+        'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.28)',
+        'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.14)',
+        'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.50)',
+        'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.45)',
         'diffEditor.diagonalFill': '#efefef',
       },
     });
@@ -1178,13 +1178,13 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         'editorLineNumber.activeForeground': '#c6c6c6',
         'editor.selectionBackground': '#264f78',
         'editor.inactiveSelectionBackground': '#3a3d41',
-        // Meld-style diff colors
-        'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.28)',
-        'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.14)',
-        'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.28)',
-        'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.14)',
-        'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.5)',
-        'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.5)',
+        // VS Code style diff colors
+        'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.35)',
+        'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.20)',
+        'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.30)',
+        'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.15)',
+        'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.50)',
+        'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.45)',
         'diffEditor.diagonalFill': '#2a2d2e',
       },
     });
@@ -1436,10 +1436,10 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         tabSize: modOpts.tabSize,
       });
       this.originalDiffModels.set(file.id, origModel);
-    } else {
-      if (origModel.getValue() !== originalText) {
-        origModel.setValue(originalText);
-      }
+    }
+
+    if (origModel.getValue() !== originalText) {
+      origModel.setValue(originalText);
     }
 
     this.diffEditorInstance.setModel({

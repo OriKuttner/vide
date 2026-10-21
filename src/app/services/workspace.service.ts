@@ -157,6 +157,9 @@ export class WorkspaceService {
   // Primary Side Bar visibility (default: true)
   readonly sidebarVisible = signal<boolean>(true);
 
+  // Primary Side Bar width in pixels (default: 250, persisted in localStorage)
+  readonly sidebarWidth = signal<number>(this.getInitialSidebarWidth());
+
   // Primary Side Bar active view ('explorer', 'search', or 'git-changes')
   readonly sidebarView = signal<'explorer' | 'search' | 'git-changes'>('explorer');
 
@@ -207,6 +210,33 @@ export class WorkspaceService {
     }
   }
 
+  private getInitialSidebarWidth(): number {
+    if (typeof window === 'undefined') return 250;
+    try {
+      const saved = localStorage.getItem('vector_sidebar_width');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val >= 180 && val <= 1200) {
+          return val;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return 250;
+  }
+
+  public setSidebarWidth(width: number): void {
+    const maxWidth = typeof window !== 'undefined' ? Math.max(300, window.innerWidth - 200) : 800;
+    const clamped = Math.max(180, Math.min(width, maxWidth));
+    this.sidebarWidth.set(clamped);
+    try {
+      localStorage.setItem('vector_sidebar_width', clamped.toString());
+    } catch {
+      // ignore
+    }
+  }
+
   public async openDiffView(file: WorkspaceFile): Promise<void> {
     if (!file.isLoaded && (file.fsPath || file.handle || file.rawFile)) {
       try {
@@ -229,21 +259,20 @@ export class WorkspaceService {
       }
     }
 
-    if (file.originalContent === undefined) {
-      if (file.gitStatus === 'untracked' || file.gitStatus === 'added') {
+    if (file.gitStatus === 'untracked' || file.gitStatus === 'added') {
+      file.originalContent = '';
+    } else if (isTauriApp() && this.nativeWorkspacePath()) {
+      try {
+        const baseline = await invoke<string>('get_git_diff_baseline', {
+          repoPath: this.nativeWorkspacePath()!,
+          filePath: file.path,
+        });
+        file.originalContent = baseline;
+      } catch (e) {
+        console.warn('Could not read baseline from native git:', e);
         file.originalContent = '';
-      } else if (isTauriApp() && this.nativeWorkspacePath()) {
-        try {
-          const baseline = await invoke<string>('get_git_diff_baseline', {
-            repoPath: this.nativeWorkspacePath()!,
-            filePath: file.path,
-          });
-          file.originalContent = baseline;
-        } catch (e) {
-          console.warn('Could not read baseline from native git:', e);
-          file.originalContent = '';
-        }
-      } else {
+      }
+    } else if (file.originalContent === undefined) {
         try {
           const gitDir = this.recentGitDirHandle;
           if (gitDir) {
@@ -270,7 +299,6 @@ export class WorkspaceService {
           console.warn('Could not read baseline blob in openDiffView:', e);
         }
       }
-    }
 
     const currentTabs = this.openTabs();
     if (!currentTabs.some((tab) => tab.id === file.id)) {

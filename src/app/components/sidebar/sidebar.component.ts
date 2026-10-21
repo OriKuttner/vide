@@ -8,7 +8,10 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
   standalone: true,
   imports: [CommonModule],
   template: `
-    <aside class="sidebar">
+    <aside
+      class="sidebar"
+      [style.width.px]="workspaceService.sidebarWidth()"
+    >
       <div class="sidebar-header">
         <div class="header-actions">
           <button
@@ -635,13 +638,24 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
           }
         </div>
       }
+
+      <!-- Sidebar Resize Handle -->
+      <div
+        class="sidebar-resizer"
+        [class.active]="isResizing()"
+        (mousedown)="onStartResize($event)"
+        (dblclick)="onResetWidth($event)"
+        title="Drag to resize sidebar (double-click to reset)"
+      ></div>
     </aside>
   `,
   styles: [
     `
       .sidebar {
-        width: 250px;
-        min-width: 210px;
+        position: relative;
+        min-width: 180px;
+        max-width: 1200px;
+        flex-shrink: 0;
         height: 100%;
         background-color: var(--bg-sidebar, #f8f8f8);
         color: var(--text-primary, #333333);
@@ -652,6 +666,23 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
           sans-serif;
         transition: background-color 0.2s ease, border-color 0.2s ease;
+      }
+
+      .sidebar-resizer {
+        position: absolute;
+        top: 0;
+        right: -3px;
+        width: 6px;
+        height: 100%;
+        cursor: col-resize;
+        z-index: 100;
+        user-select: none;
+        transition: background-color 0.15s ease;
+
+        &:hover,
+        &.active {
+          background-color: #007acc;
+        }
       }
 
       .sidebar-header {
@@ -2199,5 +2230,44 @@ export class SidebarComponent {
 
   public toggleCommitsExpanded(): void {
     this.commitsExpanded.update((v) => !v);
+  }
+
+  // Sidebar Resizing state
+  public isResizing = signal<boolean>(false);
+  private startX = 0;
+  private startWidth = 0;
+
+  public onStartResize(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isResizing.set(true);
+    this.startX = event.clientX;
+    this.startWidth = this.workspaceService.sidebarWidth();
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - this.startX;
+      const newWidth = this.startWidth + deltaX;
+      this.workspaceService.setSidebarWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      this.isResizing.set(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }
+
+  public onResetWidth(event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.workspaceService.setSidebarWidth(250);
   }
 }
