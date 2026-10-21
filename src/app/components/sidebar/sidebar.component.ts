@@ -463,6 +463,18 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
               <span class="git-panel-title">SOURCE CONTROL</span>
               @if (workspaceService.gitBranch()) {
                 <span class="git-branch-tag">⎇ {{ workspaceService.gitBranch() }}</span>
+                @if (workspaceService.gitSyncStatus()?.has_remote) {
+                  @if ((workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
+                    <span class="git-sync-tag ahead" title="{{ workspaceService.gitSyncStatus()?.ahead }} commit(s) ahead">
+                      ↑{{ workspaceService.gitSyncStatus()?.ahead }}
+                    </span>
+                  }
+                  @if ((workspaceService.gitSyncStatus()?.behind ?? 0) > 0) {
+                    <span class="git-sync-tag behind" title="{{ workspaceService.gitSyncStatus()?.behind }} commit(s) behind">
+                      ↓{{ workspaceService.gitSyncStatus()?.behind }}
+                    </span>
+                  }
+                }
               }
             </div>
             <div class="git-panel-actions">
@@ -488,31 +500,51 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
 
           <!-- Commit Note & Action Section -->
           @if (workspaceService.gitBranch()) {
-            <div class="git-commit-box">
-              <div class="commit-input-wrapper">
-                <label class="commit-label">Commit Note</label>
-                <textarea
-                  class="commit-textarea"
-                  [value]="commitMessage()"
-                  (input)="onCommitMessageChange($event)"
-                  (keydown.control.enter)="submitCommit()"
-                  (keydown.meta.enter)="submitCommit()"
-                  rows="2"
-                ></textarea>
+            @if (workspaceService.changedFiles().length > 0) {
+              <div class="git-commit-box">
+                <div class="commit-input-wrapper">
+                  <label class="commit-label">Commit Note</label>
+                  <textarea
+                    class="commit-textarea"
+                    [value]="commitMessage()"
+                    (input)="onCommitMessageChange($event)"
+                    (keydown.control.enter)="submitCommit()"
+                    (keydown.meta.enter)="submitCommit()"
+                    rows="2"
+                  ></textarea>
+                </div>
+                <button
+                  type="button"
+                  class="btn-commit"
+                  [disabled]="!canCommit() || workspaceService.isCommitting()"
+                  (click)="submitCommit()"
+                >
+                  @if (workspaceService.isCommitting()) {
+                    <span>Committing...</span>
+                  } @else {
+                    <span>✓ Commit</span>
+                  }
+                </button>
               </div>
-              <button
-                type="button"
-                class="btn-commit"
-                [disabled]="!canCommit() || workspaceService.isCommitting()"
-                (click)="submitCommit()"
-              >
-                @if (workspaceService.isCommitting()) {
-                  <span>Committing...</span>
-                } @else {
-                  <span>✓ Commit</span>
-                }
-              </button>
-            </div>
+            } @else if (workspaceService.gitSyncStatus()?.has_remote && (workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
+              <div class="git-commit-box">
+                <button
+                  type="button"
+                  class="btn-push"
+                  [disabled]="workspaceService.isPushing()"
+                  (click)="submitPush()"
+                >
+                  @if (workspaceService.isPushing()) {
+                    <span>Pushing...</span>
+                  } @else {
+                    <svg class="push-icon" viewBox="0 0 16 16" fill="currentColor">
+                      <path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/>
+                    </svg>
+                    <span>Push ({{ workspaceService.gitSyncStatus()?.ahead }} {{ (workspaceService.gitSyncStatus()?.ahead ?? 0) === 1 ? 'commit' : 'commits' }})</span>
+                  }
+                </button>
+              </div>
+            }
           }
 
           <div class="git-changes-container">
@@ -1561,6 +1593,25 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             font-weight: 600;
           }
 
+          .git-sync-tag {
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: 9px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+
+            &.ahead {
+              background: rgba(46, 160, 67, 0.18);
+              color: #2ea043;
+            }
+
+            &.behind {
+              background: rgba(229, 83, 75, 0.18);
+              color: #e5534b;
+            }
+          }
+
           .panel-action-btn {
             background: transparent;
             border: 1px solid var(--border-color, #dcdcdc);
@@ -1624,7 +1675,8 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             }
           }
 
-          .btn-commit {
+          .btn-commit,
+          .btn-push {
             background-color: #007acc;
             color: #ffffff;
             border: none;
@@ -1646,6 +1698,19 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             &:disabled {
               opacity: 0.5;
               cursor: not-allowed;
+            }
+
+            .push-icon {
+              width: 14px;
+              height: 14px;
+            }
+          }
+
+          .btn-push {
+            background-color: #238636;
+
+            &:hover:not(:disabled) {
+              background-color: #2ea043;
             }
           }
         }
@@ -2226,6 +2291,11 @@ export class SidebarComponent {
     if (success) {
       this.commitMessage.set('');
     }
+  }
+
+  public async submitPush(): Promise<void> {
+    if (this.workspaceService.isPushing()) return;
+    await this.workspaceService.pushChanges();
   }
 
   public toggleCommitsExpanded(): void {

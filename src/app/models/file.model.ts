@@ -224,3 +224,11 @@ export interface GitCommit {
   date: string;
   message: string;
 }
+
+export interface GitSyncStatus {
+  has_remote: boolean;
+  remote_name?: string | null;
+  upstream?: string | null;
+  ahead: number;
+  behind: number;
+}

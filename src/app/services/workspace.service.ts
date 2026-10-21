@@ -9,6 +9,7 @@ import {
   CliLaunchPayload,
   CliFileToOpen,
   GitCommit,
+  GitSyncStatus,
 } from '../models/file.model';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
@@ -116,6 +117,8 @@ export class WorkspaceService {
   readonly recentCommits = signal<GitCommit[]>([]);
   readonly isCommitting = signal<boolean>(false);
   readonly isLoadingCommits = signal<boolean>(false);
+  readonly gitSyncStatus = signal<GitSyncStatus | null>(null);
+  readonly isPushing = signal<boolean>(false);
 
   // Diff Mode state
   readonly diffModeActive = signal<boolean>(false);
@@ -455,6 +458,7 @@ export class WorkspaceService {
       this.showNotification('Committed successfully');
       await this.refreshGitStatus();
       await this.loadRecentCommits();
+      await this.loadGitSyncStatus();
       return true;
     } catch (err: any) {
       console.error('Failed to commit changes:', err);
@@ -462,6 +466,47 @@ export class WorkspaceService {
       return false;
     } finally {
       this.isCommitting.set(false);
+    }
+  }
+
+  public async loadGitSyncStatus(): Promise<void> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      this.gitSyncStatus.set(null);
+      return;
+    }
+
+    try {
+      const repoPath = this.nativeWorkspacePath()!;
+      const status = await invoke<GitSyncStatus>('get_git_sync_status', { repoPath });
+      this.gitSyncStatus.set(status);
+    } catch (err) {
+      console.warn('Failed to load git sync status:', err);
+      this.gitSyncStatus.set(null);
+    }
+  }
+
+  public async pushChanges(): Promise<boolean> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      this.showNotification('Push is only supported in desktop mode');
+      return false;
+    }
+
+    const repoPath = this.nativeWorkspacePath()!;
+    this.isPushing.set(true);
+    try {
+      await invoke<string>('git_push', { repoPath });
+      this.showNotification('Pushed changes successfully to remote');
+      await this.refreshGitStatus();
+      await this.loadRecentCommits();
+      await this.loadGitSyncStatus();
+      return true;
+    } catch (err: any) {
+      console.error('Failed to push changes:', err);
+      const msg = typeof err === 'string' ? err : err?.message || 'Push failed';
+      this.showNotification(`Push failed: ${msg}`);
+      return false;
+    } finally {
+      this.isPushing.set(false);
     }
   }
 
@@ -596,6 +641,7 @@ export class WorkspaceService {
   public async refreshGitStatus(dirHandle?: any): Promise<void> {
     if (!this.isRealWorkspace()) {
       this.gitBranch.set(null);
+      this.gitSyncStatus.set(null);
       return;
     }
 
@@ -607,12 +653,15 @@ export class WorkspaceService {
           this.gitBranch.set(branch);
           if (branch) {
             this.loadRecentCommits();
+            this.loadGitSyncStatus();
           } else {
             this.recentCommits.set([]);
+            this.gitSyncStatus.set(null);
           }
         } catch {
           this.gitBranch.set(null);
           this.recentCommits.set([]);
+          this.gitSyncStatus.set(null);
         }
 
         const gitItems = await invoke<
@@ -674,6 +723,7 @@ export class WorkspaceService {
       } catch (err) {
         this.gitBranch.set(null);
         this.recentCommits.set([]);
+        this.gitSyncStatus.set(null);
         this.files.update((files) =>
           files.map((f) => ({
             ...f,

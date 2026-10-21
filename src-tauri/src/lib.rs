@@ -33,6 +33,15 @@ pub struct GitCommitItem {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitSyncStatus {
+    pub has_remote: bool,
+    pub remote_name: Option<String>,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FsEntryItem {
     pub name: String,
     pub path: String,
@@ -223,6 +232,182 @@ fn create_git_commit(repo_path: String, message: String) -> Result<String, Strin
     }
 
     Ok(String::from_utf8_lossy(&commit_output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+fn get_git_sync_status(repo_path: String) -> Result<GitSyncStatus, String> {
+    let clean_repo = expand_path(&repo_path);
+
+    let remotes_output = Command::new("git")
+        .args(["-C", &clean_repo, "remote"])
+        .output()
+        .map_err(|e| format!("Failed to execute git remote: {}", e))?;
+
+    if !remotes_output.status.success() {
+        return Ok(GitSyncStatus {
+            has_remote: false,
+            remote_name: None,
+            upstream: None,
+            ahead: 0,
+            behind: 0,
+        });
+    }
+
+    let remotes_str = String::from_utf8_lossy(&remotes_output.stdout);
+    let remotes: Vec<&str> = remotes_str.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+
+    if remotes.is_empty() {
+        return Ok(GitSyncStatus {
+            has_remote: false,
+            remote_name: None,
+            upstream: None,
+            ahead: 0,
+            behind: 0,
+        });
+    }
+
+    let remote_name = remotes[0].to_string();
+
+    let upstream_output = Command::new("git")
+        .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+        .output();
+
+    let mut upstream: Option<String> = None;
+    let mut ahead: u32 = 0;
+    let mut behind: u32 = 0;
+
+    if let Ok(out) = upstream_output {
+        if out.status.success() {
+            let up = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !up.is_empty() {
+                upstream = Some(up.clone());
+                let rev_list = Command::new("git")
+                    .args(["-C", &clean_repo, "rev-list", "--left-right", "--count", "@{u}...HEAD"])
+                    .output();
+                if let Ok(rl_out) = rev_list {
+                    if rl_out.status.success() {
+                        let rl_str = String::from_utf8_lossy(&rl_out.stdout);
+                        let counts: Vec<&str> = rl_str.split_whitespace().collect();
+                        if counts.len() >= 2 {
+                            behind = counts[0].parse::<u32>().unwrap_or(0);
+                            ahead = counts[1].parse::<u32>().unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if upstream.is_none() {
+        let branch_output = Command::new("git")
+            .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "HEAD"])
+            .output();
+        if let Ok(b_out) = branch_output {
+            if b_out.status.success() {
+                let current_branch = String::from_utf8_lossy(&b_out.stdout).trim().to_string();
+                let remote_ref = format!("{}/{}", remote_name, current_branch);
+                let verify_output = Command::new("git")
+                    .args(["-C", &clean_repo, "rev-parse", "--verify", &remote_ref])
+                    .output();
+                if let Ok(v_out) = verify_output {
+                    if v_out.status.success() {
+                        let rev_range = format!("{}...HEAD", remote_ref);
+                        let rev_list = Command::new("git")
+                            .args(["-C", &clean_repo, "rev-list", "--left-right", "--count", &rev_range])
+                            .output();
+                        if let Ok(rl_out) = rev_list {
+                            if rl_out.status.success() {
+                                let rl_str = String::from_utf8_lossy(&rl_out.stdout);
+                                let counts: Vec<&str> = rl_str.split_whitespace().collect();
+                                if counts.len() >= 2 {
+                                    behind = counts[0].parse::<u32>().unwrap_or(0);
+                                    ahead = counts[1].parse::<u32>().unwrap_or(0);
+                                }
+                            }
+                        }
+                        upstream = Some(remote_ref);
+                    } else {
+                        let count_output = Command::new("git")
+                            .args(["-C", &clean_repo, "rev-list", "--count", "HEAD"])
+                            .output();
+                        if let Ok(c_out) = count_output {
+                            if c_out.status.success() {
+                                ahead = String::from_utf8_lossy(&c_out.stdout).trim().parse::<u32>().unwrap_or(0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(GitSyncStatus {
+        has_remote: true,
+        remote_name: Some(remote_name),
+        upstream,
+        ahead,
+        behind,
+    })
+}
+
+#[tauri::command]
+fn git_push(repo_path: String) -> Result<String, String> {
+    let clean_repo = expand_path(&repo_path);
+
+    let upstream_output = Command::new("git")
+        .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+        .output();
+
+    let has_upstream = match upstream_output {
+        Ok(out) => out.status.success() && !String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+        Err(_) => false,
+    };
+
+    let output = if has_upstream {
+        Command::new("git")
+            .args(["-C", &clean_repo, "push"])
+            .output()
+            .map_err(|e| format!("Failed to execute git push: {}", e))?
+    } else {
+        let branch_out = Command::new("git")
+            .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "HEAD"])
+            .output()
+            .map_err(|e| format!("Failed to get current branch: {}", e))?;
+        let branch = String::from_utf8_lossy(&branch_out.stdout).trim().to_string();
+
+        let remotes_out = Command::new("git")
+            .args(["-C", &clean_repo, "remote"])
+            .output()
+            .map_err(|e| format!("Failed to get remotes: {}", e))?;
+        let remotes_str = String::from_utf8_lossy(&remotes_out.stdout);
+        let remote = remotes_str.lines().next().unwrap_or("origin").trim();
+
+        if remote.is_empty() {
+            return Err("No git remote configured to push to".to_string());
+        }
+
+        Command::new("git")
+            .args(["-C", &clean_repo, "push", "-u", remote, &branch])
+            .output()
+            .map_err(|e| format!("Failed to execute git push: {}", e))?
+    };
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(if err.is_empty() {
+            String::from_utf8_lossy(&output.stdout).to_string()
+        } else {
+            err
+        });
+    }
+
+    let stdout_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr_str = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stdout_str.is_empty() {
+        Ok(stderr_str)
+    } else {
+        Ok(stdout_str)
+    }
 }
 
 #[tauri::command]
@@ -427,6 +612,8 @@ pub fn run() {
             revert_git_file,
             get_git_commits,
             create_git_commit,
+            get_git_sync_status,
+            git_push,
             select_directory,
             read_dir_entries,
             read_file_text,
