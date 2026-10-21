@@ -1,7 +1,7 @@
 import { Component, inject, signal, computed, ViewChild, ElementRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';
-import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.model';
+import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
 
 @Component({
   selector: 'app-sidebar',
@@ -230,15 +230,42 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
                           <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
                         </svg>
                       </span>
+                    } @else if (isOmniFluxNode(node.file || node)) {
+                      <span class="file-badge icon-badge" title="OmniFlux">
+                        <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
+                      </span>
+                    } @else if (isPhpNode(node.file || node)) {
+                      <span class="file-badge icon-badge" title="PHP">
+                        <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+                      </span>
+                    } @else if (isPerlNode(node.file || node)) {
+                      <span class="file-badge icon-badge" title="Perl">
+                        <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
+                      </span>
                     } @else {
                       <span class="file-badge" [attr.data-lang]="node.language">{{
                         getFileIcon(node.file || node)
                       }}</span>
                     }
                     <span class="node-name" [title]="node.path">{{ node.name }}</span>
-                    @if (node.file?.isModified) {
-                      <span class="dirty-dot">●</span>
-                    }
+                    <div class="row-status-indicators">
+                      @if (workspaceService.hasGitChanges(node.file || node)) {
+                        <button
+                          type="button"
+                          class="tree-git-btn"
+                          title="Open Git Diff"
+                          (click)="onOpenDiffForNode(node, $event)"
+                        >
+                          <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+                            <path fill-rule="evenodd" d="M11.75 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm-7.5 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.25 10.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM3.5 3.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm7.5 0a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm-7.5 8.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
+                            <path fill-rule="evenodd" d="M5 5.5V11h-1.5V5.5H5zm2.75 2a3.75 3.75 0 0 1 3.75-3.75h.5V5.25h-.5A2.25 2.25 0 0 0 9.25 7.5v.75H7.75V7.5z"/>
+                          </svg>
+                        </button>
+                      }
+                      @if (workspaceService.isFileModified(node.file || node)) {
+                        <span class="dirty-dot" title="Unsaved changes">●</span>
+                      }
+                    </div>
                   </div>
                 }
               }
@@ -389,6 +416,18 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
                         <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
                       </svg>
                     </span>
+                  } @else if (isOmniFluxNode(group.file)) {
+                    <span class="file-badge icon-badge" title="OmniFlux">
+                      <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
+                    </span>
+                  } @else if (isPhpNode(group.file)) {
+                    <span class="file-badge icon-badge" title="PHP">
+                      <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+                    </span>
+                  } @else if (isPerlNode(group.file)) {
+                    <span class="file-badge icon-badge" title="Perl">
+                      <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
+                    </span>
                   } @else {
                     <span class="file-badge" [attr.data-lang]="group.file.language">{{
                       getFileIcon(group.file)
@@ -444,6 +483,35 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
             </div>
           </div>
 
+          <!-- Commit Note & Action Section -->
+          @if (workspaceService.gitBranch()) {
+            <div class="git-commit-box">
+              <div class="commit-input-wrapper">
+                <label class="commit-label">Commit Note</label>
+                <textarea
+                  class="commit-textarea"
+                  [value]="commitMessage()"
+                  (input)="onCommitMessageChange($event)"
+                  (keydown.control.enter)="submitCommit()"
+                  (keydown.meta.enter)="submitCommit()"
+                  rows="2"
+                ></textarea>
+              </div>
+              <button
+                type="button"
+                class="btn-commit"
+                [disabled]="!canCommit() || workspaceService.isCommitting()"
+                (click)="submitCommit()"
+              >
+                @if (workspaceService.isCommitting()) {
+                  <span>Committing...</span>
+                } @else {
+                  <span>✓ Commit</span>
+                }
+              </button>
+            </div>
+          }
+
           <div class="git-changes-container">
             <div class="git-changes-header">
               <span class="git-changes-title">CHANGES</span>
@@ -479,6 +547,18 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
                         <svg class="file-icon-svg" viewBox="0 0 16 16" fill="currentColor">
                           <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
                         </svg>
+                      </span>
+                    } @else if (isOmniFluxNode(file)) {
+                      <span class="file-icon-badge icon-badge" title="OmniFlux">
+                        <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
+                      </span>
+                    } @else if (isPhpNode(file)) {
+                      <span class="file-icon-badge icon-badge" title="PHP">
+                        <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+                      </span>
+                    } @else if (isPerlNode(file)) {
+                      <span class="file-icon-badge icon-badge" title="Perl">
+                        <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
                       </span>
                     } @else {
                       <span class="file-icon-badge" [attr.data-lang]="file.language">{{ getFileIcon(file) }}</span>
@@ -518,6 +598,41 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
               }
             </div>
           </div>
+
+          <!-- Recent Commits Section -->
+          @if (workspaceService.gitBranch()) {
+            <div class="git-commits-container">
+              <div class="git-commits-header" (click)="toggleCommitsExpanded()">
+                <div class="git-commits-header-left">
+                  <span class="toggle-icon">{{ commitsExpanded() ? '▾' : '▸' }}</span>
+                  <span class="git-commits-title">RECENT COMMITS</span>
+                </div>
+                <span class="commits-count-pill">{{ workspaceService.recentCommits().length }}</span>
+              </div>
+              @if (commitsExpanded()) {
+                <div class="git-commits-list">
+                  @if (workspaceService.isLoadingCommits()) {
+                    <div class="empty-commits-msg">Loading commits...</div>
+                  } @else if (workspaceService.recentCommits().length === 0) {
+                    <div class="empty-commits-msg">No commits found.</div>
+                  } @else {
+                    @for (commit of workspaceService.recentCommits(); track commit.hash) {
+                      <div class="git-commit-row" [title]="commit.hash">
+                        <div class="commit-row-top">
+                          <span class="commit-hash">{{ commit.shortHash }}</span>
+                          <span class="commit-msg">{{ commit.message }}</span>
+                        </div>
+                        <div class="commit-row-meta">
+                          <span class="commit-author">{{ commit.author }}</span>
+                          <span class="commit-date">{{ commit.date }}</span>
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+              }
+            </div>
+          }
         </div>
       }
     </aside>
@@ -956,6 +1071,24 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
             }
           }
 
+          &.icon-badge {
+            background-color: transparent !important;
+            padding: 0;
+            min-width: 26px;
+            width: 26px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+
+            .file-badge-img {
+              width: 16px;
+              height: 16px;
+              object-fit: contain;
+              display: block;
+            }
+          }
+
           &[data-lang='omniflux'] {
             background-color: #ff5722;
             color: #fff;
@@ -1022,9 +1155,51 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
           text-overflow: ellipsis;
         }
 
+        .row-status-indicators {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+          padding-right: 2px;
+        }
+
+        .tree-git-btn {
+          background: transparent;
+          border: none;
+          padding: 1px 2px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #007acc;
+          cursor: pointer;
+          border-radius: 3px;
+          opacity: 0.85;
+          transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+
+          &:hover {
+            opacity: 1;
+            transform: scale(1.15);
+            background-color: rgba(0, 122, 204, 0.15);
+          }
+
+          .svg-icon {
+            width: 13px;
+            height: 13px;
+          }
+        }
+
         .dirty-dot {
-          font-size: 10px;
-          color: #d7ba7d;
+          font-size: 11px;
+          color: #111111;
+          line-height: 1;
+          display: inline-block;
+          user-select: none;
+        }
+
+        :host-context(.theme-dark) .dirty-dot,
+        body.theme-dark .dirty-dot {
+          color: #ffffff;
         }
       }
 
@@ -1374,6 +1549,76 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
           }
         }
 
+        .git-commit-box {
+          flex-shrink: 0;
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border-color, #e5e5e5);
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          background: var(--bg-secondary, #fafafa);
+
+          .commit-input-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+
+            .commit-label {
+              font-size: 11px;
+              font-weight: 600;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: var(--text-muted, #717171);
+            }
+
+            .commit-textarea {
+              width: 100%;
+              box-sizing: border-box;
+              resize: vertical;
+              min-height: 48px;
+              font-family: inherit;
+              font-size: 12.5px;
+              padding: 6px 8px;
+              border: 1px solid var(--border-color, #dcdcdc);
+              border-radius: 4px;
+              background-color: var(--bg-primary, #ffffff);
+              color: var(--text-primary, #1e1e1e);
+              outline: none;
+              line-height: 1.4;
+
+              &:focus {
+                border-color: #007acc;
+                box-shadow: 0 0 0 1px #007acc;
+              }
+            }
+          }
+
+          .btn-commit {
+            background-color: #007acc;
+            color: #ffffff;
+            border: none;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: background-color 0.15s ease, opacity 0.15s ease;
+
+            &:hover:not(:disabled) {
+              background-color: #0062a3;
+            }
+
+            &:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+          }
+        }
+
         .git-changes-container {
           flex: 1;
           overflow-y: auto;
@@ -1463,6 +1708,23 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
                 }
               }
 
+              &.icon-badge {
+                background-color: transparent !important;
+                padding: 0;
+                width: 24px;
+                height: 18px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+
+                .file-badge-img {
+                  width: 16px;
+                  height: 16px;
+                  object-fit: contain;
+                  display: block;
+                }
+              }
+
               &[data-lang='image'] {
                 color: #107c41;
                 font-size: 14px;
@@ -1539,6 +1801,129 @@ import { WorkspaceFile, FileTreeNode, isImageFile } from '../../models/file.mode
 
                 &.badge-u {
                   color: #10b981;
+                }
+              }
+            }
+          }
+        }
+
+        .git-commits-container {
+          flex-shrink: 0;
+          max-height: 250px;
+          display: flex;
+          flex-direction: column;
+          border-top: 1px solid var(--border-color, #e5e5e5);
+          background: var(--bg-secondary, #fafafa);
+
+          .git-commits-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--text-muted, #717171);
+
+            &:hover {
+              background-color: var(--bg-item-hover, #ececec);
+            }
+
+            .git-commits-header-left {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            }
+
+            .toggle-icon {
+              font-size: 10px;
+              width: 12px;
+            }
+
+            .commits-count-pill {
+              background-color: var(--bg-item-active, #e2effd);
+              color: #007acc;
+              font-size: 11px;
+              padding: 1px 6px;
+              border-radius: 8px;
+              font-weight: 700;
+            }
+          }
+
+          .git-commits-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            padding-bottom: 6px;
+
+            .empty-commits-msg {
+              padding: 14px;
+              text-align: center;
+              font-size: 12px;
+              color: var(--text-muted, #888888);
+            }
+
+            .git-commit-row {
+              display: flex;
+              flex-direction: column;
+              gap: 3px;
+              padding: 6px 12px;
+              border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+              cursor: default;
+              transition: background-color 0.12s ease;
+
+              &:hover {
+                background-color: var(--bg-item-hover, #ececec);
+              }
+
+              .commit-row-top {
+                display: flex;
+                align-items: baseline;
+                gap: 6px;
+                min-width: 0;
+
+                .commit-hash {
+                  font-family: monospace;
+                  font-size: 11px;
+                  background: rgba(0, 122, 204, 0.1);
+                  color: #007acc;
+                  padding: 1px 5px;
+                  border-radius: 3px;
+                  font-weight: 600;
+                  flex-shrink: 0;
+                }
+
+                .commit-msg {
+                  font-size: 12px;
+                  font-weight: 500;
+                  color: var(--text-primary, #1e1e1e);
+                  white-space: nowrap;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                }
+              }
+
+              .commit-row-meta {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-size: 11px;
+                color: var(--text-muted, #888888);
+                padding-left: 2px;
+
+                .commit-author {
+                  white-space: nowrap;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                  max-width: 130px;
+                }
+
+                .commit-date {
+                  white-space: nowrap;
+                  flex-shrink: 0;
                 }
               }
             }
@@ -1703,6 +2088,28 @@ export class SidebarComponent {
     return lang === 'image' || isImageFile(name);
   }
 
+  public isOmniFluxNode(item: WorkspaceFile | FileTreeNode | undefined | null): boolean {
+    if (!item) return false;
+    const name = item.name || '';
+    const lang = ('language' in item ? item.language : '') || '';
+    return isOmniFluxFile(name, lang);
+  }
+
+  public isPhpNode(item: WorkspaceFile | FileTreeNode | undefined | null): boolean {
+    if (!item) return false;
+    const name = item.name || '';
+    const lang = ('language' in item ? item.language : '') || '';
+    return isPhpFile(name, lang);
+  }
+
+  public isPerlNode(item: WorkspaceFile | FileTreeNode | undefined | null): boolean {
+    if (!item) return false;
+    const name = item.name || '';
+    const lang = ('language' in item ? item.language : '') || '';
+    return isPerlFile(name, lang);
+  }
+
+
   public getFileIcon(file: WorkspaceFile | FileTreeNode): string {
     if (file.language === 'image' || isImageFile(file.name)) {
       return 'IMG';
@@ -1747,8 +2154,50 @@ export class SidebarComponent {
     this.workspaceService.openDiffView(file);
   }
 
+  public onOpenDiffForNode(node: FileTreeNode, event: MouseEvent): void {
+    event.stopPropagation();
+    const file = node.file || this.workspaceService.files().find((f) => f.path === node.path || f.id === node.id);
+    if (file) {
+      if (this.workspaceService.diffModeActive() && this.workspaceService.activeDiffFile()?.id === file.id) {
+        this.workspaceService.closeDiffView();
+      } else {
+        this.workspaceService.openDiffView(file);
+      }
+    }
+  }
+
   public onRevertFile(file: WorkspaceFile, event: MouseEvent): void {
     event.stopPropagation();
     this.workspaceService.revertFile(file.id);
+  }
+
+  // Git Commit & History state
+  public commitMessage = signal<string>('');
+  public commitsExpanded = signal<boolean>(true);
+
+  public canCommit = computed(() => {
+    return (
+      this.workspaceService.changedFiles().length > 0 &&
+      this.commitMessage().trim().length > 0
+    );
+  });
+
+  public onCommitMessageChange(event: Event): void {
+    const val = (event.target as HTMLTextAreaElement).value;
+    this.commitMessage.set(val);
+  }
+
+  public async submitCommit(): Promise<void> {
+    const msg = this.commitMessage().trim();
+    if (!msg || !this.canCommit() || this.workspaceService.isCommitting()) return;
+
+    const success = await this.workspaceService.commitChanges(msg);
+    if (success) {
+      this.commitMessage.set('');
+    }
+  }
+
+  public toggleCommitsExpanded(): void {
+    this.commitsExpanded.update((v) => !v);
   }
 }

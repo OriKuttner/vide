@@ -18,7 +18,7 @@ import { ThemeService } from '../../services/theme.service';
 import { ZoomService } from '../../services/zoom.service';
 import { registerOmniFlux } from '../../languages/omniflux.language';
 import { registerAllLanguageSnippets } from '../../languages/snippets.registry';
-import { WorkspaceFile, isImageFile } from '../../models/file.model';
+import { WorkspaceFile, isImageFile, detectLanguage } from '../../models/file.model';
 
 @Component({
   selector: 'app-editor',
@@ -858,17 +858,20 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor() {
     // Effect to switch active file in Monaco or reset image viewer
-    effect(() => {
-      const active = this.workspaceService.activeFile();
-      if (active) {
-        if (active.isImage || isImageFile(active.name)) {
-          this.imageZoom.set(1.0);
-          this.imageDimensions.set(null);
-        } else if (this.editorInstance) {
-          this.switchToFile(active);
+    effect(
+      () => {
+        const active = this.workspaceService.activeFile();
+        if (active) {
+          if (active.isImage || isImageFile(active.name)) {
+            this.imageZoom.set(1.0);
+            this.imageDimensions.set(null);
+          } else if (this.editorInstance) {
+            this.switchToFile(active);
+          }
         }
-      }
-    });
+      },
+      { allowSignalWrites: true }
+    );
 
     // Effect to reactively update editor font size when zoom changes
     effect(() => {
@@ -965,6 +968,25 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
+    // Effect to trigger redetect indentation for active file on demand
+    effect(
+      () => {
+        const fileId = this.workspaceService.pendingRedetectIndentation();
+        if (fileId && this.editorInstance) {
+          const model = this.fileModels.get(fileId);
+          const active = this.workspaceService.activeFile();
+          if (model && active && active.id === fileId) {
+            const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
+            const defTabSize = this.workspaceService.defaultTabSize();
+            model.detectIndentation(defInsertSpaces, defTabSize);
+            this.syncIndentationFromModel(model, active);
+          }
+          this.workspaceService.pendingRedetectIndentation.set(null);
+        }
+      },
+      { allowSignalWrites: true }
+    );
+
     // Effect to update indentation options
     effect(() => {
       const isTabs = this.workspaceService.indentType() === 'tabs';
@@ -976,10 +998,13 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         });
         const model = this.editorInstance.getModel();
         if (model) {
-          model.updateOptions({
-            insertSpaces: !isTabs,
-            tabSize: size,
-          });
+          const currentOpts = model.getOptions();
+          if (currentOpts.insertSpaces !== !isTabs || currentOpts.tabSize !== size) {
+            model.updateOptions({
+              insertSpaces: !isTabs,
+              tabSize: size,
+            });
+          }
         }
       }
       if (this.diffEditorInstance) {
@@ -1182,7 +1207,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       wordWrap: 'on',
       tabSize: 4,
       insertSpaces: false,
-      detectIndentation: false,
+      detectIndentation: true,
       fontFamily:
         "'Consolas', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Noto Sans Hebrew', 'Courier New', monospace",
       fontLigatures: true,
@@ -1237,6 +1262,19 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       if (activeFile && this.editorInstance) {
         const val = this.editorInstance.getValue();
         this.workspaceService.updateContent(activeFile.id, val);
+        const model = this.editorInstance.getModel();
+        if (
+          model &&
+          (activeFile.language === 'plaintext' || model.getLanguageId() === 'plaintext') &&
+          val.length < 50000
+        ) {
+          const detected = detectLanguage(activeFile.name, val);
+          if (detected !== 'plaintext' && detected !== model.getLanguageId()) {
+            activeFile.language = detected;
+            monaco.editor.setModelLanguage(model, detected);
+            this.workspaceService.updateFileLanguage(activeFile.id, detected);
+          }
+        }
       }
     });
 
@@ -1373,6 +1411,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private setupDiffModels(file: WorkspaceFile): void {
     if (!this.diffEditorInstance) return;
 
+    // Modified model (Working tree)
+    const modModel = this.getOrCreateModel(file);
+    if (modModel.getValue() !== file.content) {
+      modModel.setValue(file.content);
+    }
+
     // Original model (HEAD baseline)
     const safeId = encodeURIComponent(file.id || file.path || file.name);
     const origUri = monaco.Uri.parse(`inmemory://diff-original/${safeId}`);
@@ -1386,17 +1430,16 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       } else {
         origModel = monaco.editor.createModel(originalText, file.language, origUri);
       }
+      const modOpts = modModel.getOptions();
+      origModel.updateOptions({
+        insertSpaces: modOpts.insertSpaces,
+        tabSize: modOpts.tabSize,
+      });
       this.originalDiffModels.set(file.id, origModel);
     } else {
       if (origModel.getValue() !== originalText) {
         origModel.setValue(originalText);
       }
-    }
-
-    // Modified model (Working tree)
-    const modModel = this.getOrCreateModel(file);
-    if (modModel.getValue() !== file.content) {
-      modModel.setValue(file.content);
     }
 
     this.diffEditorInstance.setModel({
@@ -1439,7 +1482,25 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
         if (viewState) {
           this.editorInstance.restoreViewState(viewState);
         }
+        if (!file.isIndentationCustom) {
+          const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
+          const defTabSize = this.workspaceService.defaultTabSize();
+          model.detectIndentation(defInsertSpaces, defTabSize);
+        }
       }
+
+      // Detect language from content if currently plaintext
+      const currentContent = file.content ?? model.getValue();
+      if ((file.language === 'plaintext' || model.getLanguageId() === 'plaintext') && currentContent) {
+        const detected = detectLanguage(file.name, currentContent);
+        if (detected !== 'plaintext' && detected !== model.getLanguageId()) {
+          file.language = detected;
+          monaco.editor.setModelLanguage(model, detected);
+          this.workspaceService.updateFileLanguage(file.id, detected);
+        }
+      }
+
+      this.syncIndentationFromModel(model, file);
     } catch (err) {
       console.error('Error switching to file in Monaco:', err);
     } finally {
@@ -1461,19 +1522,52 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
       const safeId = encodeURIComponent(file.id || file.path || file.name);
       const uri = monaco.Uri.parse(`inmemory://workspace/${safeId}`);
       const existing = monaco.editor.getModel(uri);
-      if (existing) {
-        model = existing;
-      } else {
-        model = monaco.editor.createModel(file.content ?? '', file.language, uri);
+
+      let initialLang = file.language || 'plaintext';
+      if (initialLang === 'plaintext' && file.content) {
+        const detected = detectLanguage(file.name, file.content);
+        if (detected !== 'plaintext') {
+          initialLang = detected;
+          file.language = detected;
+        }
       }
-      // Ensure model honors Tab indentation of size 4
-      model.updateOptions({
-        tabSize: 4,
-        insertSpaces: false,
+
+      const textModel: monaco.editor.ITextModel =
+        existing ?? monaco.editor.createModel(file.content ?? '', initialLang, uri);
+
+      if (file.isIndentationCustom && file.tabSize !== undefined) {
+        textModel.updateOptions({
+          insertSpaces: file.indentType === 'spaces',
+          tabSize: file.tabSize,
+        });
+      } else {
+        const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
+        const defTabSize = this.workspaceService.defaultTabSize();
+        textModel.detectIndentation(defInsertSpaces, defTabSize);
+      }
+
+      textModel.onDidChangeOptions(() => {
+        const active = this.workspaceService.activeFile();
+        if (active && active.id === file.id) {
+          this.syncIndentationFromModel(textModel, active);
+        }
       });
+
+      model = textModel;
       this.fileModels.set(file.id, model);
     }
     return model;
+  }
+
+  private syncIndentationFromModel(model: monaco.editor.ITextModel, file: WorkspaceFile): void {
+    const opts = model.getOptions();
+    const type: 'tabs' | 'spaces' = opts.insertSpaces ? 'spaces' : 'tabs';
+    const size = opts.tabSize;
+    file.indentType = type;
+    file.tabSize = size;
+    queueMicrotask(() => {
+      this.workspaceService.syncActiveIndentation(type, size);
+    });
   }
 
   public zoomImgIn(): void {

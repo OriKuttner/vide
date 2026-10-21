@@ -2,7 +2,7 @@ import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ThemeService } from '../../services/theme.service';
-import { WorkspaceFile, isImageFile } from '../../models/file.model';
+import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
 
 @Component({
   selector: 'app-tabs',
@@ -37,11 +37,30 @@ import { WorkspaceFile, isImageFile } from '../../models/file.model';
                 <svg class="tab-img-icon" viewBox="0 0 16 16" fill="currentColor">
                   <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
                 </svg>
+              } @else if (isOmniFlux(tab)) {
+                <img src="omniflux-icon-16.png" class="tab-lang-img" alt="OmniFlux" />
+              } @else if (isPhp(tab)) {
+                <img src="php-elephant.svg" class="tab-lang-img" alt="PHP" />
+              } @else if (isPerl(tab)) {
+                <img src="perl-onion.svg" class="tab-lang-img" alt="Perl" />
               }
               {{ tab.name }}
             </span>
-            @if (tab.isModified) {
-              <span class="modified-dot">●</span>
+            @if (workspaceService.hasGitChanges(tab)) {
+              <button
+                type="button"
+                class="tab-git-btn"
+                title="View Git Diff"
+                (click)="onOpenDiff(tab, $event)"
+              >
+                <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+                  <path fill-rule="evenodd" d="M11.75 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm-7.5 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.25 10.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM3.5 3.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm7.5 0a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm-7.5 8.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
+                  <path fill-rule="evenodd" d="M5 5.5V11h-1.5V5.5H5zm2.75 2a3.75 3.75 0 0 1 3.75-3.75h.5V5.25h-.5A2.25 2.25 0 0 0 9.25 7.5v.75H7.75V7.5z"/>
+                </svg>
+              </button>
+            }
+            @if (workspaceService.isFileModified(tab)) {
+              <span class="modified-dot" title="Unsaved changes">●</span>
             }
             <button
               class="close-btn"
@@ -200,11 +219,54 @@ import { WorkspaceFile, isImageFile } from '../../models/file.model';
             color: #107c41;
             display: block;
           }
+
+          .tab-lang-img {
+            width: 15px;
+            height: 15px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
+          }
+        }
+
+        .tab-git-btn {
+          background: transparent;
+          border: none;
+          padding: 2px 3px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #007acc;
+          cursor: pointer;
+          border-radius: 3px;
+          opacity: 0.85;
+          margin-left: 2px;
+          transition: opacity 0.15s ease, background-color 0.15s ease;
+
+          &:hover {
+            opacity: 1;
+            background-color: rgba(0, 122, 204, 0.15);
+          }
+
+          .svg-icon {
+            width: 13px;
+            height: 13px;
+          }
         }
 
         .modified-dot {
-          font-size: 9px;
-          color: #d7ba7d;
+          font-size: 11px;
+          color: #111111;
+          line-height: 1;
+          display: inline-block;
+          margin-left: 3px;
+          margin-right: 2px;
+          user-select: none;
+        }
+
+        :host-context(.theme-dark) .modified-dot,
+        body.theme-dark .modified-dot {
+          color: #ffffff;
         }
 
         .close-btn {
@@ -327,5 +389,27 @@ export class TabsComponent {
 
   public isImage(tab: WorkspaceFile): boolean {
     return !!tab.isImage || isImageFile(tab.name);
+  }
+
+  public isOmniFlux(tab: WorkspaceFile): boolean {
+    return isOmniFluxFile(tab.name, tab.language);
+  }
+
+  public isPhp(tab: WorkspaceFile): boolean {
+    return isPhpFile(tab.name, tab.language);
+  }
+
+  public isPerl(tab: WorkspaceFile): boolean {
+    return isPerlFile(tab.name, tab.language);
+  }
+
+
+  public onOpenDiff(tab: WorkspaceFile, event: MouseEvent): void {
+    event.stopPropagation();
+    if (this.workspaceService.diffModeActive() && this.workspaceService.activeDiffFile()?.id === tab.id) {
+      this.workspaceService.closeDiffView();
+    } else {
+      this.workspaceService.openDiffView(tab);
+    }
   }
 }

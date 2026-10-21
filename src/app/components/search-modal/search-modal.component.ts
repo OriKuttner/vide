@@ -9,7 +9,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WorkspaceService, GrepResult } from '../../services/workspace.service';
-import { WorkspaceFile } from '../../models/file.model';
+import { WorkspaceFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
 
 export interface LanguageItem {
   id: string;
@@ -48,7 +48,7 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
             <button class="close-x" (click)="close()">×</button>
           </div>
 
-          @if (workspaceService.activeModal() !== 'indentation') {
+          @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes') {
             <div class="input-container">
               <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
               <input
@@ -61,6 +61,25 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
                 (keydown.enter)="onEnter()"
                 (keydown.escape)="close()"
               />
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'unsaved-changes' && workspaceService.pendingUnsavedFile(); as unsavedFile) {
+            <div class="unsaved-modal-body">
+              <div class="unsaved-warning-icon">
+                <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div class="unsaved-message-box">
+                <h3 class="unsaved-title">Do you want to save the changes you made to "{{ unsavedFile.name }}"?</h3>
+                <p class="unsaved-desc">Your changes will be lost if you don't save them.</p>
+              </div>
+            </div>
+            <div class="action-footer unsaved-footer">
+              <button type="button" class="btn btn-secondary" (click)="cancelUnsavedClose()">Cancel</button>
+              <button type="button" class="btn btn-danger" (click)="discardAndClose()">Don't Save</button>
+              <button type="button" class="btn btn-primary" (click)="saveAndClose()">Save</button>
             </div>
           }
 
@@ -111,9 +130,19 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
                 </div>
               </div>
 
-              <div class="action-footer">
-                <button class="btn btn-secondary" (click)="close()">Cancel</button>
-                <button class="btn btn-primary" (click)="applyIndentation()">Apply</button>
+              <div class="action-footer has-left-action">
+                <button
+                  type="button"
+                  class="btn btn-secondary detect-btn"
+                  (click)="autoDetectIndentation()"
+                  title="Auto-detect indentation from active file content"
+                >
+                  ⟳ Auto-Detect from File
+                </button>
+                <div class="footer-buttons">
+                  <button type="button" class="btn btn-secondary" (click)="close()">Cancel</button>
+                  <button type="button" class="btn btn-primary" (click)="applyIndentation()">Apply</button>
+                </div>
               </div>
             </div>
           }
@@ -168,7 +197,21 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
               }
               @for (file of fileResults(); track file.id) {
                 <div class="result-item" (click)="selectFile(file)">
-                  <span class="file-badge">{{ getFileBadge(file) }}</span>
+                  @if (isOmniFlux(file)) {
+                    <span class="file-badge icon-badge" title="OmniFlux">
+                      <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
+                    </span>
+                  } @else if (isPhp(file)) {
+                    <span class="file-badge icon-badge" title="PHP">
+                      <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+                    </span>
+                  } @else if (isPerl(file)) {
+                    <span class="file-badge icon-badge" title="Perl">
+                      <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
+                    </span>
+                  } @else {
+                    <span class="file-badge">{{ getFileBadge(file) }}</span>
+                  }
                   <span class="file-name">{{ file.name }}</span>
                   <span class="file-dir">{{ file.path }}</span>
                 </div>
@@ -450,6 +493,24 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
           border-radius: 3px;
           background-color: #007acc;
           color: #ffffff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+
+          &.icon-badge {
+            background-color: transparent !important;
+            padding: 0;
+            min-width: 24px;
+            width: 24px;
+            height: 20px;
+
+            .file-badge-img {
+              width: 18px;
+              height: 18px;
+              object-fit: contain;
+              display: block;
+            }
+          }
         }
 
         .file-name {
@@ -549,10 +610,21 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
       .action-footer {
         display: flex;
         justify-content: flex-end;
+        align-items: center;
         gap: 8px;
         padding: 12px 18px;
         background-color: var(--bg-tabs-bar, #ececec);
         border-top: 1px solid var(--border-color, #e5e5e5);
+
+        &.has-left-action {
+          justify-content: space-between;
+
+          .footer-buttons {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+        }
 
         .btn {
           padding: 6px 16px;
@@ -580,7 +652,63 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
               background-color: #0066b8;
             }
           }
+
+          &.btn-danger {
+            background-color: #d32f2f;
+            border: 1px solid #c62828;
+            color: #ffffff;
+
+            &:hover {
+              background-color: #b71c1c;
+            }
+          }
         }
+      }
+
+      .unsaved-modal-body {
+        padding: 24px 22px 18px 22px;
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+
+        .unsaved-warning-icon {
+          color: #f59e0b;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding-top: 2px;
+        }
+
+        .unsaved-message-box {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+
+          .unsaved-title {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary, #1e1e1e);
+            line-height: 1.4;
+          }
+
+          .unsaved-desc {
+            margin: 0;
+            font-size: 13.5px;
+            color: var(--text-secondary, #555555);
+            line-height: 1.4;
+          }
+        }
+      }
+
+      .unsaved-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 12px 20px;
+        background-color: var(--bg-tabs-bar, #ececec);
+        border-top: 1px solid var(--border-color, #e5e5e5);
       }
     `,
   ],
@@ -649,6 +777,8 @@ export class SearchModalComponent {
         return 'Configure Indentation';
       case 'change-language':
         return 'Select Language Mode';
+      case 'unsaved-changes':
+        return 'Save Changes?';
       default:
         return '';
     }
@@ -656,6 +786,8 @@ export class SearchModalComponent {
 
   public getLabel(): string {
     switch (this.workspaceService.activeModal()) {
+      case 'unsaved-changes':
+        return '';
       case 'new-file':
         return 'Enter new file name and extension (e.g. app.of, service.ts):';
       case 'new-folder':
@@ -746,6 +878,13 @@ export class SearchModalComponent {
     this.workspaceService.setIndentation(this.selectedIndentType(), this.selectedTabSize());
   }
 
+  public autoDetectIndentation(): void {
+    this.workspaceService.redetectActiveFileIndentation();
+    this.selectedIndentType.set(this.workspaceService.indentType());
+    this.selectedTabSize.set(this.workspaceService.tabSize());
+    this.close();
+  }
+
   public selectLanguage(languageId: string): void {
     this.workspaceService.changeActiveFileLanguage(languageId);
   }
@@ -759,9 +898,43 @@ export class SearchModalComponent {
     this.workspaceService.closeModal();
   }
 
+  public async saveAndClose(): Promise<void> {
+    const file = this.workspaceService.pendingUnsavedFile();
+    if (file) {
+      await this.workspaceService.saveFile(file);
+      this.workspaceService.forceCloseTab(file.id);
+    }
+    this.close();
+  }
+
+  public discardAndClose(): void {
+    const file = this.workspaceService.pendingUnsavedFile();
+    if (file) {
+      this.workspaceService.discardChangesAndCloseTab(file.id);
+    }
+    this.close();
+  }
+
+  public cancelUnsavedClose(): void {
+    this.workspaceService.pendingUnsavedFile.set(null);
+    this.close();
+  }
+
   public getFileBadge(file: WorkspaceFile): string {
     const ext = file.name.split('.').pop()?.toUpperCase() || 'FILE';
     return ext;
+  }
+
+  public isOmniFlux(file: WorkspaceFile): boolean {
+    return isOmniFluxFile(file.name, file.language);
+  }
+
+  public isPhp(file: WorkspaceFile): boolean {
+    return isPhpFile(file.name, file.language);
+  }
+
+  public isPerl(file: WorkspaceFile): boolean {
+    return isPerlFile(file.name, file.language);
   }
 
   public getUniqueFileCount(results: GrepResult[]): number {

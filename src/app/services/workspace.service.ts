@@ -3,8 +3,12 @@ import {
   WorkspaceFile,
   FileTreeNode,
   detectLanguageFromFilename,
+  detectLanguage,
   isImageFile,
   getImageMimeType,
+  CliLaunchPayload,
+  CliFileToOpen,
+  GitCommit,
 } from '../models/file.model';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
@@ -96,8 +100,9 @@ export class WorkspaceService {
 
   // Active search/modal mode
   readonly activeModal = signal<
-    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | null
+    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | null
   >(null);
+  readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
 
   // Line jump request (from Grep search)
   readonly pendingLineJump = signal<{ lineNumber: number; column?: number } | null>(null);
@@ -108,6 +113,9 @@ export class WorkspaceService {
 
   // Git Branch (default null)
   readonly gitBranch = signal<string | null>(null);
+  readonly recentCommits = signal<GitCommit[]>([]);
+  readonly isCommitting = signal<boolean>(false);
+  readonly isLoadingCommits = signal<boolean>(false);
 
   // Diff Mode state
   readonly diffModeActive = signal<boolean>(false);
@@ -133,9 +141,12 @@ export class WorkspaceService {
     });
   });
 
-  // Indentation configuration (default: Tabs, size 4)
+  // Indentation configuration (default fallback: Tabs, size 4)
+  readonly defaultIndentType = signal<'tabs' | 'spaces'>('tabs');
+  readonly defaultTabSize = signal<number>(4);
   readonly indentType = signal<'tabs' | 'spaces'>('tabs');
   readonly tabSize = signal<number>(4);
+  readonly pendingRedetectIndentation = signal<string | null>(null);
 
   // Active language change request
   readonly pendingLanguageChange = signal<{ fileId: string; language: string } | null>(null);
@@ -359,6 +370,73 @@ export class WorkspaceService {
     }
   }
 
+  public async loadRecentCommits(): Promise<void> {
+    if (!this.isRealWorkspace()) {
+      this.recentCommits.set([]);
+      return;
+    }
+
+    if (isTauriApp() && this.nativeWorkspacePath()) {
+      this.isLoadingCommits.set(true);
+      try {
+        const repoPath = this.nativeWorkspacePath()!;
+        const commits = await invoke<
+          Array<{
+            hash: string;
+            short_hash: string;
+            author: string;
+            date: string;
+            message: string;
+          }>
+        >('get_git_commits', { repoPath, limit: 15 });
+
+        this.recentCommits.set(
+          commits.map((c) => ({
+            hash: c.hash,
+            shortHash: c.short_hash,
+            author: c.author,
+            date: c.date,
+            message: c.message,
+          }))
+        );
+      } catch (err) {
+        console.warn('Failed to load git commits:', err);
+        this.recentCommits.set([]);
+      } finally {
+        this.isLoadingCommits.set(false);
+      }
+    }
+  }
+
+  public async commitChanges(message: string): Promise<boolean> {
+    if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
+      this.showNotification('Commit is only supported in desktop mode');
+      return false;
+    }
+
+    const repoPath = this.nativeWorkspacePath()!;
+    const cleanMsg = message.trim();
+    if (!cleanMsg) {
+      this.showNotification('Please enter a commit message');
+      return false;
+    }
+
+    this.isCommitting.set(true);
+    try {
+      await invoke<string>('create_git_commit', { repoPath, message: cleanMsg });
+      this.showNotification('Committed successfully');
+      await this.refreshGitStatus();
+      await this.loadRecentCommits();
+      return true;
+    } catch (err: any) {
+      console.error('Failed to commit changes:', err);
+      this.showNotification(`Commit failed: ${err.message || err}`);
+      return false;
+    } finally {
+      this.isCommitting.set(false);
+    }
+  }
+
   public parseGitIndex(buf: ArrayBuffer): Map<string, GitIndexEntry> {
     const view = new DataView(buf);
     const u8 = new Uint8Array(buf);
@@ -499,8 +577,14 @@ export class WorkspaceService {
         try {
           const branch = await invoke<string>('get_git_branch', { repoPath });
           this.gitBranch.set(branch);
+          if (branch) {
+            this.loadRecentCommits();
+          } else {
+            this.recentCommits.set([]);
+          }
         } catch {
           this.gitBranch.set(null);
+          this.recentCommits.set([]);
         }
 
         const gitItems = await invoke<
@@ -524,7 +608,7 @@ export class WorkspaceService {
               content: '',
               isLoaded: false,
               gitStatus: item.status,
-              isModified: true,
+              isModified: false,
             };
             currentFiles.push(newFile);
             knownPaths.add(item.path);
@@ -538,26 +622,30 @@ export class WorkspaceService {
             return {
               ...file,
               gitStatus: item.status,
-              isModified: true,
             };
           } else {
-            const isModifiedLocally =
-              file.isModified &&
-              file.originalContent !== undefined &&
-              file.content !== file.originalContent;
             return {
               ...file,
               gitStatus: undefined,
-              originalContent: isModifiedLocally ? file.originalContent : file.content,
-              isModified: isModifiedLocally,
             };
           }
         });
 
         this.files.set(updated);
+        this.openTabs.update((tabs) =>
+          tabs.map((tab) => {
+            const normPath = tab.path.replace(/^\.\//, '').replace(/^\//, '');
+            const item = statusMap.get(normPath);
+            return {
+              ...tab,
+              gitStatus: item ? item.status : undefined,
+            };
+          })
+        );
         return;
       } catch (err) {
         this.gitBranch.set(null);
+        this.recentCommits.set([]);
         this.files.update((files) =>
           files.map((f) => ({
             ...f,
@@ -847,6 +935,12 @@ export class WorkspaceService {
   }
 
   public setIndentation(type: 'tabs' | 'spaces', size: number): void {
+    const active = this.activeFile();
+    if (active) {
+      active.indentType = type;
+      active.tabSize = size;
+      active.isIndentationCustom = true;
+    }
     this.indentType.set(type);
     this.tabSize.set(size);
     this.showNotification(
@@ -855,12 +949,48 @@ export class WorkspaceService {
     this.closeModal();
   }
 
+  public syncActiveIndentation(type: 'tabs' | 'spaces', size: number): void {
+    const active = this.activeFile();
+    if (active) {
+      active.indentType = type;
+      active.tabSize = size;
+    }
+    if (this.indentType() !== type || this.tabSize() !== size) {
+      this.indentType.set(type);
+      this.tabSize.set(size);
+    }
+  }
+
+  public redetectActiveFileIndentation(): void {
+    const active = this.activeFile();
+    if (active) {
+      active.isIndentationCustom = false;
+      this.pendingRedetectIndentation.set(active.id);
+    }
+  }
+
+  public updateFileLanguage(fileId: string, language: string): void {
+    const active = this.activeFile();
+    if (active && active.id === fileId) {
+      active.language = language;
+    }
+    this.files.update((files) =>
+      files.map((f) => (f.id === fileId ? { ...f, language } : f))
+    );
+    this.openTabs.update((tabs) =>
+      tabs.map((t) => (t.id === fileId ? { ...t, language } : t))
+    );
+  }
+
   public changeActiveFileLanguage(language: string): void {
     const active = this.activeFile();
     if (!active) return;
     active.language = language;
     this.files.update((files) =>
       files.map((f) => (f.id === active.id ? { ...f, language } : f))
+    );
+    this.openTabs.update((tabs) =>
+      tabs.map((t) => (t.id === active.id ? { ...t, language } : t))
     );
     this.pendingLanguageChange.set({ fileId: active.id, language });
     this.showNotification(`Language set to ${language}`);
@@ -871,7 +1001,7 @@ export class WorkspaceService {
   private fallbackRootName = '';
 
   public openModal(
-    mode: 'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language'
+    mode: 'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes'
   ): void {
     if (mode === 'grep') {
       this.setSidebarView('search');
@@ -1103,10 +1233,17 @@ export class WorkspaceService {
             content = await file.rawFile.text();
           }
           file.content = content;
+          if (file.language === 'plaintext' || !file.language) {
+            file.language = detectLanguage(file.name, content);
+          }
+          if (file.savedContent === undefined) {
+            file.savedContent = content;
+          }
           if (file.originalContent === undefined && !file.isModified && !file.gitStatus) {
             file.originalContent = content;
           }
           file.isLoaded = true;
+          file.isModified = false;
         }
 
         this.files.update((files) => {
@@ -1116,9 +1253,12 @@ export class WorkspaceService {
               f.id === file.id
                 ? {
                     ...f,
+                    language: file.language,
                     content: file.content,
-                    originalContent: file.originalContent ?? (f.isModified || f.gitStatus ? f.originalContent : file.content),
+                    savedContent: file.savedContent ?? f.savedContent ?? file.content,
+                    originalContent: file.originalContent ?? f.originalContent ?? file.content,
                     isLoaded: true,
+                    isModified: f.isModified ?? false,
                     isImage: file.isImage,
                     imageUrl: file.imageUrl,
                     fileSize: file.fileSize,
@@ -1132,6 +1272,12 @@ export class WorkspaceService {
         console.error('Failed to load file content:', err);
       }
     } else {
+      if ((file.language === 'plaintext' || !file.language) && file.content) {
+        file.language = detectLanguage(file.name, file.content);
+      }
+      if (file.savedContent === undefined && file.content !== undefined) {
+        file.savedContent = file.content;
+      }
       if (file.originalContent === undefined && file.content !== undefined && !file.isModified && !file.gitStatus) {
         file.originalContent = file.content;
       }
@@ -1140,13 +1286,17 @@ export class WorkspaceService {
         if (!files.some((f) => f.id === file.id)) {
           return [...files, file];
         }
-        return files;
+        return files.map((f) => (f.id === file.id ? { ...f, language: file.language } : f));
       });
     }
 
     const currentTabs = this.openTabs();
     if (!currentTabs.some((tab) => tab.id === file.id)) {
       this.openTabs.set([...currentTabs, file]);
+    } else {
+      this.openTabs.update((tabs) =>
+        tabs.map((t) => (t.id === file.id ? { ...t, language: file.language } : t))
+      );
     }
     this.activeFileId.set(file.id);
   }
@@ -1155,6 +1305,20 @@ export class WorkspaceService {
     if (event) {
       event.stopPropagation();
     }
+    const tab = this.openTabs().find((t) => t.id === fileId);
+    if (tab && tab.isModified) {
+      this.promptUnsavedClose(tab);
+      return;
+    }
+    this.forceCloseTab(fileId);
+  }
+
+  public promptUnsavedClose(file: WorkspaceFile): void {
+    this.pendingUnsavedFile.set(file);
+    this.openModal('unsaved-changes');
+  }
+
+  public forceCloseTab(fileId: string): void {
     const currentTabs = this.openTabs();
     const newTabs = currentTabs.filter((tab) => tab.id !== fileId);
 
@@ -1163,24 +1327,44 @@ export class WorkspaceService {
     if (this.activeFileId() === fileId) {
       this.activeFileId.set(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : '');
     }
+    if (this.diffModeActive() && this.activeDiffFile()?.id === fileId) {
+      this.closeDiffView();
+    }
+  }
+
+  public discardChangesAndCloseTab(fileId: string): void {
+    const target = this.files().find((f) => f.id === fileId) || this.openTabs().find((t) => t.id === fileId);
+    if (target) {
+      const reverted = target.savedContent ?? target.originalContent ?? target.content;
+      target.content = reverted;
+      target.isModified = false;
+      this.files.update((files) =>
+        files.map((f) => (f.id === fileId ? { ...f, content: reverted, isModified: false } : f))
+      );
+    }
+    this.forceCloseTab(fileId);
+    this.pendingUnsavedFile.set(null);
   }
 
   public updateContent(fileId: string, content: string): void {
     this.files.update((files) =>
       files.map((file) => {
         if (file.id === fileId) {
-          const isModified =
-            file.originalContent !== undefined
-              ? file.originalContent !== content
-              : true;
-          const gitStatus = isModified
-            ? file.gitStatus === 'added'
-              ? 'added'
-              : 'modified'
-            : undefined;
-          return { ...file, content, isModified, gitStatus };
+          const baseContent = file.savedContent !== undefined ? file.savedContent : file.originalContent;
+          const isModified = baseContent !== undefined ? baseContent !== content : true;
+          return { ...file, content, isModified };
         }
         return file;
+      })
+    );
+    this.openTabs.update((tabs) =>
+      tabs.map((tab) => {
+        if (tab.id === fileId) {
+          const baseContent = tab.savedContent !== undefined ? tab.savedContent : tab.originalContent;
+          const isModified = baseContent !== undefined ? baseContent !== content : true;
+          return { ...tab, content, isModified };
+        }
+        return tab;
       })
     );
   }
@@ -1468,7 +1652,7 @@ export class WorkspaceService {
     }
   }
 
-  public async loadFromNativePath(rootPath: string): Promise<void> {
+  public async loadFromNativePath(rootPath: string, cliFiles?: CliFileToOpen[]): Promise<void> {
     this.isScanning.set(true);
     const folderName = rootPath.split('/').filter(Boolean).pop() || rootPath;
     this.scanProgress.set(`Opening ${folderName}...`);
@@ -1537,7 +1721,36 @@ export class WorkspaceService {
       this.fileTree.set(rootNodes);
       this.files.set(rootFiles);
 
-      if (rootFiles.length > 0) {
+      if (cliFiles && cliFiles.length > 0) {
+        for (const cf of cliFiles.slice(0, 3)) {
+          let fileToOpen = rootFiles.find(
+            (f) => f.path === cf.rel_path || f.fsPath === cf.fs_path
+          );
+          if (!fileToOpen) {
+            fileToOpen = {
+              id: cf.rel_path,
+              name: cf.name,
+              path: cf.rel_path,
+              fsPath: cf.fs_path,
+              language: detectLanguageFromFilename(cf.name),
+              content: '',
+              isLoaded: false,
+              isModified: false,
+            };
+            this.files.update((files) => [...files, fileToOpen!]);
+          }
+          await this.openFile(fileToOpen);
+        }
+        if (cliFiles.length > 0) {
+          const firstTarget = cliFiles[0];
+          const found = this.files().find(
+            (f) => f.path === firstTarget.rel_path || f.fsPath === firstTarget.fs_path
+          );
+          if (found) {
+            this.activeFileId.set(found.id);
+          }
+        }
+      } else if (rootFiles.length > 0) {
         await this.openFile(rootFiles[0]);
       }
 
@@ -1863,6 +2076,16 @@ export class WorkspaceService {
 
     try {
       if (isTauriApp()) {
+        try {
+          const cli = await invoke<CliLaunchPayload>('get_cli_launch_payload');
+          if (cli && cli.workspace_path) {
+            await this.loadFromNativePath(cli.workspace_path, cli.files);
+            return;
+          }
+        } catch (cliErr) {
+          console.warn('Could not read CLI launch payload:', cliErr);
+        }
+
         const lastNative = localStorage.getItem('vector_last_native_path');
         if (lastNative) {
           const folderName = lastNative.split('/').filter(Boolean).pop() || lastNative;
@@ -2221,22 +2444,22 @@ export class WorkspaceService {
   }
 
   /**
-   * Saves the currently active file back to disk.
+   * Saves a specific file back to disk and updates savedContent & isModified.
    */
-  public async saveCurrentFile(): Promise<boolean> {
-    const active = this.activeFile();
-    if (!active) return false;
-
-    if (isTauriApp() && active.fsPath) {
+  public async saveFile(file: WorkspaceFile): Promise<boolean> {
+    if (isTauriApp() && file.fsPath) {
       try {
         await invoke('write_file_text', {
-          filePath: active.fsPath,
-          content: active.content,
+          filePath: file.fsPath,
+          content: file.content,
         });
         this.files.update((files) =>
-          files.map((f) => (f.id === active.id ? { ...f, isModified: false } : f))
+          files.map((f) => (f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f))
         );
-        this.showNotification(`Saved ${active.name} to disk`);
+        this.openTabs.update((tabs) =>
+          tabs.map((t) => (t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t))
+        );
+        this.showNotification(`Saved ${file.name} to disk`);
         await this.refreshGitStatus();
         return true;
       } catch (err: any) {
@@ -2246,16 +2469,19 @@ export class WorkspaceService {
       }
     }
 
-    if (active.handle && typeof active.handle.createWritable === 'function') {
+    if (file.handle && typeof file.handle.createWritable === 'function') {
       try {
-        const writable = await active.handle.createWritable();
-        await writable.write(active.content);
+        const writable = await file.handle.createWritable();
+        await writable.write(file.content);
         await writable.close();
 
         this.files.update((files) =>
-          files.map((f) => (f.id === active.id ? { ...f, isModified: false } : f))
+          files.map((f) => (f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f))
         );
-        this.showNotification(`Saved ${active.name} to disk`);
+        this.openTabs.update((tabs) =>
+          tabs.map((t) => (t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t))
+        );
+        this.showNotification(`Saved ${file.name} to disk`);
         this.refreshGitStatus();
         return true;
       } catch (err: any) {
@@ -2265,11 +2491,41 @@ export class WorkspaceService {
       }
     } else {
       this.files.update((files) =>
-        files.map((f) => (f.id === active.id ? { ...f, isModified: false } : f))
+        files.map((f) => (f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f))
       );
-      this.showNotification(`Updated ${active.name} (in-memory)`);
+      this.openTabs.update((tabs) =>
+        tabs.map((t) => (t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t))
+      );
+      this.showNotification(`Updated ${file.name} (in-memory)`);
       return true;
     }
+  }
+
+  /**
+   * Saves the currently active file back to disk.
+   */
+  public async saveCurrentFile(): Promise<boolean> {
+    const active = this.activeFile();
+    if (!active) return false;
+    return this.saveFile(active);
+  }
+
+  public hasGitChanges(fileOrPath: WorkspaceFile | string): boolean {
+    const path = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.path;
+    const id = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.id;
+    const file = this.files().find((f) => f.path === path || f.id === id);
+    const status = file?.gitStatus || (typeof fileOrPath === 'object' ? fileOrPath.gitStatus : undefined);
+    return status === 'modified' || status === 'added' || status === 'untracked' || status === 'deleted';
+  }
+
+  public isFileModified(fileOrPath: WorkspaceFile | string): boolean {
+    const path = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.path;
+    const id = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.id;
+    const file = this.files().find((f) => f.path === path || f.id === id);
+    if (file && file.isModified !== undefined) {
+      return file.isModified;
+    }
+    return typeof fileOrPath === 'object' ? !!fileOrPath.isModified : false;
   }
 
   public showNotification(message: string): void {

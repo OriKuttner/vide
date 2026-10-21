@@ -1,13 +1,35 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CliFileToOpen {
+    pub name: String,
+    pub rel_path: String,
+    pub fs_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CliLaunchPayload {
+    pub workspace_path: Option<String>,
+    pub files: Vec<CliFileToOpen>,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GitFileItem {
     pub path: String,
     pub status: String, // "modified" | "untracked" | "added" | "deleted"
     pub staged: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitCommitItem {
+    pub hash: String,
+    pub short_hash: String,
+    pub author: String,
+    pub date: String,
+    pub message: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -130,6 +152,80 @@ fn revert_git_file(repo_path: String, file_path: String) -> Result<String, Strin
 }
 
 #[tauri::command]
+fn get_git_commits(repo_path: String, limit: Option<usize>) -> Result<Vec<GitCommitItem>, String> {
+    let clean_repo = expand_path(&repo_path);
+    let max_count = limit.unwrap_or(15).to_string();
+    let output = Command::new("git")
+        .args([
+            "-C",
+            &clean_repo,
+            "log",
+            "-n",
+            &max_count,
+            "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1e",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute git log: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut commits = Vec::new();
+
+    for record in text.split('\x1e') {
+        let record = record.trim();
+        if record.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = record.split('\x1f').collect();
+        if parts.len() >= 5 {
+            commits.push(GitCommitItem {
+                hash: parts[0].to_string(),
+                short_hash: parts[1].to_string(),
+                author: parts[2].to_string(),
+                date: parts[3].to_string(),
+                message: parts[4].to_string(),
+            });
+        }
+    }
+
+    Ok(commits)
+}
+
+#[tauri::command]
+fn create_git_commit(repo_path: String, message: String) -> Result<String, String> {
+    let clean_repo = expand_path(&repo_path);
+    let trimmed_msg = message.trim();
+    if trimmed_msg.is_empty() {
+        return Err("Commit message cannot be empty".to_string());
+    }
+
+    // Stage all changes (new files, modified, deleted) adhering to .gitignore
+    let add_output = Command::new("git")
+        .args(["-C", &clean_repo, "add", "-A"])
+        .output()
+        .map_err(|e| format!("Failed to execute git add: {}", e))?;
+
+    if !add_output.status.success() {
+        return Err(String::from_utf8_lossy(&add_output.stderr).to_string());
+    }
+
+    // Create commit
+    let commit_output = Command::new("git")
+        .args(["-C", &clean_repo, "commit", "-m", trimmed_msg])
+        .output()
+        .map_err(|e| format!("Failed to execute git commit: {}", e))?;
+
+    if !commit_output.status.success() {
+        return Err(String::from_utf8_lossy(&commit_output.stderr).to_string());
+    }
+
+    Ok(String::from_utf8_lossy(&commit_output.stdout).trim().to_string())
+}
+
+#[tauri::command]
 fn select_directory(current_path: Option<String>) -> Result<Option<String>, String> {
     let mut cmd = Command::new("zenity");
     cmd.args(["--file-selection", "--directory", "--title=Select Project Folder"]);
@@ -232,6 +328,85 @@ fn write_file_text(file_path: String, content: String) -> Result<(), String> {
     fs::write(&clean_path, content).map_err(|e| format!("Failed to write file '{}': {}", clean_path, e))
 }
 
+#[tauri::command]
+fn get_cli_launch_payload() -> Result<CliLaunchPayload, String> {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let positional: Vec<String> = raw_args
+        .into_iter()
+        .filter(|a| !a.starts_with('-'))
+        .collect();
+
+    if positional.is_empty() {
+        return Ok(CliLaunchPayload {
+            workspace_path: None,
+            files: Vec::new(),
+        });
+    }
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+    let first = &positional[0];
+    let first_expanded = PathBuf::from(expand_path(first));
+    let first_full = if first_expanded.is_absolute() {
+        first_expanded
+    } else {
+        cwd.join(first_expanded)
+    };
+
+    let (workspace_dir, candidate_files) = if first_full.is_dir() {
+        let ws = first_full.canonicalize().unwrap_or(first_full);
+        (ws, &positional[1..])
+    } else if first_full.is_file() {
+        (cwd.canonicalize().unwrap_or(cwd.clone()), &positional[..])
+    } else {
+        (first_full, &positional[1..])
+    };
+
+    let mut files = Vec::new();
+    let max_files = 3;
+
+    for arg in candidate_files {
+        if files.len() >= max_files {
+            break;
+        }
+        let exp = PathBuf::from(expand_path(arg));
+        let full_path = if exp.is_absolute() {
+            exp
+        } else {
+            let from_cwd = cwd.join(&exp);
+            if from_cwd.exists() {
+                from_cwd
+            } else {
+                workspace_dir.join(&exp)
+            }
+        };
+
+        if full_path.is_file() {
+            let canon = full_path.canonicalize().unwrap_or(full_path.clone());
+            let name = canon
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| arg.clone());
+
+            let rel_path = match canon.strip_prefix(&workspace_dir) {
+                Ok(rel) => rel.to_string_lossy().to_string(),
+                Err(_) => name.clone(),
+            };
+
+            files.push(CliFileToOpen {
+                name,
+                rel_path,
+                fs_path: canon.to_string_lossy().to_string(),
+            });
+        }
+    }
+
+    Ok(CliLaunchPayload {
+        workspace_path: Some(workspace_dir.to_string_lossy().to_string()),
+        files,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -250,11 +425,14 @@ pub fn run() {
             get_git_status,
             get_git_diff_baseline,
             revert_git_file,
+            get_git_commits,
+            create_git_commit,
             select_directory,
             read_dir_entries,
             read_file_text,
             read_file_base64,
             write_file_text,
+            get_cli_launch_payload,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
