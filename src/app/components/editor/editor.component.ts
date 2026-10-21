@@ -157,10 +157,13 @@ ${rawContent}
   private fileModels = new Map<string, monaco.editor.ITextModel>();
   private originalDiffModels = new Map<string, monaco.editor.ITextModel>();
   private resizeObserver: ResizeObserver | null = null;
+  private static markersListenerRegistered = false;
   private isProgrammaticUpdate = false;
   private aiThinkingWidget: AiThinkingWidget | null = null;
 
   constructor() {
+    this.initMonacoEnvironment();
+
     // Effect to layout AI thinking widget above cursor when generating state changes
     effect(() => {
       const isGenerating = this.aiService.isGenerating();
@@ -457,37 +460,86 @@ ${rawContent}
           });
         },
       };
+    }
 
-      // Configure TypeScript & JavaScript defaults for IntelliSense & diagnostics
-      const tsLang = (monaco.languages as any).typescript;
-      if (tsLang) {
-        tsLang.typescriptDefaults?.setDiagnosticsOptions({
-          noSemanticValidation: false,
-          noSyntaxValidation: false,
-        });
-        tsLang.javascriptDefaults?.setDiagnosticsOptions({
-          noSemanticValidation: false,
-          noSyntaxValidation: false,
-        });
-        tsLang.typescriptDefaults?.setCompilerOptions({
-          target: 99, // ESNext
-          allowNonTextExtensions: true,
-          moduleResolution: 2, // NodeJs
-          module: 1, // CommonJS
-          noEmit: true,
-          esModuleInterop: true,
-          allowJs: true,
-        });
-        tsLang.javascriptDefaults?.setCompilerOptions({
-          target: 99, // ESNext
-          allowNonTextExtensions: true,
-          moduleResolution: 2, // NodeJs
-          module: 1, // CommonJS
-          noEmit: true,
-          esModuleInterop: true,
-          allowJs: true,
-        });
-      }
+    // Configure TypeScript & JavaScript defaults for IntelliSense & diagnostics
+    const tsLang = (monaco.languages as any).typescript;
+    if (tsLang) {
+      // Ignore errors related to missing external module definitions and import.meta in non-ESM targets
+      const ignoredCodes = [2307, 2792, 7016, 2688, 1343, 1470];
+
+      tsLang.typescriptDefaults?.setDiagnosticsOptions({
+        noSemanticValidation: false,
+        noSyntaxValidation: false,
+        diagnosticCodesToIgnore: ignoredCodes,
+      });
+      tsLang.javascriptDefaults?.setDiagnosticsOptions({
+        noSemanticValidation: false,
+        noSyntaxValidation: false,
+        diagnosticCodesToIgnore: ignoredCodes,
+      });
+      tsLang.typescriptDefaults?.setCompilerOptions({
+        target: 99, // ESNext
+        allowNonTextExtensions: true,
+        moduleResolution: 2, // NodeJs
+        module: 99, // ESNext
+        noEmit: true,
+        esModuleInterop: true,
+        allowJs: true,
+      });
+      tsLang.javascriptDefaults?.setCompilerOptions({
+        target: 99, // ESNext
+        allowNonTextExtensions: true,
+        moduleResolution: 2, // NodeJs
+        module: 99, // ESNext
+        noEmit: true,
+        esModuleInterop: true,
+        allowJs: true,
+      });
+    }
+
+    // Global marker listener to strip ignored diagnostic codes and clear diff markers
+    if (!EditorComponent.markersListenerRegistered && typeof monaco !== 'undefined' && monaco.editor) {
+      EditorComponent.markersListenerRegistered = true;
+      let isCleaningMarkers = false;
+      monaco.editor.onDidChangeMarkers((uris) => {
+        if (isCleaningMarkers) return;
+        for (const uri of uris) {
+          const uriStr = uri.toString();
+          if (uriStr.includes('diff-original')) {
+            const model = monaco.editor.getModel(uri);
+            if (model && !model.isDisposed()) {
+              try {
+                isCleaningMarkers = true;
+                monaco.editor.setModelMarkers(model, 'typescript', []);
+                monaco.editor.setModelMarkers(model, 'javascript', []);
+              } finally {
+                isCleaningMarkers = false;
+              }
+            }
+            continue;
+          }
+
+          const markers = monaco.editor.getModelMarkers({ resource: uri });
+          const hasBad = markers.some((m) =>
+            [1343, 1470, 2307, 2792, 7016, 2688].includes(Number(m.code))
+          );
+          if (hasBad) {
+            const cleanMarkers = markers.filter(
+              (m) => ![1343, 1470, 2307, 2792, 7016, 2688].includes(Number(m.code))
+            );
+            const model = monaco.editor.getModel(uri);
+            if (model && !model.isDisposed()) {
+              try {
+                isCleaningMarkers = true;
+                monaco.editor.setModelMarkers(model, 'typescript', cleanMarkers);
+              } finally {
+                isCleaningMarkers = false;
+              }
+            }
+          }
+        }
+      });
     }
   }
 
@@ -747,6 +799,7 @@ ${rawContent}
       diffWordWrap: 'on',
       renderIndicators: true,
       ignoreTrimWhitespace: false,
+      renderValidationDecorations: 'off',
     });
 
     const isTabs = this.workspaceService.indentType() === 'tabs';
@@ -754,10 +807,12 @@ ${rawContent}
     this.diffEditorInstance.getOriginalEditor().updateOptions({
       insertSpaces: !isTabs,
       tabSize: size,
+      renderValidationDecorations: 'off',
     });
     this.diffEditorInstance.getModifiedEditor().updateOptions({
       insertSpaces: !isTabs,
       tabSize: size,
+      renderValidationDecorations: 'off',
     });
 
     // Modified editor content changes sync back to WorkspaceService
@@ -853,6 +908,10 @@ ${rawContent}
         original: origModel,
         modified: modModel,
       });
+
+      // Clear any diagnostic error markers on diff models
+      monaco.editor.setModelMarkers(origModel, 'typescript', []);
+      monaco.editor.setModelMarkers(origModel, 'javascript', []);
 
       requestAnimationFrame(() => {
         this.diffEditorInstance?.layout();
