@@ -10,12 +10,14 @@ import {
   output,
   signal,
   computed,
+  untracked,
 } from '@angular/core';
 import * as monaco from 'monaco-editor';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { WorkspaceService } from '../../services/workspace.service';
 import { InlineCompletionService } from '../../services/inline-completion.service';
+import { AiService } from '../../services/ai.service';
 import { ThemeService } from '../../services/theme.service';
 import { ZoomService } from '../../services/zoom.service';
 import { registerOmniFlux } from '../../languages/omniflux.language';
@@ -1482,6 +1484,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   public workspaceService = inject(WorkspaceService);
   public zoomService = inject(ZoomService);
   private inlineCompletionService = inject(InlineCompletionService);
+  public aiService = inject(AiService);
   private themeService = inject(ThemeService);
   private sanitizer = inject(DomSanitizer);
 
@@ -1599,12 +1602,14 @@ ${rawContent}
       () => {
         const active = this.workspaceService.activeFile();
         if (active) {
-          if (active.isImage || isImageFile(active.name)) {
-            this.imageZoom.set(1.0);
-            this.imageDimensions.set(null);
-          } else if (this.editorInstance) {
-            this.switchToFile(active);
-          }
+          untracked(() => {
+            if (active.isImage || isImageFile(active.name)) {
+              this.imageZoom.set(1.0);
+              this.imageDimensions.set(null);
+            } else if (this.editorInstance) {
+              this.switchToFile(active);
+            }
+          });
         }
       },
       { allowSignalWrites: true }
@@ -1773,6 +1778,7 @@ ${rawContent}
     registerOmniFlux(monaco);
     registerAllLanguageSnippets(monaco);
     this.inlineCompletionService.registerProviders(monaco);
+    this.registerAiCodeActions();
     this.setupThemes();
     this.createEditor();
     this.createDiffEditor();
@@ -2061,6 +2067,20 @@ ${rawContent}
       }
     );
 
+    // Keyboard shortcut / Command: Ctrl+Alt+P (Cmd+Alt+P) to propagate edit pattern to following lines
+    this.editorInstance.addAction({
+      id: 'vide.ai.propagatePattern',
+      label: '✨ AI: Propagate Edit Pattern to Following Lines',
+      keybindings: [
+        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyP,
+      ],
+      contextMenuGroupId: 'modification',
+      contextMenuOrder: 1.5,
+      run: async (ed) => {
+        await this.propagateEditPattern(ed);
+      },
+    });
+
     // Precision resize handling for both standard and diff editor
     this.resizeObserver = new ResizeObserver(() => {
       this.editorInstance?.layout();
@@ -2254,7 +2274,9 @@ ${rawContent}
         if (detected !== 'plaintext' && detected !== model.getLanguageId()) {
           file.language = detected;
           monaco.editor.setModelLanguage(model, detected);
-          this.workspaceService.updateFileLanguage(file.id, detected);
+          untracked(() => {
+            this.workspaceService.updateFileLanguage(file.id, detected);
+          });
         }
       }
 
@@ -2397,5 +2419,200 @@ ${rawContent}
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+  }
+
+  private registerAiCodeActions(): void {
+    const supportedLanguages = [
+      'omniflux',
+      'php',
+      'typescript',
+      'javascript',
+      'c',
+      'cpp',
+      'python',
+      'rust',
+      'json',
+      'html',
+      'css',
+      'shell',
+      'perl',
+    ];
+
+    // Register global handler for AI syntax quick-fix command
+    monaco.editor.registerCommand(
+      'vide.ai.applySyntaxFix',
+      async (_accessor: any, uri: monaco.Uri, range: monaco.IRange, message: string, lang: string) => {
+        const model = monaco.editor.getModel(uri);
+        if (!model) return;
+
+        const snippet = model.getValueInRange(range);
+        this.workspaceService.showNotification('✨ AI is repairing syntax error...');
+        const fixed = await this.aiService.fixSyntaxError(snippet, message, lang);
+        if (fixed && fixed.trim().length > 0) {
+          model.pushEditOperations(
+            [],
+            [
+              {
+                range: range,
+                text: fixed,
+                forceMoveMarkers: true,
+              },
+            ],
+            () => null
+          );
+          this.workspaceService.showNotification('✓ Syntax error fixed by AI');
+        } else {
+          this.workspaceService.showNotification('Could not generate syntax fix');
+        }
+      }
+    );
+
+    for (const lang of supportedLanguages) {
+      monaco.languages.registerCodeActionProvider(lang, {
+        provideCodeActions: (model, _range, context) => {
+          if (!this.aiService.isEnabled() || !this.aiService.isServerOnline()) {
+            return { actions: [], dispose: () => {} };
+          }
+
+          const markers = context.markers.filter(
+            (m) =>
+              m.severity === monaco.MarkerSeverity.Error ||
+              m.severity === monaco.MarkerSeverity.Warning
+          );
+
+          if (markers.length === 0) {
+            return { actions: [], dispose: () => {} };
+          }
+
+          const actions: monaco.languages.CodeAction[] = [];
+
+          for (const marker of markers) {
+            const startLine = Math.max(1, marker.startLineNumber - 2);
+            const endLine = Math.min(model.getLineCount(), marker.endLineNumber + 2);
+            const snippetRange = new monaco.Range(
+              startLine,
+              1,
+              endLine,
+              model.getLineMaxColumn(endLine)
+            );
+
+            actions.push({
+              title: `✨ AI Fix: ${marker.message.substring(0, 55)}`,
+              kind: 'quickfix',
+              isPreferred: true,
+              isAI: true,
+              diagnostics: [marker],
+              command: {
+                id: 'vide.ai.applySyntaxFix',
+                title: 'Apply AI Syntax Fix',
+                arguments: [model.uri, snippetRange, marker.message, lang],
+              },
+            });
+          }
+
+          return {
+            actions,
+            dispose: () => {},
+          };
+        },
+      });
+    }
+  }
+
+  private async propagateEditPattern(ed: monaco.editor.ICodeEditor): Promise<void> {
+    if (!this.aiService.isEnabled() || !this.aiService.isServerOnline()) {
+      this.workspaceService.showNotification('AI server is offline. Check AI Settings.');
+      return;
+    }
+
+    const model = ed.getModel();
+    const selection = ed.getSelection();
+    if (!model || !selection) return;
+
+    let originalLine = '';
+    let editedLine = '';
+    let targetRange: monaco.Range | null = null;
+    let targetLines: string[] = [];
+
+    // Case 1: Multi-line selection. Line 1 is the template/edited line, remainder are targets.
+    if (selection.startLineNumber < selection.endLineNumber) {
+      const startLine = selection.startLineNumber;
+      const endLine = selection.endLineNumber;
+      editedLine = model.getLineContent(startLine);
+
+      // Try to find originalLine from savedContent if available
+      const activeFile = this.workspaceService.activeFile();
+      const savedLines = activeFile?.savedContent ? activeFile.savedContent.split('\n') : [];
+      originalLine = savedLines[startLine - 1] || editedLine;
+
+      for (let ln = startLine + 1; ln <= endLine; ln++) {
+        targetLines.push(model.getLineContent(ln));
+      }
+      targetRange = new monaco.Range(
+        startLine + 1,
+        1,
+        endLine,
+        model.getLineMaxColumn(endLine)
+      );
+    } else {
+      // Case 2: Cursor on a single line.
+      const currentLineNum = selection.positionLineNumber;
+      editedLine = model.getLineContent(currentLineNum);
+
+      const activeFile = this.workspaceService.activeFile();
+      const savedLines = activeFile?.savedContent ? activeFile.savedContent.split('\n') : [];
+      originalLine = savedLines[currentLineNum - 1] || '';
+
+      if (!originalLine || originalLine === editedLine) {
+        this.workspaceService.showNotification(
+          'Select the edited line and target lines, or edit a saved line to propagate pattern.'
+        );
+        return;
+      }
+
+      // Collect next 1 to 5 non-empty lines as targets
+      const maxLine = Math.min(model.getLineCount(), currentLineNum + 5);
+      for (let ln = currentLineNum + 1; ln <= maxLine; ln++) {
+        const content = model.getLineContent(ln);
+        if (content.trim().length > 0) {
+          targetLines.push(content);
+        } else {
+          break; // Stop at empty lines
+        }
+      }
+
+      if (targetLines.length === 0) {
+        this.workspaceService.showNotification('No following lines found to propagate pattern.');
+        return;
+      }
+
+      const endTargetLine = currentLineNum + targetLines.length;
+      targetRange = new monaco.Range(
+        currentLineNum + 1,
+        1,
+        endTargetLine,
+        model.getLineMaxColumn(endTargetLine)
+      );
+    }
+
+    this.workspaceService.showNotification('✨ AI is propagating edit pattern...');
+    const transformed = await this.aiService.suggestPatternEdits(originalLine, editedLine, targetLines);
+
+    if (transformed && transformed.length === targetLines.length && targetRange) {
+      model.pushEditOperations(
+        [],
+        [
+          {
+            range: targetRange,
+            text: transformed.join('\n'),
+            forceMoveMarkers: true,
+          },
+        ],
+        () => null
+      );
+      this.workspaceService.showNotification(`✓ AI pattern applied to ${transformed.length} line(s)`);
+    } else {
+      this.workspaceService.showNotification('Could not propagate edit pattern');
+    }
   }
 }

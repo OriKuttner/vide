@@ -1,13 +1,17 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import type * as MonacoType from 'monaco-editor';
+import { AiService } from './ai.service';
 
 @Injectable({
   providedIn: 'root',
 })
 export class InlineCompletionService {
+  private readonly aiService = inject(AiService);
+  private currentAbortController: AbortController | null = null;
+
   /**
    * Registers inline completion providers (Ghost Text) for all supported languages.
-   * This is the exact mechanism used by AI code assistants like Antigravity IDE and Copilot.
+   * Powered by local llama-server (FIM) with smart heuristic fallback.
    */
   public registerProviders(monaco: typeof MonacoType): void {
     const supportedLanguages = [
@@ -20,24 +24,100 @@ export class InlineCompletionService {
       'perl',
       'shell',
       'python',
+      'rust',
+      'sql',
+      'json',
+      'html',
+      'css',
+      'markdown',
     ];
 
     for (const language of supportedLanguages) {
       monaco.languages.registerInlineCompletionsProvider(language, {
-        provideInlineCompletions: async (model, position) => {
-          const textBeforeCursor = model.getValueInRange({
+        provideInlineCompletions: async (model, position, _context, token) => {
+          if (token.isCancellationRequested) {
+            return { items: [] };
+          }
+
+          // Abort previous in-flight AI request if any
+          if (this.currentAbortController) {
+            this.currentAbortController.abort();
+            this.currentAbortController = null;
+          }
+
+          const offset = model.getOffsetAt(position);
+          const fullContent = model.getValue();
+
+          // Prefix: up to 2500 characters before cursor
+          const prefixStart = Math.max(0, offset - 2500);
+          const prefix = fullContent.substring(prefixStart, offset);
+
+          // Suffix: up to 1000 characters after cursor
+          const suffixEnd = Math.min(fullContent.length, offset + 1000);
+          const suffix = fullContent.substring(offset, suffixEnd);
+
+          const textBeforeCursorOnLine = model.getValueInRange({
             startLineNumber: position.lineNumber,
             startColumn: 1,
             endLineNumber: position.lineNumber,
             endColumn: position.column,
           });
 
-          const trimmed = textBeforeCursor.trim();
-          if (trimmed.length < 2) {
+          const trimmedLinePrefix = textBeforeCursorOnLine.trim();
+
+          // 1. Try AI FIM completion first if enabled and server is online
+          if (
+            this.aiService.isEnabled() &&
+            this.aiService.isServerOnline() &&
+            prefix.trim().length >= 2
+          ) {
+            const controller = new AbortController();
+            this.currentAbortController = controller;
+
+            token.onCancellationRequested(() => {
+              controller.abort();
+            });
+
+            // Small typing debounce of 120ms to save CPU cycles
+            await new Promise((resolve) => setTimeout(resolve, 120));
+
+            if (token.isCancellationRequested || controller.signal.aborted) {
+              return { items: [] };
+            }
+
+            try {
+              const aiSuggestion = await this.aiService.getInfillCompletion(
+                prefix,
+                suffix,
+                controller.signal
+              );
+
+              if (aiSuggestion && aiSuggestion.length > 0) {
+                return {
+                  items: [
+                    {
+                      insertText: aiSuggestion,
+                      range: new monaco.Range(
+                        position.lineNumber,
+                        position.column,
+                        position.lineNumber,
+                        position.column
+                      ),
+                    },
+                  ],
+                };
+              }
+            } catch {
+              // Ignore network aborts and fallback
+            }
+          }
+
+          // 2. Fallback to smart heuristic / template suggestions
+          if (trimmedLinePrefix.length < 2) {
             return { items: [] };
           }
 
-          const suggestionText = this.getSmartSuggestion(language, trimmed);
+          const suggestionText = this.getSmartSuggestion(language, trimmedLinePrefix);
           if (!suggestionText) {
             return { items: [] };
           }

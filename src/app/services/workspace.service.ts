@@ -1,4 +1,4 @@
-import { Injectable, signal, computed, inject, NgZone, effect } from '@angular/core';
+import { Injectable, signal, computed, inject, NgZone, effect, ApplicationRef } from '@angular/core';
 import {
   WorkspaceFile,
   FileTreeNode,
@@ -55,7 +55,11 @@ const BACKGROUND_INDEX_IGNORED_DIRS = new Set([
   '.git',
   '.vide',
   'node_modules',
+  'vendor',
   '.cache',
+  'dist',
+  'build',
+  '.angular',
 ]);
 
 @Injectable({
@@ -63,6 +67,7 @@ const BACKGROUND_INDEX_IGNORED_DIRS = new Set([
 })
 export class WorkspaceService {
   private readonly ngZone = inject(NgZone);
+  private readonly appRef = inject(ApplicationRef);
   readonly workspaceName = signal<string>('NO FOLDER OPENED');
   readonly isRealWorkspace = signal<boolean>(false);
   readonly statusNotification = signal<string>('');
@@ -103,7 +108,7 @@ export class WorkspaceService {
 
   // Active search/modal mode
   readonly activeModal = signal<
-    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | null
+    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | null
   >(null);
   readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
 
@@ -1275,7 +1280,7 @@ export class WorkspaceService {
   private fallbackRootName = '';
 
   public openModal(
-    mode: 'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes'
+    mode: 'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download'
   ): void {
     if (mode === 'grep') {
       this.setSidebarView('search');
@@ -2004,7 +2009,7 @@ export class WorkspaceService {
     }
   }
 
-  public async loadWorkspaceSessionState(): Promise<{
+  public async loadWorkspaceSessionState(dirHandle?: any): Promise<{
     openFiles: Array<{ path: string; mtime?: number; size?: number }>;
     activeFile: string | null;
   } | null> {
@@ -2050,17 +2055,20 @@ export class WorkspaceService {
       } catch {
         // File does not exist or invalid JSON; return null
       }
-    } else if (this.recentDirHandle) {
-      try {
-        const videHandle = await this.recentDirHandle.getDirectoryHandle('.vide', { create: false });
-        const fileHandle = await videHandle.getFileHandle('workspace.json', { create: false });
-        const fileObj = await fileHandle.getFile();
-        const content = await fileObj.text();
-        if (content) {
-          return parseSession(content);
+    } else {
+      const handle = dirHandle || this.recentDirHandle;
+      if (handle) {
+        try {
+          const videHandle = await handle.getDirectoryHandle('.vide', { create: false });
+          const fileHandle = await videHandle.getFileHandle('workspace.json', { create: false });
+          const fileObj = await fileHandle.getFile();
+          const content = await fileObj.text();
+          if (content) {
+            return parseSession(content);
+          }
+        } catch {
+          // Does not exist
         }
-      } catch {
-        // Does not exist
       }
     }
     return null;
@@ -2114,24 +2122,45 @@ export class WorkspaceService {
   }
 
   public async loadFromNativePath(rootPath: string, cliFiles?: CliFileToOpen[]): Promise<void> {
-    this.isRestoringSession = true;
-    this.isScanning.set(true);
-    const folderName = rootPath.split('/').filter(Boolean).pop() || rootPath;
-    this.scanProgress.set(`Opening ${folderName}...`);
-    this.nativeWorkspacePath.set(rootPath);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('vector_last_native_path', rootPath);
-      this.recentWorkspaceName.set(folderName);
-      this.addRecentWorkspace(folderName, rootPath);
+    if (isTauriApp()) {
+      try {
+        rootPath = await invoke<string>('resolve_path', { path: rootPath });
+      } catch {
+        if (rootPath.startsWith('~/')) {
+          rootPath = '/home/ori/' + rootPath.substring(2);
+        } else if (rootPath === '~') {
+          rootPath = '/home/ori';
+        }
+      }
+    } else {
+      if (rootPath.startsWith('~/')) {
+        rootPath = '/home/ori/' + rootPath.substring(2);
+      } else if (rootPath === '~') {
+        rootPath = '/home/ori';
+      }
     }
-    this.workspaceName.set(folderName.toUpperCase());
-    this.isRealWorkspace.set(true);
 
-    // Reset editor tabs and diff mode for the new folder
-    this.openTabs.set([]);
-    this.activeFileId.set('');
-    this.diffModeActive.set(false);
-    this.activeDiffFile.set(null);
+    this.isRestoringSession = true;
+    const folderName = rootPath.split('/').filter(Boolean).pop() || rootPath;
+
+    this.ngZone.run(() => {
+      this.isScanning.set(true);
+      this.scanProgress.set(`Opening ${folderName}...`);
+      this.nativeWorkspacePath.set(rootPath);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('vector_last_native_path', rootPath);
+        this.recentWorkspaceName.set(folderName);
+        this.addRecentWorkspace(folderName, rootPath);
+      }
+      this.workspaceName.set(folderName.toUpperCase());
+      this.isRealWorkspace.set(true);
+
+      // Reset editor tabs and diff mode for the new folder
+      this.openTabs.set([]);
+      this.activeFileId.set('');
+      this.diffModeActive.set(false);
+      this.activeDiffFile.set(null);
+    });
 
     try {
       const entries = await invoke<
@@ -2180,12 +2209,22 @@ export class WorkspaceService {
         }
       }
 
-      this.fileTree.set(rootNodes);
-      this.files.set(rootFiles);
+      rootNodes.sort((a, b) => {
+        if (a.kind !== b.kind) {
+          return a.kind === 'directory' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      const sortedRootFiles = rootNodes.filter((n) => n.file).map((n) => n.file!);
+
+      this.ngZone.run(() => {
+        this.fileTree.set(rootNodes);
+        this.files.set(sortedRootFiles);
+      });
 
       if (cliFiles && cliFiles.length > 0) {
         for (const cf of cliFiles.slice(0, 3)) {
-          let fileToOpen = rootFiles.find(
+          let fileToOpen = sortedRootFiles.find(
             (f) => f.path === cf.rel_path || f.fsPath === cf.fs_path
           );
           if (!fileToOpen) {
@@ -2217,7 +2256,7 @@ export class WorkspaceService {
         if (session && session.openFiles.length > 0) {
           for (const item of session.openFiles) {
             const relPath = item.path;
-            let fileToOpen = rootFiles.find(
+            let fileToOpen = sortedRootFiles.find(
               (f) => f.path === relPath || f.id === relPath || f.fsPath === relPath
             );
             if (!fileToOpen) {
@@ -2258,21 +2297,27 @@ export class WorkspaceService {
               this.activeFileId.set(activeTarget.id);
             }
           }
-        } else if (rootFiles.length > 0) {
-          await this.openFile(rootFiles[0]);
         }
       }
 
       this.showNotification(`Opened ${folderName}`);
-      await this.refreshGitStatus();
-      this.indexNativeDirectoryInBackground(rootPath);
     } catch (err: any) {
       console.error('Failed to load native directory:', err);
       this.showNotification(`Error: ${err.message || err}`);
     } finally {
       this.isRestoringSession = false;
-      this.isScanning.set(false);
+      this.ngZone.run(() => {
+        this.isScanning.set(false);
+      });
+      this.appRef.tick();
     }
+
+    // Persist session state so new folders get their .vide/workspace.json saved
+    this.saveWorkspaceSessionState();
+
+    // Launch Git refresh and background file indexing asynchronously without blocking UI
+    this.refreshGitStatus().catch((err) => console.warn('Git refresh error:', err));
+    this.indexNativeDirectoryInBackground(rootPath);
   }
 
   // Toggle show/hide hidden files (Ctrl+H or toolbar button)
@@ -2385,11 +2430,20 @@ export class WorkspaceService {
 
     const discoveredFiles: WorkspaceFile[] = [];
     const queue: { fullPath: string; relPath: string }[] = [{ fullPath: rootPath, relPath: '' }];
+    const visitedDirs = new Set<string>();
     let dirsProcessed = 0;
 
     try {
       while (queue.length > 0) {
+        if (dirsProcessed > 5000 || discoveredFiles.length > 30000) {
+          console.warn('Indexing limit reached, stopping background traversal');
+          break;
+        }
         const current = queue.shift()!;
+        if (visitedDirs.has(current.fullPath)) {
+          continue;
+        }
+        visitedDirs.add(current.fullPath);
         try {
           const entries = await invoke<
             Array<{ name: string; path: string; is_dir: boolean; size: number }>
@@ -2466,132 +2520,134 @@ export class WorkspaceService {
     this.scanProgress.set(`Opening ${dirHandle.name}...`);
     await new Promise((r) => setTimeout(r, 0));
 
-    // Save to IndexedDB and localStorage for one-click reopening
-    this.saveLastDirectoryHandle(dirHandle);
+    try {
+      // Save to IndexedDB and localStorage for one-click reopening
+      this.saveLastDirectoryHandle(dirHandle);
 
-    // Read ONLY immediate children of the root directory (shallow, instant!)
-    const rootNodes: FileTreeNode[] = [];
+      // Read ONLY immediate children of the root directory (shallow, instant!)
+      const rootNodes: FileTreeNode[] = [];
 
-    for await (const entry of dirHandle.values()) {
-      if (entry.name === '.git' && entry.kind === 'directory') {
-        this.recentGitDirHandle = entry;
-        if (!this.showHiddenFiles()) {
+      for await (const entry of dirHandle.values()) {
+        if (entry.name === '.git' && entry.kind === 'directory') {
+          this.recentGitDirHandle = entry;
+          if (!this.showHiddenFiles()) {
+            continue;
+          }
+        } else if (!this.showHiddenFiles() && entry.name.startsWith('.')) {
           continue;
         }
-      } else if (!this.showHiddenFiles() && entry.name.startsWith('.')) {
-        continue;
-      }
 
-      if (entry.kind === 'directory') {
-        rootNodes.push({
-          id: entry.name,
-          name: entry.name,
-          path: entry.name,
-          kind: 'directory',
-          expanded: false,
-          isLoaded: false,
-          isLoading: false,
-          children: [],
-          handle: entry,
-          level: 0,
-        });
-      } else if (entry.kind === 'file') {
-        if (this.isReadableTextFile(entry.name)) {
-          const file: WorkspaceFile = {
-            id: entry.name,
-            name: entry.name,
-            path: entry.name,
-            language: detectLanguageFromFilename(entry.name),
-            content: '',
-            isLoaded: false,
-            handle: entry,
-            isModified: false,
-          };
+        if (entry.kind === 'directory') {
           rootNodes.push({
             id: entry.name,
             name: entry.name,
             path: entry.name,
-            kind: 'file',
-            language: file.language,
-            file,
+            kind: 'directory',
+            expanded: false,
+            isLoaded: false,
+            isLoading: false,
+            children: [],
             handle: entry,
             level: 0,
           });
-        }
-      }
-    }
-
-    rootNodes.sort((a, b) => {
-      if (a.kind !== b.kind) {
-        return a.kind === 'directory' ? -1 : 1;
-      }
-      return a.name.localeCompare(b.name);
-    });
-
-    this.workspaceName.set(dirHandle.name.toUpperCase());
-    this.isRealWorkspace.set(true);
-    this.openTabs.set([]);
-    this.activeFileId.set('');
-    this.diffModeActive.set(false);
-    this.activeDiffFile.set(null);
-    this.fileTree.set(rootNodes);
-
-    const rootFiles = rootNodes.filter((n) => n.file).map((n) => n.file!);
-    this.files.set(rootFiles);
-
-    // Restore session state or find first file to open
-    const session = await this.loadWorkspaceSessionState();
-    if (session && session.openFiles.length > 0) {
-      for (const item of session.openFiles) {
-        const relPath = item.path;
-        let fileToOpen = rootFiles.find((f) => f.path === relPath || f.id === relPath);
-        if (!fileToOpen) {
-          const baseName = relPath.split('/').pop() || relPath;
-          fileToOpen = {
-            id: relPath,
-            name: baseName,
-            path: relPath,
-            language: detectLanguageFromFilename(baseName),
-            content: '',
-            isLoaded: false,
-            isModified: false,
-            lastDiskMtime: item.mtime,
-            lastDiskSize: item.size,
-            fileSize: item.size,
-          };
-          this.files.update((files) => [...files, fileToOpen!]);
-        } else {
-          if (item.mtime !== undefined) fileToOpen.lastDiskMtime = item.mtime;
-          if (item.size !== undefined) {
-            fileToOpen.lastDiskSize = item.size;
-            fileToOpen.fileSize = item.size;
+        } else if (entry.kind === 'file') {
+          if (this.isReadableTextFile(entry.name)) {
+            const file: WorkspaceFile = {
+              id: entry.name,
+              name: entry.name,
+              path: entry.name,
+              language: detectLanguageFromFilename(entry.name),
+              content: '',
+              isLoaded: false,
+              handle: entry,
+              isModified: false,
+            };
+            rootNodes.push({
+              id: entry.name,
+              name: entry.name,
+              path: entry.name,
+              kind: 'file',
+              language: file.language,
+              file,
+              handle: entry,
+              level: 0,
+            });
           }
         }
-        try {
-          await this.openFile(fileToOpen);
-        } catch (err) {
-          console.warn(`Failed to restore file ${relPath}:`, err);
+      }
+
+      rootNodes.sort((a, b) => {
+        if (a.kind !== b.kind) {
+          return a.kind === 'directory' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+      this.workspaceName.set(dirHandle.name.toUpperCase());
+      this.isRealWorkspace.set(true);
+      this.openTabs.set([]);
+      this.activeFileId.set('');
+      this.diffModeActive.set(false);
+      this.activeDiffFile.set(null);
+      this.fileTree.set(rootNodes);
+
+      const rootFiles = rootNodes.filter((n) => n.file).map((n) => n.file!);
+      this.files.set(rootFiles);
+
+      // Restore session state or find first file to open
+      const session = await this.loadWorkspaceSessionState(dirHandle);
+      if (session && session.openFiles.length > 0) {
+        for (const item of session.openFiles) {
+          const relPath = item.path;
+          let fileToOpen = rootFiles.find((f) => f.path === relPath || f.id === relPath);
+          if (!fileToOpen) {
+            const baseName = relPath.split('/').pop() || relPath;
+            fileToOpen = {
+              id: relPath,
+              name: baseName,
+              path: relPath,
+              language: detectLanguageFromFilename(baseName),
+              content: '',
+              isLoaded: false,
+              isModified: false,
+              lastDiskMtime: item.mtime,
+              lastDiskSize: item.size,
+              fileSize: item.size,
+            };
+            this.files.update((files) => [...files, fileToOpen!]);
+          } else {
+            if (item.mtime !== undefined) fileToOpen.lastDiskMtime = item.mtime;
+            if (item.size !== undefined) {
+              fileToOpen.lastDiskSize = item.size;
+              fileToOpen.fileSize = item.size;
+            }
+          }
+          try {
+            await this.openFile(fileToOpen);
+          } catch (err) {
+            console.warn(`Failed to restore file ${relPath}:`, err);
+          }
+        }
+        if (session.activeFile) {
+          const activeTarget = this.files().find(
+            (f) => f.path === session.activeFile || f.id === session.activeFile
+          );
+          if (activeTarget) {
+            this.activeFileId.set(activeTarget.id);
+          }
         }
       }
-      if (session.activeFile) {
-        const activeTarget = this.files().find(
-          (f) => f.path === session.activeFile || f.id === session.activeFile
-        );
-        if (activeTarget) {
-          this.activeFileId.set(activeTarget.id);
-        }
-      }
-    } else {
-      const firstFileNode = rootNodes.find((n) => n.kind === 'file');
-      if (firstFileNode?.file) {
-        await this.openFile(firstFileNode.file);
-      }
+
+      this.showNotification(`Opened ${dirHandle.name}`);
+    } catch (err: any) {
+      console.error('Failed to load directory handle:', err);
+      this.showNotification(`Error: ${err.message || err}`);
+    } finally {
+      this.isScanning.set(false);
     }
 
-    this.showNotification(`Opened ${dirHandle.name}`);
-
-    // Read real git branch and initial status
-    await this.refreshGitStatus(dirHandle);
+    // Read real git branch and initial status asynchronously
+    this.refreshGitStatus(dirHandle).catch((err) => console.warn('Git refresh error:', err));
 
     // Launch background indexing so find-file & grep can search ALL project files
     this.indexDirectoryInBackground(dirHandle);
@@ -3182,10 +3238,16 @@ export class WorkspaceService {
       'zip',
       'tar',
       'gz',
+      'tgz',
+      'bz2',
+      'xz',
       'exe',
       'dll',
       'so',
+      'dylib',
       'bin',
+      'o',
+      'a',
       'woff',
       'woff2',
       'ttf',
@@ -3193,6 +3255,22 @@ export class WorkspaceService {
       'deb',
       '7z',
       'iso',
+      'pyc',
+      'class',
+      'jar',
+      'wasm',
+      'mp3',
+      'mp4',
+      'wav',
+      'ogg',
+      'webm',
+      'avi',
+      'mov',
+      'mkv',
+      'flac',
+      'db',
+      'sqlite',
+      'sqlite3',
     ]);
     return !binaryExts.has(ext);
   }
@@ -3360,12 +3438,6 @@ export class WorkspaceService {
           }
         } else {
           this.gitBranch.set(null);
-        }
-
-        // Open first file if any in root
-        const firstFile = rootNodes.find((n) => n.kind === 'file');
-        if (firstFile?.file) {
-          await this.openFile(firstFile.file);
         }
 
         this.showNotification(`Opened ${this.fallbackRootName} (${allWorkspaceFiles.length} files indexed)`);

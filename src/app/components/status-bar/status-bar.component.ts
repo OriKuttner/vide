@@ -2,6 +2,7 @@ import { Component, input, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ZoomService } from '../../services/zoom.service';
+import { AiService } from '../../services/ai.service';
 
 @Component({
   selector: 'app-status-bar',
@@ -94,6 +95,18 @@ import { ZoomService } from '../../services/zoom.service';
           title="Select Language Mode (Change Syntax Coloring)"
         >
           {{ activeLanguageLabel() }}
+        </button>
+
+        <button
+          type="button"
+          class="status-btn ai-badge"
+          [class.online]="aiService.isServerOnline()"
+          [class.offline]="!aiService.isServerOnline()"
+          (click)="workspaceService.openModal('ai-settings')"
+          [title]="aiService.isServerOnline() ? 'AI Server Online (' + aiService.endpoint() + ') - Click for Settings' : 'AI Server Offline - Click to Configure / Start'"
+        >
+          <span class="ai-sparkle">✨</span>
+          <span>AI: {{ aiService.isServerOnline() ? 'Online' : 'Offline' }}</span>
         </button>
       </div>
     </footer>
@@ -241,6 +254,31 @@ import { ZoomService } from '../../services/zoom.service';
         &.language-badge {
           font-weight: 700;
         }
+
+        &.ai-badge {
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 1px 7px;
+          border-radius: 3px;
+
+          &.online {
+            background-color: rgba(46, 160, 67, 0.28);
+            color: #d4f7dc;
+            .ai-sparkle {
+              color: #56d364;
+            }
+          }
+
+          &.offline {
+            background-color: rgba(255, 255, 255, 0.08);
+            opacity: 0.85;
+            .ai-sparkle {
+              color: #ffd166;
+            }
+          }
+        }
       }
 
       @keyframes fadeIn {
@@ -261,6 +299,7 @@ export class StatusBarComponent {
 
   public workspaceService = inject(WorkspaceService);
   public zoomService = inject(ZoomService);
+  public aiService = inject(AiService);
 
   public cycleZoom(): void {
     const cur = this.zoomService.zoomPercentage();

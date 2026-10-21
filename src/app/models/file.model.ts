@@ -45,7 +45,18 @@ export interface IFileSystemService {
 }
 
 export function detectLanguageFromFilename(filename: string): string {
-  const lower = filename.toLowerCase();
+  let lower = filename.toLowerCase();
+
+  // Strip trailing backup / temporary extensions (e.g. .php.bak -> .php)
+  if (lower.endsWith('~')) {
+    lower = lower.slice(0, -1);
+  }
+  for (const bExt of ['.bak', '.old', '.orig', '.backup', '.tmp']) {
+    if (lower.endsWith(bExt)) {
+      lower = lower.slice(0, -bExt.length);
+      break;
+    }
+  }
 
   // Special extensionless files or exact names
   if (lower === 'dockerfile' || lower.startsWith('dockerfile.')) return 'dockerfile';
@@ -54,7 +65,7 @@ export function detectLanguageFromFilename(filename: string): string {
   if (lower === '.env' || lower.startsWith('.env.')) return 'ini';
 
   if (lower.endsWith('.of')) return 'omniflux';
-  if (lower.endsWith('.php') || lower.endsWith('.phtml') || lower.endsWith('.php8')) return 'php';
+  if (lower.endsWith('.php') || lower.endsWith('.phtml') || lower.endsWith('.php8') || lower.endsWith('.inc')) return 'php';
   if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'typescript';
   if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return 'javascript';
   if (lower.endsWith('.pl') || lower.endsWith('.pm') || lower.endsWith('.t')) return 'perl';
@@ -196,8 +207,14 @@ export function isOmniFluxFile(filename?: string, lang?: string): boolean {
 export function isPhpFile(filename?: string, lang?: string): boolean {
   if (lang === 'php') return true;
   if (!filename) return false;
-  const lower = filename.toLowerCase();
-  return lower.endsWith('.php') || lower.endsWith('.phtml') || lower.endsWith('.php8');
+  let lower = filename.toLowerCase();
+  for (const bExt of ['.bak', '.old', '.orig', '.backup', '.tmp']) {
+    if (lower.endsWith(bExt)) {
+      lower = lower.slice(0, -bExt.length);
+      break;
+    }
+  }
+  return lower.endsWith('.php') || lower.endsWith('.phtml') || lower.endsWith('.php8') || lower.endsWith('.inc');
 }
 
 export function isPerlFile(filename?: string, lang?: string): boolean {

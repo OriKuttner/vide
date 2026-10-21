@@ -1,6 +1,7 @@
 import { Component, inject, signal, computed, ViewChild, ElementRef, effect, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';
+import { AiService } from '../../services/ai.service';
 import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
 
 @Component({
@@ -542,7 +543,23 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                   </div>
                 }
                 <div class="commit-input-wrapper">
-                  <label class="commit-label">Commit Note</label>
+                  <div class="commit-label-row">
+                    <label class="commit-label">Commit Note</label>
+                    <button
+                      type="button"
+                      class="btn-ai-note"
+                      [disabled]="isGeneratingCommitNote() || isCommitting() || workspaceService.isCommitting()"
+                      (click)="generateAiCommitNote()"
+                      title="Generate commit message using local AI (llama-server)"
+                    >
+                      @if (isGeneratingCommitNote()) {
+                        <span class="btn-spinner-tiny"></span>
+                        <span>Thinking...</span>
+                      } @else {
+                        <span>✨ AI Suggest</span>
+                      }
+                    </button>
+                  </div>
                   <textarea
                     class="commit-textarea"
                     [value]="commitMessage()"
@@ -1791,12 +1808,53 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             flex-direction: column;
             gap: 4px;
 
-            .commit-label {
-              font-size: 11px;
-              font-weight: 600;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              color: var(--text-muted, #717171);
+            .commit-label-row {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+
+              .commit-label {
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                color: var(--text-muted, #717171);
+              }
+
+              .btn-ai-note {
+                background: none;
+                border: none;
+                cursor: pointer;
+                font-size: 11px;
+                font-weight: 600;
+                color: #8957e5;
+                padding: 1px 6px;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                transition: background-color 0.15s ease, color 0.15s ease;
+
+                &:hover:not(:disabled) {
+                  background-color: rgba(137, 87, 229, 0.12);
+                  color: #7239ea;
+                }
+
+                &:disabled {
+                  opacity: 0.5;
+                  cursor: not-allowed;
+                }
+
+                .btn-spinner-tiny {
+                  width: 10px;
+                  height: 10px;
+                  border: 1.5px solid currentColor;
+                  border-top-color: transparent;
+                  border-radius: 50%;
+                  animation: spin 0.7s linear infinite;
+                  display: inline-block;
+                }
+              }
             }
 
             .commit-textarea {
@@ -2198,6 +2256,8 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
 })
 export class SidebarComponent {
   public workspaceService = inject(WorkspaceService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly ngZone = inject(NgZone);
 
   @ViewChild('searchInput') searchInputRef?: ElementRef<HTMLInputElement>;
 
@@ -2217,6 +2277,13 @@ export class SidebarComponent {
   private searchDebounceTimer?: any;
 
   constructor() {
+    effect(() => {
+      this.workspaceService.isScanning();
+      this.workspaceService.scanProgress();
+      this.workspaceService.fileTree();
+      this.cdr.detectChanges();
+    });
+
     effect(() => {
       const view = this.workspaceService.sidebarView();
       if (view === 'search') {
@@ -2434,14 +2501,39 @@ export class SidebarComponent {
     this.workspaceService.revertFile(file.id);
   }
 
-  private readonly cdr = inject(ChangeDetectorRef);
-  private readonly ngZone = inject(NgZone);
-
   // Git Commit & History state
+  public aiService = inject(AiService);
   public commitMessage = signal<string>('');
   public commitsExpanded = signal<boolean>(true);
   public readonly isPushing = signal<boolean>(false);
   public readonly isCommitting = signal<boolean>(false);
+  public readonly isGeneratingCommitNote = signal<boolean>(false);
+
+  public async generateAiCommitNote(): Promise<void> {
+    const wsPath = this.workspaceService.nativeWorkspacePath();
+    if (!wsPath) {
+      this.workspaceService.showNotification('Workspace path not available');
+      return;
+    }
+
+    if (!this.aiService.isServerOnline()) {
+      this.workspaceService.showNotification('AI server is offline. Check AI Settings.');
+      return;
+    }
+
+    this.isGeneratingCommitNote.set(true);
+    this.workspaceService.showNotification('✨ AI is generating commit note...');
+    try {
+      const note = await this.aiService.generateCommitNote(wsPath);
+      this.commitMessage.set(note);
+      this.workspaceService.showNotification('✓ Commit note generated');
+    } catch (err: any) {
+      this.workspaceService.showNotification(`AI Error: ${err.message || err}`);
+    } finally {
+      this.isGeneratingCommitNote.set(false);
+      this.cdr.detectChanges();
+    }
+  }
 
   public canCommit = computed(() => {
     return (

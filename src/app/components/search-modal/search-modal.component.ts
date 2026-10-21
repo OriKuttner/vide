@@ -9,6 +9,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WorkspaceService, GrepResult } from '../../services/workspace.service';
+import { AiService } from '../../services/ai.service';
 import { WorkspaceFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
 
 export interface LanguageItem {
@@ -48,7 +49,7 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
             <button class="close-x" (click)="close()">×</button>
           </div>
 
-          @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes') {
+          @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'ai-download') {
             <div class="input-container">
               <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
               <input
@@ -143,6 +144,176 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
                   <button type="button" class="btn btn-secondary" (click)="close()">Cancel</button>
                   <button type="button" class="btn btn-primary" (click)="applyIndentation()">Apply</button>
                 </div>
+              </div>
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'ai-settings') {
+            <div class="ai-config-card">
+              <div class="ai-status-row">
+                <div class="status-indicator-box">
+                  <span
+                    class="status-dot"
+                    [class.online]="aiService.isServerOnline()"
+                    [class.offline]="!aiService.isServerOnline()"
+                  ></span>
+                  <span class="status-text">
+                    {{ aiService.isServerOnline() ? 'llama-server is Online & Connected' : 'llama-server is Offline' }}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="btn-check-health"
+                  [disabled]="aiService.isCheckingHealth()"
+                  (click)="aiService.checkHealth()"
+                >
+                  {{ aiService.isCheckingHealth() ? 'Checking...' : '🔄 Check Connection' }}
+                </button>
+              </div>
+
+              <div class="ai-field-group">
+                <label class="ai-label">Server Endpoint URL</label>
+                <input
+                  type="text"
+                  class="ai-input"
+                  [ngModel]="aiService.endpoint()"
+                  (ngModelChange)="aiService.setEndpoint($event)"
+                />
+              </div>
+
+              <div class="ai-field-group">
+                <label class="ai-label">Model File Path (.gguf)</label>
+                <input
+                  type="text"
+                  class="ai-input"
+                  [ngModel]="aiService.modelPath()"
+                  (ngModelChange)="aiService.setModelPath($event)"
+                />
+                <span class="ai-hint">e.g. ~/models/qwen2.5-coder-1.5b-base.Q4_K_M.gguf</span>
+              </div>
+
+              <div class="ai-field-group">
+                <label class="ai-label">llama-server Binary Path (Optional)</label>
+                <input
+                  type="text"
+                  class="ai-input"
+                  [ngModel]="aiService.binaryPath()"
+                  (ngModelChange)="aiService.setBinaryPath($event)"
+                />
+                <span class="ai-hint">Leave blank to search ~/.vide/bin/llama-server or system PATH</span>
+              </div>
+
+              <div class="ai-features-box">
+                <div class="feature-item">
+                  <span class="feature-icon">✨</span>
+                  <div class="feature-desc">
+                    <strong>Inline Autocomplete (FIM):</strong> Real-time ghost text while typing, press Tab to accept.
+                  </div>
+                </div>
+                <div class="feature-item">
+                  <span class="feature-icon">⚡</span>
+                  <div class="feature-desc">
+                    <strong>Pattern Edit Propagation (Ctrl+Alt+P):</strong> Propagates multi-line edit transformations to following lines.
+                  </div>
+                </div>
+                <div class="feature-item">
+                  <span class="feature-icon">💡</span>
+                  <div class="feature-desc">
+                    <strong>Syntax Quick-Fix:</strong> Automated QuickFix lightbulb on parser and syntax errors.
+                  </div>
+                </div>
+                <div class="feature-item">
+                  <span class="feature-icon">📝</span>
+                  <div class="feature-desc">
+                    <strong>Git Commit Note:</strong> Generates Conventional Commit messages from staged/working diff.
+                  </div>
+                </div>
+              </div>
+
+              <div class="action-footer ai-modal-footer">
+                @if (aiService.sidecarStatus()?.running) {
+                  <button type="button" class="btn btn-danger" (click)="aiService.stopSidecar()">
+                    ⏹ Stop Sidecar (PID: {{ aiService.sidecarStatus()?.pid }})
+                  </button>
+                } @else {
+                  <button type="button" class="btn btn-primary" (click)="startAiSidecar()">
+                    ▶ Start llama-server (Sidecar)
+                  </button>
+                }
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  (click)="aiService.toggleEnabled()"
+                >
+                  {{ aiService.isEnabled() ? 'Disable AI Features' : 'Enable AI Features' }}
+                </button>
+                <button type="button" class="btn btn-secondary" (click)="close()">
+                  Close
+                </button>
+              </div>
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'ai-download') {
+            <div class="ai-download-card">
+              <div class="ai-download-header-box">
+                <div class="ai-download-icon-box">
+                  <span class="ai-large-icon">🤖</span>
+                </div>
+                <div class="ai-download-texts">
+                  <h3 class="ai-download-title">Preparing Local AI Engine (Qwen 2.5 Coder)</h3>
+                  <p class="ai-download-subtitle">
+                    Downloading model weights (~986 MB) for full offline local intelligence.
+                  </p>
+                </div>
+              </div>
+
+              <div class="ai-download-progress-container">
+                <div class="progress-bar-track">
+                  <div
+                    class="progress-bar-fill"
+                    [style.width.%]="aiService.downloadProgress()?.percent || 0"
+                  ></div>
+                </div>
+
+                <div class="progress-status-row">
+                  <span class="progress-percent">
+                    {{ (aiService.downloadProgress()?.percent || 0).toFixed(1) }}%
+                  </span>
+                  <span class="progress-bytes">
+                    {{ formatBytes(aiService.downloadProgress()?.downloaded_bytes) }} / {{ formatBytes(aiService.downloadProgress()?.total_bytes || 986500000) }}
+                  </span>
+                </div>
+              </div>
+
+              @if (aiService.downloadProgress()?.error) {
+                <div class="ai-download-error">
+                  ⚠ {{ aiService.downloadProgress()?.error }}
+                </div>
+              }
+
+              <div class="ai-download-info-note">
+                <span class="info-bulb">ℹ</span>
+                <span>
+                  This download happens only once. Once downloaded, all AI features (Ghost text completions,
+                  syntax repairs, and Git commit notes) execute 100% locally and privately on your machine
+                  without sending code to external servers.
+                </span>
+              </div>
+
+              <div class="action-footer ai-modal-footer">
+                @if (aiService.isDownloadingModel()) {
+                  <button type="button" class="btn btn-secondary" (click)="cancelModelDownload()">
+                    Cancel Download
+                  </button>
+                } @else {
+                  <button type="button" class="btn btn-primary" (click)="startModelDownload()">
+                    Start Download
+                  </button>
+                  <button type="button" class="btn btn-secondary" (click)="close()">
+                    Close
+                  </button>
+                }
               </div>
             </div>
           }
@@ -710,6 +881,242 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
         background-color: var(--bg-tabs-bar, #ececec);
         border-top: 1px solid var(--border-color, #e5e5e5);
       }
+
+      .ai-config-card {
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        max-height: 75vh;
+        overflow-y: auto;
+      }
+
+      .ai-status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: var(--bg-item-hover, #f5f5f5);
+        padding: 10px 14px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color, #e0e0e0);
+
+        .status-indicator-box {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+
+          .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+
+            &.online {
+              background-color: #2ea44f;
+              box-shadow: 0 0 6px rgba(46, 164, 79, 0.6);
+            }
+
+            &.offline {
+              background-color: #cf222e;
+            }
+          }
+
+          .status-text {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary, #1e1e1e);
+          }
+        }
+
+        .btn-check-health {
+          background: none;
+          border: 1px solid var(--border-color, #ccc);
+          border-radius: 4px;
+          padding: 4px 10px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          color: var(--text-primary, #1e1e1e);
+
+          &:hover {
+            background-color: var(--bg-btn-hover, #e0e0e0);
+          }
+        }
+      }
+
+      .ai-field-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .ai-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-secondary, #444);
+        }
+
+        .ai-input {
+          padding: 8px 10px;
+          font-size: 13px;
+          border: 1px solid var(--border-color, #ccc);
+          border-radius: 4px;
+          background-color: var(--bg-primary, #fff);
+          color: var(--text-primary, #1e1e1e);
+          outline: none;
+
+          &:focus {
+            border-color: #007acc;
+          }
+        }
+
+        .ai-hint {
+          font-size: 11px;
+          color: var(--text-muted, #717171);
+        }
+      }
+
+      .ai-features-box {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        background-color: rgba(137, 87, 229, 0.05);
+        border: 1px solid rgba(137, 87, 229, 0.2);
+        padding: 12px;
+        border-radius: 6px;
+
+        .feature-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: 11.5px;
+          line-height: 1.4;
+          color: var(--text-primary, #1e1e1e);
+
+          .feature-icon {
+            font-size: 14px;
+            flex-shrink: 0;
+          }
+        }
+      }
+
+      .ai-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      .ai-download-card {
+        padding: 20px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .ai-download-header-box {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+
+        .ai-download-icon-box {
+          width: 44px;
+          height: 44px;
+          border-radius: 8px;
+          background: rgba(137, 87, 229, 0.12);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+
+          .ai-large-icon {
+            font-size: 24px;
+          }
+        }
+
+        .ai-download-texts {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+
+          .ai-download-title {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary, #1e1e1e);
+          }
+
+          .ai-download-subtitle {
+            margin: 0;
+            font-size: 13px;
+            color: var(--text-secondary, #666);
+          }
+        }
+      }
+
+      .ai-download-progress-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background-color: var(--bg-item-hover, #f8f8f8);
+        border: 1px solid var(--border-color, #e0e0e0);
+        padding: 14px;
+        border-radius: 6px;
+
+        .progress-bar-track {
+          width: 100%;
+          height: 10px;
+          background-color: var(--border-color, #e0e0e0);
+          border-radius: 5px;
+          overflow: hidden;
+
+          .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #8957e5, #007acc);
+            border-radius: 5px;
+            transition: width 0.2s ease;
+          }
+        }
+
+        .progress-status-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-secondary, #555);
+
+          .progress-percent {
+            color: #007acc;
+          }
+        }
+      }
+
+      .ai-download-error {
+        background-color: rgba(207, 34, 46, 0.1);
+        border: 1px solid rgba(207, 34, 46, 0.3);
+        color: #cf222e;
+        padding: 10px 12px;
+        border-radius: 4px;
+        font-size: 12.5px;
+      }
+
+      .ai-download-info-note {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        background-color: rgba(0, 122, 204, 0.08);
+        border: 1px solid rgba(0, 122, 204, 0.2);
+        padding: 10px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--text-secondary, #444);
+
+        .info-bulb {
+          font-size: 14px;
+          color: #007acc;
+          flex-shrink: 0;
+        }
+      }
     `,
   ],
 })
@@ -717,6 +1124,7 @@ export class SearchModalComponent {
   @ViewChild('inputField') private inputField?: ElementRef<HTMLInputElement>;
 
   public workspaceService = inject(WorkspaceService);
+  public aiService = inject(AiService);
 
   public inputValue = signal<string>('');
   public grepResults = signal<GrepResult[]>([]);
@@ -747,9 +1155,12 @@ export class SearchModalComponent {
           this.selectedTabSize.set(this.workspaceService.tabSize());
         } else if (mode === 'open-folder-path') {
           this.inputValue.set(this.workspaceService.nativeWorkspacePath() || '/home/ori/work/vide');
+        } else if (mode === 'ai-settings') {
+          this.aiService.checkHealth();
+          this.aiService.refreshSidecarStatus();
         }
 
-        if (mode !== 'indentation') {
+        if (mode !== 'indentation' && mode !== 'ai-settings' && mode !== 'ai-download') {
           setTimeout(() => {
             this.inputField?.nativeElement.focus();
             if (mode === 'open-folder-path') {
@@ -759,6 +1170,48 @@ export class SearchModalComponent {
         }
       }
     });
+  }
+
+  public async startAiSidecar(): Promise<void> {
+    try {
+      const modelStatus = await this.aiService.checkModelStatus();
+      if (!modelStatus?.exists) {
+        this.workspaceService.openModal('ai-download');
+        return;
+      }
+      this.workspaceService.showNotification('Starting llama-server sidecar...');
+      await this.aiService.startSidecar();
+      this.workspaceService.showNotification('✓ llama-server sidecar started');
+    } catch (err: any) {
+      this.workspaceService.showNotification(`Error: ${err.message || err}`);
+    }
+  }
+
+  public formatBytes(bytes?: number): string {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+  }
+
+  public async startModelDownload(): Promise<void> {
+    try {
+      this.workspaceService.showNotification('Starting Qwen2.5-Coder model download...');
+      await this.aiService.downloadModel();
+      this.workspaceService.showNotification('✓ Model downloaded successfully!');
+      this.workspaceService.openModal('ai-settings');
+    } catch (err: any) {
+      this.workspaceService.showNotification(`Download error: ${err.message || err}`);
+    }
+  }
+
+  public async cancelModelDownload(): Promise<void> {
+    try {
+      await this.aiService.cancelDownload();
+      this.workspaceService.showNotification('Model download cancelled');
+    } catch (err: any) {
+      this.workspaceService.showNotification(`Cancel error: ${err.message || err}`);
+    }
   }
 
   public getTitle(): string {
@@ -779,6 +1232,10 @@ export class SearchModalComponent {
         return 'Select Language Mode';
       case 'unsaved-changes':
         return 'Save Changes?';
+      case 'ai-settings':
+        return 'AI Assistant Configuration (llama-server)';
+      case 'ai-download':
+        return 'Preparing Local AI Assistant (Qwen 2.5 Coder)';
       default:
         return '';
     }
@@ -787,6 +1244,8 @@ export class SearchModalComponent {
   public getLabel(): string {
     switch (this.workspaceService.activeModal()) {
       case 'unsaved-changes':
+      case 'ai-settings':
+      case 'ai-download':
         return '';
       case 'new-file':
         return 'Enter new file name and extension (e.g. app.of, service.ts):';

@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use tauri::Emitter;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CliFileToOpen {
@@ -87,7 +90,7 @@ fn get_git_branch(repo_path: String) -> Result<String, String> {
 fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
     let clean_repo = expand_path(&repo_path);
     let output = Command::new("git")
-        .args(["-C", &clean_repo, "status", "--porcelain=v1", "-uall"])
+        .args(["-C", &clean_repo, "status", "--porcelain=v1", "-unormal"])
         .output()
         .map_err(|e| format!("Failed to execute git status: {}", e))?;
 
@@ -163,7 +166,8 @@ fn revert_git_file(repo_path: String, file_path: String) -> Result<String, Strin
 
     // Read the reverted content
     let full_path = Path::new(&clean_repo).join(clean_file);
-    fs::read_to_string(&full_path).map_err(|e| format!("Failed to read reverted file: {}", e))
+    let bytes = fs::read(&full_path).map_err(|e| format!("Failed to read reverted file: {}", e))?;
+    Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
 #[tauri::command]
@@ -452,6 +456,11 @@ fn select_directory(current_path: Option<String>) -> Result<Option<String>, Stri
 }
 
 #[tauri::command]
+fn resolve_path(path: String) -> String {
+    expand_path(&path)
+}
+
+#[tauri::command]
 fn read_dir_entries(dir_path: String, show_hidden: Option<bool>) -> Result<Vec<FsEntryItem>, String> {
     let clean_dir = expand_path(&dir_path);
     let path = Path::new(&clean_dir);
@@ -471,12 +480,17 @@ fn read_dir_entries(dir_path: String, show_hidden: Option<bool>) -> Result<Vec<F
                 continue;
             }
 
-            let file_type = entry.file_type().map_err(|e| e.to_string())?;
-            let is_dir = file_type.is_dir();
-            let size = if is_dir {
-                0
-            } else {
-                entry.metadata().map(|m| m.len()).unwrap_or(0)
+            let (is_dir, size) = match entry.file_type() {
+                Ok(ft) => {
+                    let is_d = ft.is_dir();
+                    let s = if is_d {
+                        0
+                    } else {
+                        entry.metadata().map(|m| m.len()).unwrap_or(0)
+                    };
+                    (is_d, s)
+                }
+                Err(_) => (false, 0),
             };
 
             entries.push(FsEntryItem {
@@ -501,7 +515,8 @@ fn read_dir_entries(dir_path: String, show_hidden: Option<bool>) -> Result<Vec<F
 #[tauri::command]
 fn read_file_text(file_path: String) -> Result<String, String> {
     let clean_path = expand_path(&file_path);
-    fs::read_to_string(&clean_path).map_err(|e| format!("Failed to read file '{}': {}", clean_path, e))
+    let bytes = fs::read(&clean_path).map_err(|e| format!("Failed to read file '{}': {}", clean_path, e))?;
+    Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
 #[tauri::command]
@@ -682,6 +697,480 @@ fn get_cli_launch_payload() -> Result<CliLaunchPayload, String> {
     })
 }
 
+pub struct AiSidecarProcess {
+    pub child: Child,
+    pub port: u16,
+    pub model_path: String,
+}
+
+static AI_SIDECAR: Mutex<Option<AiSidecarProcess>> = Mutex::new(None);
+
+static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
+static DOWNLOAD_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+
+const DEFAULT_MODEL_URL: &str =
+    "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf";
+const DEFAULT_MODEL_SIZE: u64 = 986_500_000;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AiSidecarStatus {
+    pub running: bool,
+    pub pid: Option<u32>,
+    pub port: u16,
+    pub model_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AiModelStatus {
+    pub exists: bool,
+    pub path: String,
+    pub size_bytes: u64,
+    pub default_url: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AiDownloadProgress {
+    pub percent: f64,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub is_complete: bool,
+    pub error: Option<String>,
+}
+
+fn get_default_model_path() -> String {
+    expand_path("~/.vide/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
+}
+
+fn find_llama_server_binary(preferred: Option<String>) -> Result<String, String> {
+    if let Some(p) = preferred {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() {
+            let expanded = expand_path(trimmed);
+            let path = Path::new(&expanded);
+            if path.is_file() {
+                return Ok(expanded);
+            }
+        }
+    }
+
+    // 1. Check relative to current working directory (project repo: src-tauri/bin/llama-server)
+    let project_candidates = [
+        "src-tauri/bin/llama-server",
+        "bin/llama-server",
+        "./llama-server",
+    ];
+    for rel in &project_candidates {
+        let path = Path::new(rel);
+        if path.is_file() {
+            if let Ok(canon) = path.canonicalize() {
+                return Ok(canon.to_string_lossy().to_string());
+            }
+            return Ok(rel.to_string());
+        }
+    }
+
+    // 2. Check relative to running executable (installed Debian package / bundle)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let bundle_candidates = [
+                exe_dir.join("bin/llama-server"),
+                exe_dir.join("llama-server"),
+                exe_dir.join("resources/bin/llama-server"),
+                exe_dir.join("../lib/vide/bin/llama-server"),
+                exe_dir.join("../lib/vide/llama-server"),
+                exe_dir.join("../lib/vide/resources/bin/llama-server"),
+                exe_dir.join("../share/vide/bin/llama-server"),
+            ];
+            for b in &bundle_candidates {
+                if b.is_file() {
+                    return Ok(b.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    // 3. System and user local paths
+    let system_candidates = [
+        "~/.vide/bin/llama-server",
+        "~/.local/bin/llama-server",
+        "/usr/local/bin/llama-server",
+        "/usr/bin/llama-server",
+        "/usr/lib/vide/bin/llama-server",
+        "/usr/lib/vide/llama-server",
+    ];
+
+    for c in &system_candidates {
+        let expanded = expand_path(c);
+        let path = Path::new(&expanded);
+        if path.is_file() {
+            return Ok(expanded);
+        }
+        if let Ok(out) = Command::new("which").arg(c).output() {
+            if out.status.success() {
+                let bin = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !bin.is_empty() {
+                    return Ok(bin);
+                }
+            }
+        }
+    }
+
+    Err("llama-server binary was not found. Looked in src-tauri/bin/llama-server, app bundle, and system paths.".to_string())
+}
+
+#[tauri::command]
+fn check_ai_model_status(custom_path: Option<String>) -> Result<AiModelStatus, String> {
+    let path_str = custom_path
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or_else(get_default_model_path);
+    let clean = expand_path(&path_str);
+    let path = Path::new(&clean);
+
+    if path.is_file() {
+        let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        if size > 100_000_000 {
+            return Ok(AiModelStatus {
+                exists: true,
+                path: clean,
+                size_bytes: size,
+                default_url: DEFAULT_MODEL_URL.to_string(),
+            });
+        }
+    }
+
+    // Fallbacks: check in src-tauri/models or ~/models
+    let fallback_paths = [
+        "src-tauri/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+        "~/models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+    ];
+    for fp in &fallback_paths {
+        let exp = expand_path(fp);
+        let fpath = Path::new(&exp);
+        if fpath.is_file() {
+            let size = fs::metadata(fpath).map(|m| m.len()).unwrap_or(0);
+            if size > 100_000_000 {
+                return Ok(AiModelStatus {
+                    exists: true,
+                    path: exp,
+                    size_bytes: size,
+                    default_url: DEFAULT_MODEL_URL.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(AiModelStatus {
+        exists: false,
+        path: clean,
+        size_bytes: 0,
+        default_url: DEFAULT_MODEL_URL.to_string(),
+    })
+}
+
+#[tauri::command]
+async fn download_ai_model(
+    app: tauri::AppHandle,
+    custom_path: Option<String>,
+    custom_url: Option<String>,
+) -> Result<String, String> {
+    let target = custom_path
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or_else(get_default_model_path);
+    let clean_target = expand_path(&target);
+    let url = custom_url
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL_URL.to_string());
+
+    let target_path = PathBuf::from(&clean_target);
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create folder: {}", e))?;
+    }
+
+    let tmp_path = format!("{}.downloading", clean_target);
+    DOWNLOAD_CANCELLED.store(false, Ordering::SeqCst);
+
+    let child = Command::new("curl")
+        .arg("-f")
+        .arg("-L")
+        .arg("-C")
+        .arg("-")
+        .arg("-o")
+        .arg(&tmp_path)
+        .arg(&url)
+        .spawn()
+        .map_err(|e| format!("Failed to start curl download: {}", e))?;
+
+    {
+        let mut proc_guard = DOWNLOAD_PROCESS.lock().unwrap();
+        *proc_guard = Some(child);
+    }
+
+    let app_handle = app.clone();
+    let tmp_copy = tmp_path.clone();
+    let clean_copy = clean_target.clone();
+
+    let monitor = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        let total_bytes = DEFAULT_MODEL_SIZE;
+        loop {
+            if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
+                if let Ok(mut guard) = DOWNLOAD_PROCESS.lock() {
+                    if let Some(mut p) = guard.take() {
+                        let _ = p.kill();
+                    }
+                }
+                let _ = fs::remove_file(&tmp_copy);
+                let _ = app_handle.emit(
+                    "ai-download-progress",
+                    AiDownloadProgress {
+                        percent: 0.0,
+                        downloaded_bytes: 0,
+                        total_bytes,
+                        is_complete: false,
+                        error: Some("Download was cancelled".to_string()),
+                    },
+                );
+                return Err("Download cancelled by user".to_string());
+            }
+
+            let finished = {
+                let mut guard = DOWNLOAD_PROCESS.lock().unwrap();
+                if let Some(ref mut p) = *guard {
+                    match p.try_wait() {
+                        Ok(Some(status)) => Some(status),
+                        Ok(None) => None,
+                        Err(e) => return Err(format!("Error monitoring download: {}", e)),
+                    }
+                } else {
+                    return Err("Process terminated".to_string());
+                }
+            };
+
+            let current_bytes = fs::metadata(&tmp_copy).map(|m| m.len()).unwrap_or(0);
+            let percent = if total_bytes > 0 {
+                ((current_bytes as f64 / total_bytes as f64) * 100.0).min(99.9)
+            } else {
+                0.0
+            };
+
+            let _ = app_handle.emit(
+                "ai-download-progress",
+                AiDownloadProgress {
+                    percent,
+                    downloaded_bytes: current_bytes,
+                    total_bytes,
+                    is_complete: false,
+                    error: None,
+                },
+            );
+
+            if let Some(status) = finished {
+                if status.success() {
+                    fs::rename(&tmp_copy, &clean_copy)
+                        .map_err(|e| format!("Failed to finalize model file: {}", e))?;
+
+                    let final_size = fs::metadata(&clean_copy).map(|m| m.len()).unwrap_or(current_bytes);
+                    let _ = app_handle.emit(
+                        "ai-download-progress",
+                        AiDownloadProgress {
+                            percent: 100.0,
+                            downloaded_bytes: final_size,
+                            total_bytes: final_size,
+                            is_complete: true,
+                            error: None,
+                        },
+                    );
+                    return Ok(clean_copy);
+                } else {
+                    let err_msg = format!("curl download failed (exit code: {:?})", status.code());
+                    let _ = app_handle.emit(
+                        "ai-download-progress",
+                        AiDownloadProgress {
+                            percent: 0.0,
+                            downloaded_bytes: current_bytes,
+                            total_bytes,
+                            is_complete: false,
+                            error: Some(err_msg.clone()),
+                        },
+                    );
+                    return Err(err_msg);
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+    });
+
+    monitor.await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn cancel_ai_model_download() -> Result<(), String> {
+    DOWNLOAD_CANCELLED.store(true, Ordering::SeqCst);
+    if let Ok(mut guard) = DOWNLOAD_PROCESS.lock() {
+        if let Some(mut p) = guard.take() {
+            let _ = p.kill();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn start_ai_sidecar(
+    binary_path: Option<String>,
+    model_path: Option<String>,
+    port: Option<u16>,
+    n_gpu_layers: Option<i32>,
+    context_size: Option<u32>,
+) -> Result<AiSidecarStatus, String> {
+    let model_str = model_path
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or_else(get_default_model_path);
+    let clean_model = expand_path(&model_str);
+    if !Path::new(&clean_model).is_file() {
+        return Err(format!("Model file '{}' does not exist. Please download it first.", clean_model));
+    }
+
+    let bin = find_llama_server_binary(binary_path)?;
+    let p = port.unwrap_or(8080);
+    let ngl = n_gpu_layers.unwrap_or(99);
+    let ctx = context_size.unwrap_or(4096);
+
+    // Stop existing sidecar if running
+    let mut guard = AI_SIDECAR.lock().map_err(|e| e.to_string())?;
+    if let Some(mut existing) = guard.take() {
+        let _ = existing.child.kill();
+        let _ = existing.child.wait();
+    }
+
+    let mut cmd = Command::new(&bin);
+    cmd.arg("-m")
+        .arg(&clean_model)
+        .arg("--port")
+        .arg(p.to_string())
+        .arg("-c")
+        .arg(ctx.to_string())
+        .arg("-ngl")
+        .arg(ngl.to_string())
+        .arg("--host")
+        .arg("127.0.0.1");
+
+    // Ensure LD_LIBRARY_PATH includes the directory of llama-server so .so libs are loaded
+    if let Some(parent) = Path::new(&bin).parent() {
+        let current_ld = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+        let new_ld = if current_ld.is_empty() {
+            parent.to_string_lossy().to_string()
+        } else {
+            format!("{}:{}", parent.to_string_lossy(), current_ld)
+        };
+        cmd.env("LD_LIBRARY_PATH", new_ld);
+    }
+
+    let child = cmd.spawn().map_err(|e| format!("Failed to spawn llama-server: {}", e))?;
+
+    let pid = child.id();
+    *guard = Some(AiSidecarProcess {
+        child,
+        port: p,
+        model_path: clean_model.clone(),
+    });
+
+    Ok(AiSidecarStatus {
+        running: true,
+        pid: Some(pid),
+        port: p,
+        model_path: Some(clean_model),
+    })
+}
+
+#[tauri::command]
+fn stop_ai_sidecar() -> Result<AiSidecarStatus, String> {
+    let mut guard = AI_SIDECAR.lock().map_err(|e| e.to_string())?;
+    if let Some(mut existing) = guard.take() {
+        let _ = existing.child.kill();
+        let _ = existing.child.wait();
+    }
+    Ok(AiSidecarStatus {
+        running: false,
+        pid: None,
+        port: 8080,
+        model_path: None,
+    })
+}
+
+#[tauri::command]
+fn get_ai_sidecar_status() -> Result<AiSidecarStatus, String> {
+    let mut guard = AI_SIDECAR.lock().map_err(|e| e.to_string())?;
+    if let Some(ref mut proc) = *guard {
+        match proc.child.try_wait() {
+            Ok(Some(_status)) => {
+                *guard = None;
+                Ok(AiSidecarStatus {
+                    running: false,
+                    pid: None,
+                    port: 8080,
+                    model_path: None,
+                })
+            }
+            Ok(None) => {
+                Ok(AiSidecarStatus {
+                    running: true,
+                    pid: Some(proc.child.id()),
+                    port: proc.port,
+                    model_path: Some(proc.model_path.clone()),
+                })
+            }
+            Err(_) => {
+                *guard = None;
+                Ok(AiSidecarStatus {
+                    running: false,
+                    pid: None,
+                    port: 8080,
+                    model_path: None,
+                })
+            }
+        }
+    } else {
+        Ok(AiSidecarStatus {
+            running: false,
+            pid: None,
+            port: 8080,
+            model_path: None,
+        })
+    }
+}
+
+#[tauri::command]
+fn get_git_diff_for_commit(repo_path: String) -> Result<String, String> {
+    let clean_repo = expand_path(&repo_path);
+
+    let staged = Command::new("git")
+        .args(["-C", &clean_repo, "diff", "--staged"])
+        .output()
+        .map_err(|e| format!("Failed to run git diff --staged: {}", e))?;
+
+    let staged_text = String::from_utf8_lossy(&staged.stdout).trim().to_string();
+    if !staged_text.is_empty() {
+        return Ok(staged_text);
+    }
+
+    let unstaged = Command::new("git")
+        .args(["-C", &clean_repo, "diff"])
+        .output()
+        .map_err(|e| format!("Failed to run git diff: {}", e))?;
+
+    let unstaged_text = String::from_utf8_lossy(&unstaged.stdout).trim().to_string();
+    if !unstaged_text.is_empty() {
+        return Ok(unstaged_text);
+    }
+
+    let status = Command::new("git")
+        .args(["-C", &clean_repo, "status", "--short"])
+        .output()
+        .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+    Ok(String::from_utf8_lossy(&status.stdout).trim().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -695,7 +1184,17 @@ pub fn run() {
             }
             Ok(())
         })
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if let Ok(mut guard) = AI_SIDECAR.lock() {
+                    if let Some(mut proc) = guard.take() {
+                        let _ = proc.child.kill();
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            resolve_path,
             get_git_branch,
             get_git_status,
             get_git_diff_baseline,
@@ -713,7 +1212,15 @@ pub fn run() {
             create_directory,
             open_system_terminal,
             get_cli_launch_payload,
+            start_ai_sidecar,
+            stop_ai_sidecar,
+            get_ai_sidecar_status,
+            get_git_diff_for_commit,
+            check_ai_model_status,
+            download_ai_model,
+            cancel_ai_model_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }
+
