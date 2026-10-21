@@ -36,15 +36,40 @@ export class InlineCompletionService {
       monaco.languages.registerInlineCompletionsProvider(language, {
         provideInlineCompletions: async (model, position, _context, token) => {
           if (token.isCancellationRequested) {
+            this.aiService.isGenerating.set(false);
             return { items: [] };
           }
 
-          // Abort previous in-flight AI request if any
+          // 1. Abort previous in-flight AI request if any and immediately hide widget
           if (this.currentAbortController) {
             this.currentAbortController.abort();
             this.currentAbortController = null;
           }
+          this.aiService.isGenerating.set(false);
 
+          const controller = new AbortController();
+          this.currentAbortController = controller;
+
+          token.onCancellationRequested(() => {
+            controller.abort();
+            this.aiService.isGenerating.set(false);
+          });
+
+          // Debounce 400ms: continuous typing never triggers AI or displays the widget
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, 400);
+            controller.signal.addEventListener('abort', () => {
+              clearTimeout(timer);
+              resolve();
+            });
+          });
+
+          if (token.isCancellationRequested || controller.signal.aborted) {
+            this.aiService.isGenerating.set(false);
+            return { items: [] };
+          }
+
+          // 2. Fresh sample of model content and position AFTER debounce and auto-closing settled
           const offset = model.getOffsetAt(position);
           const fullContent = model.getValue();
 
@@ -65,60 +90,54 @@ export class InlineCompletionService {
 
           const trimmedLinePrefix = textBeforeCursorOnLine.trim();
 
-          // 1. Try AI FIM completion first if enabled and server is online
+          // 3. Try AI FIM completion first if enabled and server is online
           if (
             this.aiService.isEnabled() &&
             this.aiService.isServerOnline() &&
             prefix.trim().length >= 2
           ) {
-            const controller = new AbortController();
-            this.currentAbortController = controller;
-
-            token.onCancellationRequested(() => {
-              controller.abort();
-            });
-
-            // Small typing debounce of 120ms to save CPU cycles
-            await new Promise((resolve) => setTimeout(resolve, 120));
-
-            if (token.isCancellationRequested || controller.signal.aborted) {
-              return { items: [] };
-            }
-
             try {
-              const aiSuggestion = await this.aiService.getInfillCompletion(
+              let aiSuggestion = await this.aiService.getInfillCompletion(
                 prefix,
                 suffix,
                 controller.signal
               );
 
               if (aiSuggestion && aiSuggestion.length > 0) {
-                return {
-                  items: [
-                    {
-                      insertText: aiSuggestion,
-                      range: new monaco.Range(
-                        position.lineNumber,
-                        position.column,
-                        position.lineNumber,
-                        position.column
-                      ),
-                    },
-                  ],
-                };
+                aiSuggestion = this.deduplicateOverlap(aiSuggestion, prefix, suffix);
+                if (aiSuggestion.trim().length > 0) {
+                  return {
+                    items: [
+                      {
+                        insertText: aiSuggestion,
+                        range: new monaco.Range(
+                          position.lineNumber,
+                          position.column,
+                          position.lineNumber,
+                          position.column
+                        ),
+                      },
+                    ],
+                  };
+                }
               }
             } catch {
               // Ignore network aborts and fallback
             }
           }
 
-          // 2. Fallback to smart heuristic / template suggestions
+          // 4. Fallback to smart heuristic / template suggestions
           if (trimmedLinePrefix.length < 2) {
             return { items: [] };
           }
 
-          const suggestionText = this.getSmartSuggestion(language, trimmedLinePrefix);
-          if (!suggestionText) {
+          const rawSuggestion = this.getSmartSuggestion(language, trimmedLinePrefix);
+          if (!rawSuggestion) {
+            return { items: [] };
+          }
+
+          const suggestionText = this.deduplicateOverlap(rawSuggestion, prefix, suffix);
+          if (suggestionText.trim().length === 0) {
             return { items: [] };
           }
 
@@ -215,5 +234,78 @@ export class InlineCompletionService {
     }
 
     return null;
+  }
+
+  /**
+   * Deduplicates both prefix collisions (leading opening brackets/quotes already typed)
+   * and suffix collisions (trailing closing brackets/parentheses, quotes, and punctuation)
+   * in AI suggestions.
+   */
+  private deduplicateOverlap(suggestion: string, prefix: string, suffix: string): string {
+    let cleaned = suggestion;
+    const trimmedPrefix = prefix.trimEnd();
+    const trimmedSuffix = suffix.trimStart();
+
+    // 1. Prefix Collision: If suggestion starts with an opening bracket/quote that was already typed right before cursor
+    for (const openChar of ['{', '(', '[', '"', "'", '`']) {
+      if (trimmedPrefix.endsWith(openChar) && cleaned.trimStart().startsWith(openChar)) {
+        const idx = cleaned.indexOf(openChar);
+        cleaned = cleaned.substring(idx + 1);
+      }
+    }
+
+    // 2. Suffix Collision: Deduplicate closing curly braces: }
+    if (trimmedSuffix.startsWith('}')) {
+      let openCount = (cleaned.match(/\{/g) || []).length;
+      let closeCount = (cleaned.match(/\}/g) || []).length;
+      while (closeCount > openCount && /\}[;\s]*$/.test(cleaned)) {
+        cleaned = cleaned.replace(/\s*\}\s*;?\s*$/, '');
+        closeCount--;
+      }
+      // If the suggestion is multiline and suffix begins with '}' on the same line,
+      // ensure there is a newline before the closing brace so it stays on its own line
+      if (cleaned.includes('\n') && !suffix.startsWith('\n') && !suffix.startsWith('\r\n')) {
+        if (!cleaned.endsWith('\n')) {
+          cleaned += '\n';
+        }
+      }
+    }
+
+    // 3. Suffix Collision: Deduplicate closing parentheses: )
+    if (trimmedSuffix.startsWith(')')) {
+      let openCount = (cleaned.match(/\(/g) || []).length;
+      let closeCount = (cleaned.match(/\)/g) || []).length;
+      while (closeCount > openCount && /\)[;\s]*$/.test(cleaned)) {
+        cleaned = cleaned.replace(/\s*\)\s*;?\s*$/, '');
+        closeCount--;
+      }
+    }
+
+    // 4. Suffix Collision: Deduplicate closing square brackets: ]
+    if (trimmedSuffix.startsWith(']')) {
+      let openCount = (cleaned.match(/\[/g) || []).length;
+      let closeCount = (cleaned.match(/\]/g) || []).length;
+      while (closeCount > openCount && /\][;\s]*$/.test(cleaned)) {
+        cleaned = cleaned.replace(/\s*\]\s*;?\s*$/, '');
+        closeCount--;
+      }
+    }
+
+    // 5. Suffix Collision: Deduplicate semicolon if suffix immediately starts with semicolon
+    if (trimmedSuffix.startsWith(';') && cleaned.trimEnd().endsWith(';')) {
+      cleaned = cleaned.replace(/;\s*$/, '');
+    }
+
+    // 6. Suffix Collision: Deduplicate closing quotes if suffix immediately starts with matching quote
+    for (const q of ['"', "'", '`']) {
+      if (trimmedSuffix.startsWith(q)) {
+        const count = cleaned.split(q).length - 1;
+        if (count % 2 === 1 && cleaned.trimEnd().endsWith(q)) {
+          cleaned = cleaned.slice(0, cleaned.lastIndexOf(q));
+        }
+      }
+    }
+
+    return cleaned;
   }
 }

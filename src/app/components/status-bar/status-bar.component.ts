@@ -100,13 +100,14 @@ import { AiService } from '../../services/ai.service';
         <button
           type="button"
           class="status-btn ai-badge"
-          [class.online]="aiService.isServerOnline()"
+          [class.online]="aiService.isServerOnline() && !aiService.isGenerating()"
+          [class.thinking]="aiService.isGenerating()"
           [class.offline]="!aiService.isServerOnline()"
           (click)="workspaceService.openModal('ai-settings')"
-          [title]="aiService.isServerOnline() ? 'AI Server Online (' + aiService.endpoint() + ') - Click for Settings' : 'AI Server Offline - Click to Configure / Start'"
+          [title]="aiService.isGenerating() ? 'AI is generating code...' : (aiService.isServerOnline() ? 'AI Server Online (' + aiService.endpoint() + ') - Click for Settings' : 'AI Server Offline - Click to Configure / Start')"
         >
-          <span class="ai-sparkle">✨</span>
-          <span>AI: {{ aiService.isServerOnline() ? 'Online' : 'Offline' }}</span>
+          <span class="ai-sparkle" [class.spinning]="aiService.isGenerating()">✨</span>
+          <span>AI: {{ aiService.isGenerating() ? 'Thinking...' : (aiService.isServerOnline() ? 'Online' : 'Offline') }}</span>
         </button>
       </div>
     </footer>
@@ -271,6 +272,17 @@ import { AiService } from '../../services/ai.service';
             }
           }
 
+          &.thinking {
+            background: linear-gradient(135deg, rgba(138, 43, 226, 0.45), rgba(75, 0, 130, 0.45));
+            color: #f3e8ff;
+            border: 1px solid rgba(192, 132, 252, 0.55);
+            animation: pulse-glow 1.4s ease-in-out infinite alternate;
+            .ai-sparkle {
+              color: #f3e8ff;
+              display: inline-block;
+            }
+          }
+
           &.offline {
             background-color: rgba(255, 255, 255, 0.08);
             opacity: 0.85;
@@ -278,6 +290,29 @@ import { AiService } from '../../services/ai.service';
               color: #ffd166;
             }
           }
+
+          .spinning {
+            display: inline-block;
+            animation: sparkle-spin 1.2s linear infinite;
+          }
+        }
+      }
+
+      @keyframes sparkle-spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes pulse-glow {
+        0% {
+          box-shadow: 0 0 3px rgba(168, 85, 247, 0.3);
+        }
+        100% {
+          box-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
         }
       }
 

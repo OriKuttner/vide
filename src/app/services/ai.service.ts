@@ -269,6 +269,7 @@ export class AiService {
       return null;
     }
 
+    this.isGenerating.set(true);
     try {
       // Option A: Try native llama-server /infill endpoint
       const infillPayload = {
@@ -324,6 +325,8 @@ export class AiService {
       if (err.name !== 'AbortError') {
         // Silently ignore non-fatal completion network errors
       }
+    } finally {
+      this.isGenerating.set(false);
     }
 
     return null;

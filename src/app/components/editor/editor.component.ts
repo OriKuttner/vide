@@ -1595,8 +1595,17 @@ ${rawContent}
   private originalDiffModels = new Map<string, monaco.editor.ITextModel>();
   private resizeObserver: ResizeObserver | null = null;
   private isProgrammaticUpdate = false;
+  private aiThinkingWidget: AiThinkingWidget | null = null;
 
   constructor() {
+    // Effect to layout AI thinking widget above cursor when generating state changes
+    effect(() => {
+      const isGenerating = this.aiService.isGenerating();
+      if (this.editorInstance && this.aiThinkingWidget) {
+        this.editorInstance.layoutContentWidget(this.aiThinkingWidget);
+      }
+    });
+
     // Effect to switch active file in Monaco or reset image viewer
     effect(
       () => {
@@ -1805,6 +1814,11 @@ ${rawContent}
     }
     this.originalDiffModels.clear();
 
+    if (this.aiThinkingWidget && this.editorInstance) {
+      this.editorInstance.removeContentWidget(this.aiThinkingWidget);
+      this.aiThinkingWidget = null;
+    }
+
     this.editorInstance?.dispose();
     this.diffEditorInstance?.dispose();
   }
@@ -1991,7 +2005,7 @@ ${rawContent}
       },
       suggestOnTriggerCharacters: true,
       tabCompletion: 'on',
-      acceptSuggestionOnEnter: 'on',
+      acceptSuggestionOnEnter: 'smart',
       wordBasedSuggestions: 'allDocuments',
       snippetSuggestions: 'top',
       stickyScroll: {
@@ -2001,12 +2015,19 @@ ${rawContent}
       },
     });
 
+    // Floating AI Thinking widget above cursor
+    this.aiThinkingWidget = new AiThinkingWidget(this.editorInstance, () => this.aiService.isGenerating());
+    this.editorInstance.addContentWidget(this.aiThinkingWidget);
+
     // Listen to cursor position changes
     this.editorInstance.onDidChangeCursorPosition((e) => {
       this.cursorChange.emit({
         line: e.position.lineNumber,
         column: e.position.column,
       });
+      if (this.aiThinkingWidget && this.aiService.isGenerating()) {
+        this.editorInstance?.layoutContentWidget(this.aiThinkingWidget);
+      }
     });
 
     // Listen to content changes
@@ -2616,3 +2637,53 @@ ${rawContent}
     }
   }
 }
+
+class AiThinkingWidget implements monaco.editor.IContentWidget {
+  public static readonly ID = 'vide.ai.thinking.widget';
+  private readonly domNode: HTMLElement;
+
+  constructor(
+    private readonly editor: monaco.editor.IStandaloneCodeEditor,
+    private readonly isGeneratingFn: () => boolean
+  ) {
+    this.domNode = document.createElement('div');
+    this.domNode.className = 'monaco-ai-thinking-widget';
+    this.domNode.innerHTML = `
+      <div class="monaco-ai-thinking-pill" title="AI is thinking...">
+        <span class="ai-widget-sparkle">✨</span>
+        <span class="ai-widget-text">Thinking...</span>
+      </div>
+    `;
+  }
+
+  getId(): string {
+    return AiThinkingWidget.ID;
+  }
+
+  getDomNode(): HTMLElement {
+    return this.domNode;
+  }
+
+  getPosition(): monaco.editor.IContentWidgetPosition | null {
+    if (!this.isGeneratingFn()) {
+      this.domNode.style.display = 'none';
+      return null;
+    }
+
+    const pos = this.editor.getPosition();
+    if (!pos) {
+      this.domNode.style.display = 'none';
+      return null;
+    }
+
+    this.domNode.style.display = '';
+    return {
+      position: pos,
+      preference: [
+        monaco.editor.ContentWidgetPositionPreference.ABOVE,
+        monaco.editor.ContentWidgetPositionPreference.BELOW,
+      ],
+    };
+  }
+}
+

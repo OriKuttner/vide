@@ -309,20 +309,20 @@ const PHP_SNIPPETS: CompletionDefinition[] = [
   {
     label: '<?php',
     kind: 27,
-    detail: 'PHP opening tag with strict types',
-    documentation: 'Standard modern PHP opening tag.',
-    insertText: '<?php\n\ndeclare(strict_types=1);\n\n${0}',
+    detail: 'PHP opening tag',
+    documentation: 'Standard PHP opening tag.',
+    insertText: '<?php\n\n${0}',
     isSnippet: true,
     sortText: '00_php_tag',
   },
   {
-    label: 'php',
+    label: '<?php-strict',
     kind: 27,
-    detail: '<?php opening tag',
-    documentation: 'Opens PHP script.',
-    insertText: '<?php\n\n${0}',
+    detail: 'PHP opening tag with strict types',
+    documentation: 'PHP opening tag with declare(strict_types=1).',
+    insertText: '<?php\n\ndeclare(strict_types=1);\n\n${0}',
     isSnippet: true,
-    sortText: '00_php',
+    sortText: '00_php_tag_strict',
   },
   {
     label: 'function',
@@ -655,12 +655,35 @@ function createLanguageItems(
   keywords: string[],
   funcs: Array<{ name: string; signature: string; doc: string }>,
   snippets: CompletionDefinition[],
-  range: MonacoType.IRange
+  range: MonacoType.IRange,
+  model?: MonacoType.editor.ITextModel,
+  position?: MonacoType.Position
 ): MonacoType.languages.CompletionItem[] {
   const items: MonacoType.languages.CompletionItem[] = [];
 
   // 1. Snippets (top priority)
   for (const s of snippets) {
+    let itemRange = range;
+    if (model && position) {
+      // Check if snippet begins with non-word symbol characters (e.g. '<?', '#', '@', '$')
+      const symbolMatch = s.label.match(/^[^a-zA-Z0-9_]+/);
+      if (symbolMatch) {
+        const symbolPrefix = symbolMatch[0];
+        const lineContent = model.getLineContent(position.lineNumber);
+        const prefixBeforeWord = lineContent.substring(0, range.startColumn - 1);
+        for (let len = symbolPrefix.length; len >= 1; len--) {
+          const sub = symbolPrefix.slice(-len);
+          if (prefixBeforeWord.endsWith(sub)) {
+            itemRange = {
+              ...range,
+              startColumn: range.startColumn - len,
+            };
+            break;
+          }
+        }
+      }
+    }
+
     items.push({
       label: s.label,
       kind: monaco.languages.CompletionItemKind.Snippet,
@@ -669,7 +692,7 @@ function createLanguageItems(
       insertText: s.insertText,
       insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
       sortText: s.sortText || `00_${s.label}`,
-      range,
+      range: itemRange,
     });
   }
 
@@ -724,7 +747,7 @@ function registerLanguageSupport(
         endColumn: word.endColumn,
       };
 
-      const suggestions = createLanguageItems(monaco, keywords, funcs, snippets, range);
+      const suggestions = createLanguageItems(monaco, keywords, funcs, snippets, range, model, position);
       return { suggestions };
     },
   });
