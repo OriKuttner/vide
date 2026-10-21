@@ -1,0 +1,771 @@
+import {
+  Component,
+  ElementRef,
+  ViewChild,
+  inject,
+  signal,
+  effect,
+} from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { WorkspaceService, GrepResult } from '../../services/workspace.service';
+import { WorkspaceFile } from '../../models/file.model';
+
+export interface LanguageItem {
+  id: string;
+  name: string;
+  badge: string;
+  extensions: string;
+}
+
+const SUPPORTED_LANGUAGES: LanguageItem[] = [
+  { id: 'omniflux', name: 'OmniFlux', badge: 'OF', extensions: '.of' },
+  { id: 'php', name: 'PHP', badge: 'PHP', extensions: '.php' },
+  { id: 'typescript', name: 'TypeScript', badge: 'TS', extensions: '.ts, .tsx' },
+  { id: 'javascript', name: 'JavaScript', badge: 'JS', extensions: '.js, .jsx, .mjs' },
+  { id: 'perl', name: 'Perl', badge: 'PL', extensions: '.pl, .pm' },
+  { id: 'c', name: 'C', badge: 'C', extensions: '.c, .h' },
+  { id: 'cpp', name: 'C++', badge: 'C++', extensions: '.cpp, .cc, .hpp' },
+  { id: 'json', name: 'JSON', badge: '{}', extensions: '.json' },
+  { id: 'html', name: 'HTML', badge: '<>', extensions: '.html, .htm' },
+  { id: 'css', name: 'CSS', badge: '#', extensions: '.css, .scss' },
+  { id: 'markdown', name: 'Markdown', badge: 'MD', extensions: '.md' },
+  { id: 'shell', name: 'Bash / Shell', badge: 'SH', extensions: '.sh, .bash' },
+  { id: 'python', name: 'Python', badge: 'PY', extensions: '.py, .pyw' },
+  { id: 'plaintext', name: 'Plain Text', badge: 'TXT', extensions: '.txt' },
+];
+
+@Component({
+  selector: 'app-search-modal',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+    @if (workspaceService.activeModal()) {
+      <div class="modal-backdrop" (click)="close()">
+        <div class="modal-card" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <span class="modal-title">{{ getTitle() }}</span>
+            <button class="close-x" (click)="close()">×</button>
+          </div>
+
+          @if (workspaceService.activeModal() !== 'indentation') {
+            <div class="input-container">
+              <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
+              <input
+                id="modal-search-input"
+                #inputField
+                type="text"
+                class="modal-input"
+                [ngModel]="inputValue()"
+                (ngModelChange)="onInputChange($event)"
+                (keydown.enter)="onEnter()"
+                (keydown.escape)="close()"
+              />
+            </div>
+          }
+
+          @if (workspaceService.isIndexing()) {
+            <div class="indexing-banner">
+              <span class="indexing-pulse">●</span>
+              <span>Indexing project in background ({{ workspaceService.indexedFileCount() }} files)...</span>
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'indentation') {
+            <div class="config-card">
+              <div class="config-section">
+                <span class="config-section-title">Indentation Character</span>
+                <div class="choice-group">
+                  <button
+                    type="button"
+                    class="choice-btn"
+                    [class.selected]="selectedIndentType() === 'tabs'"
+                    (click)="selectedIndentType.set('tabs')"
+                  >
+                    ⇥ Tabs (Real Tab character)
+                  </button>
+                  <button
+                    type="button"
+                    class="choice-btn"
+                    [class.selected]="selectedIndentType() === 'spaces'"
+                    (click)="selectedIndentType.set('spaces')"
+                  >
+                    ␣ Spaces
+                  </button>
+                </div>
+              </div>
+
+              <div class="config-section">
+                <span class="config-section-title">Tab / Indent Size</span>
+                <div class="size-group">
+                  @for (s of [2, 4, 8]; track s) {
+                    <button
+                      type="button"
+                      class="size-btn"
+                      [class.selected]="selectedTabSize() === s"
+                      (click)="selectedTabSize.set(s)"
+                    >
+                      {{ s }} spaces
+                    </button>
+                  }
+                </div>
+              </div>
+
+              <div class="action-footer">
+                <button class="btn btn-secondary" (click)="close()">Cancel</button>
+                <button class="btn btn-primary" (click)="applyIndentation()">Apply</button>
+              </div>
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'change-language') {
+            <div class="results-list">
+              @for (lang of languageResults(); track lang.id) {
+                <div class="result-item" (click)="selectLanguage(lang.id)">
+                  <span class="file-badge">{{ lang.badge }}</span>
+                  <span class="file-name">{{ lang.name }}</span>
+                  <span class="file-dir">{{ lang.extensions }}</span>
+                </div>
+              }
+              @if (languageResults().length === 0) {
+                <div class="no-results">No languages matching query</div>
+              }
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'grep') {
+            <div class="results-list">
+              @if (isSearching()) {
+                <div class="searching-indicator">
+                  <div class="mini-spinner"></div>
+                  <span>Searching through workspace files...</span>
+                </div>
+              } @else if (grepResults().length > 0) {
+                <div class="results-meta">
+                  <span>{{ grepResults().length }} match(es) in {{ getUniqueFileCount(grepResults()) }} file(s)</span>
+                </div>
+                @for (result of grepResults(); track result.file.id + ':' + result.lineNumber) {
+                  <div
+                    class="result-item"
+                    (click)="workspaceService.jumpToLine(result.file, result.lineNumber)"
+                  >
+                    <span class="file-path">{{ result.file.path }}:{{ result.lineNumber }}</span>
+                    <span class="line-snippet">{{ result.lineText }}</span>
+                  </div>
+                }
+              } @else if (inputValue().trim().length >= 2) {
+                <div class="no-results">No matching text found</div>
+              }
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'file-search') {
+            <div class="results-list">
+              @if (fileResults().length > 0) {
+                <div class="results-meta">
+                  <span>{{ fileResults().length }} files found (of {{ workspaceService.files().length }})</span>
+                </div>
+              }
+              @for (file of fileResults(); track file.id) {
+                <div class="result-item" (click)="selectFile(file)">
+                  <span class="file-badge">{{ getFileBadge(file) }}</span>
+                  <span class="file-name">{{ file.name }}</span>
+                  <span class="file-dir">{{ file.path }}</span>
+                </div>
+              }
+              @if (fileResults().length === 0) {
+                <div class="no-results">No files matching query</div>
+              }
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'open-folder-path') {
+            <div class="quick-paths-container">
+              <span class="quick-paths-title">Quick Select Paths:</span>
+              <div class="quick-paths-grid">
+                <button
+                  type="button"
+                  class="path-chip"
+                  (click)="setFolderQuickPath('/home/ori/work/vide')"
+                >
+                  📁 /home/ori/work/vide
+                </button>
+                <button
+                  type="button"
+                  class="path-chip"
+                  (click)="setFolderQuickPath('~/work/vide')"
+                >
+                  📁 ~/work/vide
+                </button>
+                <button
+                  type="button"
+                  class="path-chip"
+                  (click)="setFolderQuickPath('/home/ori/work')"
+                >
+                  📁 /home/ori/work
+                </button>
+                @if (workspaceService.parentWorkspacePath(); as parent) {
+                  <button
+                    type="button"
+                    class="path-chip parent-chip"
+                    (click)="setFolderQuickPath(parent)"
+                  >
+                    ⬆ Parent ({{ parent }})
+                  </button>
+                }
+              </div>
+            </div>
+            <div class="action-footer">
+              <button class="btn btn-secondary" (click)="close()">Cancel</button>
+              <button class="btn btn-primary" (click)="onEnter()">Open Folder</button>
+            </div>
+          }
+
+          @if (
+            workspaceService.activeModal() === 'new-file' ||
+            workspaceService.activeModal() === 'new-folder'
+          ) {
+            <div class="action-footer">
+              <button class="btn btn-secondary" (click)="close()">Cancel</button>
+              <button class="btn btn-primary" (click)="onEnter()">Create</button>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  `,
+  styles: [
+    `
+      .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: 60px;
+        z-index: 9999;
+      }
+
+      .modal-card {
+        width: 620px;
+        max-width: 90vw;
+        max-height: 80vh;
+        background-color: var(--bg-editor, #ffffff);
+        color: var(--text-primary, #1e1e1e);
+        border: 1px solid var(--border-color, #cccccc);
+        border-radius: 6px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 18px;
+        background-color: var(--bg-tabs-bar, #ececec);
+        border-bottom: 1px solid var(--border-color, #e5e5e5);
+
+        .modal-title {
+          font-weight: 600;
+          font-size: 15px;
+        }
+
+        .close-x {
+          background: transparent;
+          border: none;
+          font-size: 20px;
+          cursor: pointer;
+          color: var(--text-muted, #717171);
+          line-height: 1;
+
+          &:hover {
+            color: var(--text-primary, #1e1e1e);
+          }
+        }
+      }
+
+      .input-container {
+        padding: 16px 18px 10px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+
+        .input-label {
+          font-size: 13.5px;
+          font-weight: 500;
+          color: var(--text-secondary, #555555);
+        }
+
+        .modal-input {
+          height: 38px;
+          padding: 0 12px;
+          border: 1px solid var(--border-color, #cccccc);
+          border-radius: 4px;
+          background-color: var(--bg-search, #ffffff);
+          color: var(--text-primary, #1e1e1e);
+          font-size: 15px;
+          outline: none;
+
+          &:focus {
+            border-color: #007acc;
+            box-shadow: 0 0 0 1px #007acc;
+          }
+        }
+      }
+
+      .quick-paths-container {
+        padding: 0 18px 14px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        .quick-paths-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--text-secondary, #555555);
+        }
+
+        .quick-paths-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .path-chip {
+          background-color: var(--bg-item-hover, #ececec);
+          border: 1px solid var(--border-color, #cccccc);
+          color: var(--text-primary, #1e1e1e);
+          font-size: 13px;
+          font-weight: 500;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-family: monospace;
+
+          &:hover {
+            background-color: var(--bg-item-active, #e2effd);
+            border-color: #007acc;
+            color: #007acc;
+          }
+
+          &.parent-chip {
+            background-color: rgba(217, 119, 6, 0.1);
+            border-color: rgba(217, 119, 6, 0.4);
+            color: #d97706;
+
+            &:hover {
+              background-color: rgba(217, 119, 6, 0.2);
+              border-color: #d97706;
+            }
+          }
+        }
+      }
+
+      .indexing-banner {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 18px;
+        background-color: var(--bg-badge, #e8e8e8);
+        color: var(--text-secondary, #555555);
+        font-size: 12px;
+        font-weight: 500;
+        border-bottom: 1px solid var(--border-color, #e5e5e5);
+
+        .indexing-pulse {
+          color: #10b981;
+          font-size: 11px;
+          animation: pulse 1s infinite alternate;
+        }
+      }
+
+      @keyframes pulse {
+        from {
+          opacity: 0.3;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .results-meta {
+        font-size: 12px;
+        color: var(--text-muted, #717171);
+        padding: 6px 12px 8px 12px;
+        font-weight: 600;
+        border-bottom: 1px solid var(--border-color, #f0f0f0);
+        margin-bottom: 4px;
+      }
+
+      .results-list {
+        flex: 1;
+        overflow-y: auto;
+        max-height: 380px;
+        padding: 6px 8px 12px 8px;
+      }
+
+      .result-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.1s;
+
+        &:hover {
+          background-color: var(--bg-item-hover, #ececec);
+        }
+
+        .file-path {
+          font-weight: 600;
+          color: #007acc;
+          white-space: nowrap;
+          font-size: 13.5px;
+        }
+
+        .line-snippet {
+          color: var(--text-secondary, #555555);
+          font-family: monospace;
+          font-size: 13px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .file-badge {
+          font-size: 11px;
+          font-weight: bold;
+          padding: 2px 6px;
+          border-radius: 3px;
+          background-color: #007acc;
+          color: #ffffff;
+        }
+
+        .file-name {
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .file-dir {
+          font-size: 12.5px;
+          color: var(--text-muted, #717171);
+          margin-left: auto;
+        }
+      }
+
+      .searching-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 16px;
+        color: var(--text-muted, #717171);
+        font-size: 13px;
+
+        .mini-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(0, 122, 204, 0.2);
+          border-top-color: #007acc;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .no-results {
+        padding: 18px;
+        text-align: center;
+        color: var(--text-muted, #717171);
+        font-size: 13px;
+      }
+
+      .config-card {
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .config-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        .config-section-title {
+          font-size: 13.5px;
+          font-weight: 600;
+          color: var(--text-secondary, #555555);
+        }
+      }
+
+      .choice-group,
+      .size-group {
+        display: flex;
+        gap: 8px;
+      }
+
+      .choice-btn,
+      .size-btn {
+        flex: 1;
+        padding: 10px 14px;
+        font-size: 14px;
+        font-weight: 500;
+        border: 1px solid var(--border-color, #cccccc);
+        background-color: var(--bg-item-hover, #f3f3f3);
+        color: var(--text-primary, #1e1e1e);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+
+        &:hover {
+          background-color: var(--bg-btn-hover, #e0e0e0);
+          border-color: #999999;
+        }
+
+        &.selected {
+          background-color: #007acc;
+          color: #ffffff;
+          border-color: #007acc;
+          font-weight: 600;
+        }
+      }
+
+      .action-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 12px 18px;
+        background-color: var(--bg-tabs-bar, #ececec);
+        border-top: 1px solid var(--border-color, #e5e5e5);
+
+        .btn {
+          padding: 6px 16px;
+          border-radius: 4px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+
+          &.btn-secondary {
+            background-color: transparent;
+            border: 1px solid var(--border-color, #cccccc);
+            color: var(--text-primary, #333333);
+
+            &:hover {
+              background-color: var(--bg-btn-hover, #dcdcdc);
+            }
+          }
+
+          &.btn-primary {
+            background-color: #007acc;
+            border: 1px solid #007acc;
+            color: #ffffff;
+
+            &:hover {
+              background-color: #0066b8;
+            }
+          }
+        }
+      }
+    `,
+  ],
+})
+export class SearchModalComponent {
+  @ViewChild('inputField') private inputField?: ElementRef<HTMLInputElement>;
+
+  public workspaceService = inject(WorkspaceService);
+
+  public inputValue = signal<string>('');
+  public grepResults = signal<GrepResult[]>([]);
+  public fileResults = signal<WorkspaceFile[]>([]);
+  public isSearching = signal<boolean>(false);
+
+  // Indentation configuration state
+  public selectedIndentType = signal<'tabs' | 'spaces'>('tabs');
+  public selectedTabSize = signal<number>(4);
+
+  // Language selection state
+  public languageResults = signal<LanguageItem[]>(SUPPORTED_LANGUAGES);
+
+  private searchDebounceTimer?: any;
+
+  constructor() {
+    effect(() => {
+      const mode = this.workspaceService.activeModal();
+      if (mode) {
+        this.inputValue.set('');
+        this.grepResults.set([]);
+        if (mode === 'file-search') {
+          this.fileResults.set(this.workspaceService.findFiles(''));
+        } else if (mode === 'change-language') {
+          this.languageResults.set(SUPPORTED_LANGUAGES);
+        } else if (mode === 'indentation') {
+          this.selectedIndentType.set(this.workspaceService.indentType());
+          this.selectedTabSize.set(this.workspaceService.tabSize());
+        } else if (mode === 'open-folder-path') {
+          this.inputValue.set(this.workspaceService.nativeWorkspacePath() || '/home/ori/work/vide');
+        }
+
+        if (mode !== 'indentation') {
+          setTimeout(() => {
+            this.inputField?.nativeElement.focus();
+            if (mode === 'open-folder-path') {
+              this.inputField?.nativeElement.select();
+            }
+          }, 50);
+        }
+      }
+    });
+  }
+
+  public getTitle(): string {
+    switch (this.workspaceService.activeModal()) {
+      case 'new-file':
+        return 'Create New File';
+      case 'new-folder':
+        return 'Create New Folder';
+      case 'open-folder-path':
+        return 'Open Folder by Path';
+      case 'grep':
+        return 'Search Text in Files (Grep)';
+      case 'file-search':
+        return 'Find File (Quick Open)';
+      case 'indentation':
+        return 'Configure Indentation';
+      case 'change-language':
+        return 'Select Language Mode';
+      default:
+        return '';
+    }
+  }
+
+  public getLabel(): string {
+    switch (this.workspaceService.activeModal()) {
+      case 'new-file':
+        return 'Enter new file name and extension (e.g. app.of, service.ts):';
+      case 'new-folder':
+        return 'Enter new directory name:';
+      case 'open-folder-path':
+        return 'Enter directory path to open (e.g. ~/work/vide or /home/ori/work/vide):';
+      case 'grep':
+        return 'Search query (word or phrase):';
+      case 'file-search':
+        return 'Type file name to filter:';
+      case 'change-language':
+        return 'Select language mode (type to filter):';
+      default:
+        return 'Search:';
+    }
+  }
+
+  public onInputChange(val: string): void {
+    this.inputValue.set(val);
+    const mode = this.workspaceService.activeModal();
+
+    if (mode === 'file-search') {
+      this.fileResults.set(this.workspaceService.findFiles(val));
+    } else if (mode === 'change-language') {
+      const q = val.trim().toLowerCase();
+      if (!q) {
+        this.languageResults.set(SUPPORTED_LANGUAGES);
+      } else {
+        this.languageResults.set(
+          SUPPORTED_LANGUAGES.filter(
+            (l) =>
+              l.name.toLowerCase().includes(q) ||
+              l.id.toLowerCase().includes(q) ||
+              l.extensions.toLowerCase().includes(q)
+          )
+        );
+      }
+    } else if (mode === 'grep') {
+      clearTimeout(this.searchDebounceTimer);
+      if (val.trim().length >= 2) {
+        this.isSearching.set(true);
+        this.searchDebounceTimer = setTimeout(async () => {
+          const res = await this.workspaceService.grepFiles(val);
+          this.grepResults.set(res);
+          this.isSearching.set(false);
+        }, 250);
+      } else {
+        this.grepResults.set([]);
+        this.isSearching.set(false);
+      }
+    }
+  }
+
+  public async onEnter(): Promise<void> {
+    const mode = this.workspaceService.activeModal();
+    const val = this.inputValue().trim();
+
+    if (mode === 'new-file' && val) {
+      await this.workspaceService.createNewFile(val);
+    } else if (mode === 'new-folder' && val) {
+      this.workspaceService.createNewFolder(val);
+    } else if (mode === 'open-folder-path' && val) {
+      await this.workspaceService.openDirectoryByPath(val);
+    } else if (mode === 'file-search') {
+      const files = this.fileResults();
+      if (files.length > 0) {
+        this.selectFile(files[0]);
+      }
+    } else if (mode === 'change-language') {
+      const langs = this.languageResults();
+      if (langs.length > 0) {
+        this.selectLanguage(langs[0].id);
+      }
+    } else if (mode === 'grep') {
+      const results = this.grepResults();
+      if (results.length > 0) {
+        this.workspaceService.jumpToLine(results[0].file, results[0].lineNumber);
+      }
+    }
+  }
+
+  public async setFolderQuickPath(path: string): Promise<void> {
+    this.inputValue.set(path);
+    await this.workspaceService.openDirectoryByPath(path);
+  }
+
+  public applyIndentation(): void {
+    this.workspaceService.setIndentation(this.selectedIndentType(), this.selectedTabSize());
+  }
+
+  public selectLanguage(languageId: string): void {
+    this.workspaceService.changeActiveFileLanguage(languageId);
+  }
+
+  public selectFile(file: WorkspaceFile): void {
+    this.workspaceService.openFile(file);
+    this.close();
+  }
+
+  public close(): void {
+    this.workspaceService.closeModal();
+  }
+
+  public getFileBadge(file: WorkspaceFile): string {
+    const ext = file.name.split('.').pop()?.toUpperCase() || 'FILE';
+    return ext;
+  }
+
+  public getUniqueFileCount(results: GrepResult[]): number {
+    const ids = new Set(results.map((r) => r.file.id));
+    return ids.size;
+  }
+}
