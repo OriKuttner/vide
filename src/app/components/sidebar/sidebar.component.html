@@ -1,0 +1,799 @@
+<aside
+  class="sidebar"
+  [style.width.px]="workspaceService.sidebarWidth()"
+>
+  <div class="sidebar-header">
+    <div class="header-actions">
+      <button
+        class="icon-btn btn-save"
+        title="Save File (Ctrl+S)"
+        (click)="workspaceService.saveCurrentFile()"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16">
+          <path
+            class="part-main"
+            d="M13.85 4.15l-2-2A.5.5 0 0 0 11.5 2H2.5A1.5 1.5 0 0 0 1 3.5v9A1.5 1.5 0 0 0 2.5 14h11a1.5 1.5 0 0 0 1.5-1.5V4.5a.5.5 0 0 0-.15-.35zM4 3h6v2H4V3zm7 10H5v-4h6v4zm2-.5a.5.5 0 0 1-.5.5H12V8a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v5.5H2.5a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5H3v3a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V2.5l2 2V12.5z"
+          />
+          <rect class="part-accent" x="5.5" y="9.5" width="5" height="3" rx="0.5" />
+        </svg>
+      </button>
+      <button
+        class="icon-btn btn-new-folder"
+        title="New Folder"
+        (click)="workspaceService.openModal('new-folder')"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16">
+          <path
+            class="part-folder"
+            d="M14.5 4h-5.79l-1.35-1.35A.5.5 0 0 0 7 2.5H2a1 1 0 0 0-1 1V13a1 1 0 0 0 1 1h6.5a.5.5 0 0 0 0-1H2V4.5h5.21l1.35 1.35a.5.5 0 0 0 .35.15H14v2.5a.5.5 0 0 0 1 0V4.5a.5.5 0 0 0-.5-.5z"
+          />
+          <path
+            class="part-plus"
+            d="M12.5 9a.5.5 0 0 0-.5.5V11H10.5a.5.5 0 0 0 0 1H12v1.5a.5.5 0 0 0 1 0V12h1.5a.5.5 0 0 0 0-1H13V9.5a.5.5 0 0 0-.5-.5z"
+          />
+        </svg>
+      </button>
+      <button
+        class="icon-btn btn-new-file"
+        title="New File"
+        (click)="workspaceService.openModal('new-file')"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16">
+          <path
+            class="part-file"
+            d="M9 1.5H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h5.5a.5.5 0 0 0 0-1H3V2.5h5.5V5a1 1 0 0 0 1 1h2.5v2.5a.5.5 0 0 0 1 0V5.71a1 1 0 0 0-.29-.71l-3.5-3.5A1 1 0 0 0 9 1.5zm.5 1.21L12.29 5H9.5V2.71z"
+          />
+          <path
+            class="part-plus"
+            d="M12.5 9a.5.5 0 0 0-.5.5V11H10.5a.5.5 0 0 0 0 1H12v1.5a.5.5 0 0 0 1 0V12h1.5a.5.5 0 0 0 0-1H13V9.5a.5.5 0 0 0-.5-.5z"
+          />
+        </svg>
+      </button>
+      <button
+        class="icon-btn btn-grep"
+        [class.active]="workspaceService.sidebarView() === 'search'"
+        title="Search in Files (Ctrl+Shift+F)"
+        (click)="workspaceService.toggleSidebarView('search')"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16">
+          <path
+            class="part-lens"
+            fill-rule="evenodd"
+            clip-rule="evenodd"
+            d="M6 2a4 4 0 1 0 2.47 7.15l2.69 2.7a.5.5 0 0 0 .7-.71l-2.69-2.69A4 4 0 0 0 6 2zm-3 4a3 3 0 1 1 6 0 3 3 0 0 1-6 0z"
+          />
+          <rect class="part-lines" x="9.5" y="3" width="5.5" height="1.2" rx="0.6" />
+          <rect class="part-lines" x="9.5" y="5.4" width="4.5" height="1.2" rx="0.6" />
+          <rect class="part-lines" x="9.5" y="7.8" width="5.5" height="1.2" rx="0.6" />
+        </svg>
+      </button>
+      <button
+        class="icon-btn btn-git"
+        [class.active]="workspaceService.sidebarView() === 'git-changes'"
+        title="Source Control / Git Changes"
+        (click)="workspaceService.toggleSidebarView('git-changes')"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" d="M11.75 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm-7.5 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.25 10.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM3.5 3.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm7.5 0a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm-7.5 8.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
+          <path fill-rule="evenodd" d="M5 5.5V11h-1.5V5.5H5zm2.75 2a3.75 3.75 0 0 1 3.75-3.75h.5V5.25h-.5A2.25 2.25 0 0 0 9.25 7.5v.75H7.75V7.5z"/>
+        </svg>
+        @if (workspaceService.changedFiles().length > 0) {
+          <span class="badge-count">{{ workspaceService.changedFiles().length }}</span>
+        }
+      </button>
+      <button
+        class="icon-btn btn-find-file"
+        title="Find File (Ctrl+P)"
+        (click)="workspaceService.openModal('file-search')"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16">
+          <path
+            class="part-file"
+            d="M9 1.5H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h4.5a.5.5 0 0 0 0-1H3V2.5h5.5V5a1 1 0 0 0 1 1h2.5v1.5a.5.5 0 0 0 1 0V5.71a1 1 0 0 0-.29-.71l-3.5-3.5A1 1 0 0 0 9 1.5zm.5 1.21L12.29 5H9.5V2.71z"
+          />
+          <path
+            class="part-lens"
+            fill-rule="evenodd"
+            clip-rule="evenodd"
+            d="M12 9a2.5 2.5 0 1 0 1.54 4.46l1.31 1.31a.5.5 0 0 0 .7-.71l-1.3-1.31A2.5 2.5 0 0 0 12 9zm-1.5 2.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0z"
+          />
+        </svg>
+      </button>
+      <button
+        class="icon-btn btn-hidden"
+        [class.active]="workspaceService.showHiddenFiles()"
+        title="Toggle Hidden Files (Ctrl+H)"
+        (click)="workspaceService.toggleHiddenFiles()"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+          @if (workspaceService.showHiddenFiles()) {
+            <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+            <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+          } @else {
+            <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/>
+            <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>
+            <path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/>
+          }
+        </svg>
+      </button>
+      <button
+        class="icon-btn btn-collapse"
+        title="Hide Side Bar (Ctrl+B)"
+        (click)="workspaceService.toggleSidebar()"
+      >
+        <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+          <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  @if (workspaceService.sidebarView() === 'explorer') {
+    <div class="section-title">
+      <div class="title-left">
+        <span class="workspace-label" [title]="workspaceService.nativeWorkspacePath() || workspaceService.workspaceName()">
+          {{ workspaceService.workspaceName() }}
+        </span>
+      </div>
+      <div class="title-actions">
+        @if (workspaceService.parentWorkspacePath(); as parent) {
+          <button
+            type="button"
+            class="parent-up-btn"
+            (click)="workspaceService.openParentDirectory()"
+            [title]="'Go up to parent folder: ' + parent"
+          >
+            ⬆
+          </button>
+        }
+        @if (workspaceService.isRealWorkspace()) {
+          <button
+            type="button"
+            class="refresh-tree-btn"
+            [class.spinning]="workspaceService.isRefreshingTree()"
+            (click)="workspaceService.refreshAll()"
+            title="Refresh Explorer & Git (F5)"
+          >
+            <svg class="svg-btn-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+            </svg>
+          </button>
+        }
+        <button
+          type="button"
+          class="hidden-toggle-btn"
+          [class.active]="workspaceService.showHiddenFiles()"
+          (click)="workspaceService.toggleHiddenFiles()"
+          title="Toggle Hidden Files (Ctrl+H)"
+        >
+          <svg class="svg-btn-icon" viewBox="0 0 16 16" fill="currentColor">
+            @if (workspaceService.showHiddenFiles()) {
+              <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+              <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+            } @else {
+              <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/>
+              <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>
+              <path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/>
+            }
+          </svg>
+        </button>
+        @if (workspaceService.isRealWorkspace()) {
+          <button
+            type="button"
+            class="close-folder-icon-btn"
+            (click)="workspaceService.closeWorkspace()"
+            title="Close Folder (Return to Welcome / Recent)"
+          >
+            <svg class="svg-btn-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+            </svg>
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (workspaceService.recentWorkspaceName() && !workspaceService.isRealWorkspace()) {
+      <div
+        class="recent-banner"
+        (click)="workspaceService.openRecentWorkspace()"
+        [title]="'Reopen ' + workspaceService.recentWorkspaceName()"
+      >
+        <span class="recent-icon">⚡</span>
+        <div class="recent-info">
+          <span class="recent-label">Recent folder</span>
+          <span class="recent-title">{{ workspaceService.recentWorkspaceName() }}</span>
+        </div>
+        <span class="recent-action">Open →</span>
+      </div>
+    }
+
+    <div class="tree-container">
+      @if (workspaceService.isScanning()) {
+        <div class="scanning-overlay">
+          <div class="spinner"></div>
+          <span class="scan-title">Loading Workspace...</span>
+          <span class="scan-subtitle">{{ workspaceService.scanProgress() }}</span>
+        </div>
+      } @else {
+        <ng-template #nodeTemplate let-nodes>
+          @for (node of nodes; track node.id) {
+            @if (node.kind === 'directory') {
+              <div
+                class="tree-row directory"
+                [style.padding-left.px]="node.level * 16 + 10"
+                (click)="workspaceService.toggleFolder(node)"
+              >
+                <span class="chevron" [class.expanded]="node.expanded">▶</span>
+                <span class="folder-icon">{{ node.expanded ? '📂' : '📁' }}</span>
+                <span class="node-name">{{ node.name }}</span>
+                @if (node.isLoading) {
+                  <span class="loading-dot">⌛</span>
+                }
+              </div>
+              @if (node.expanded && node.children && node.children.length > 0) {
+                <ng-container
+                  *ngTemplateOutlet="nodeTemplate; context: { $implicit: node.children }"
+                />
+              }
+            } @else {
+              <div
+                class="tree-row file"
+                [class.active]="node.file && node.file.id === workspaceService.activeFileId()"
+                [style.padding-left.px]="node.level * 16 + 22"
+                (click)="node.file && workspaceService.openFile(node.file)"
+              >
+                @if (isImageNode(node.file || node)) {
+                  <span class="file-badge image-badge" title="Image">
+                    <svg class="file-icon-svg" viewBox="0 0 16 16" fill="currentColor">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
+                    </svg>
+                  </span>
+                } @else if (isOmniFluxNode(node.file || node)) {
+                  <span class="file-badge icon-badge" title="OmniFlux">
+                    <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
+                  </span>
+                } @else if (isPhpNode(node.file || node)) {
+                  <span class="file-badge icon-badge" title="PHP">
+                    <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+                  </span>
+                } @else if (isPerlNode(node.file || node)) {
+                  <span class="file-badge icon-badge" title="Perl">
+                    <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
+                  </span>
+                } @else {
+                  <span class="file-badge" [attr.data-lang]="node.language">{{
+                    getFileIcon(node.file || node)
+                  }}</span>
+                }
+                <span class="node-name" [title]="node.path">{{ node.name }}</span>
+                <div class="row-status-indicators">
+                  <button
+                    type="button"
+                    class="tree-delete-btn"
+                    title="Delete file permanently from disk"
+                    (click)="onDeleteFileFromTree(node.file || node, $event)"
+                  >
+                    🗑
+                  </button>
+                  @if (workspaceService.hasGitChanges(node.file || node)) {
+                    <button
+                      type="button"
+                      class="tree-git-btn"
+                      title="Open Git Diff"
+                      (click)="onOpenDiffForNode(node, $event)"
+                    >
+                      <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+                        <path fill-rule="evenodd" d="M11.75 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm-7.5 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.25 10.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM3.5 3.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm7.5 0a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm-7.5 8.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
+                        <path fill-rule="evenodd" d="M5 5.5V11h-1.5V5.5H5zm2.75 2a3.75 3.75 0 0 1 3.75-3.75h.5V5.25h-.5A2.25 2.25 0 0 0 9.25 7.5v.75H7.75V7.5z"/>
+                      </svg>
+                    </button>
+                  }
+                  @if (workspaceService.isFileModified(node.file || node)) {
+                    <span class="dirty-dot" title="Unsaved changes">●</span>
+                  }
+                </div>
+              </div>
+            }
+          }
+        </ng-template>
+
+        @if (!workspaceService.isRealWorkspace()) {
+          <div class="empty-folder-state">
+            <span class="empty-folder-title">No Folder Opened</span>
+            <p class="empty-folder-desc">You have not yet opened a folder.</p>
+            <button
+              type="button"
+              class="open-folder-main-btn"
+              (click)="workspaceService.openDirectoryFromDisk()"
+            >
+              📁 Open Folder
+            </button>
+          </div>
+        } @else if (workspaceService.fileTree().length === 0) {
+          <div class="empty-folder-state empty-workspace-state">
+            <span class="empty-workspace-icon">📂</span>
+            <span class="empty-folder-title">Folder is Empty</span>
+            <p class="empty-folder-desc">No files in this folder yet.</p>
+            <div class="empty-workspace-btn-group">
+              <button
+                type="button"
+                class="empty-btn new-file-btn"
+                (click)="workspaceService.openModal('new-file')"
+              >
+                <span>+</span> New File
+              </button>
+              <button
+                type="button"
+                class="empty-btn new-folder-btn"
+                (click)="workspaceService.openModal('new-folder')"
+              >
+                <span>📁+</span> New Folder
+              </button>
+            </div>
+          </div>
+        } @else {
+          <ng-container
+            *ngTemplateOutlet="nodeTemplate; context: { $implicit: workspaceService.fileTree() }"
+          />
+        }
+      }
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="open-folder-btn" (click)="workspaceService.openDirectoryFromDisk()">
+        <span>📁 Browse Folder...</span>
+      </button>
+      @if (workspaceService.isDesktop()) {
+        <button class="open-folder-btn path-btn" (click)="workspaceService.openModal('open-folder-path')">
+          <span>⌨ Open by Path...</span>
+        </button>
+      }
+    </div>
+  } @else if (workspaceService.sidebarView() === 'search') {
+    <!-- SEARCH VIEW in Left Panel -->
+    <div class="search-panel">
+      <div class="search-panel-header">
+        <span class="search-panel-title">SEARCH</span>
+        <div class="search-panel-actions">
+          <button
+            class="panel-action-btn"
+            title="Back to Files (Explorer)"
+            (click)="workspaceService.setSidebarView('explorer')"
+          >
+            <span>📁 Files</span>
+          </button>
+          <button
+            class="panel-action-btn icon-only"
+            title="Refresh Search"
+            (click)="runSearch()"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+            </svg>
+          </button>
+          <button
+            class="panel-action-btn icon-only"
+            title="Clear Search"
+            (click)="clearSearch()"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor">
+              <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+            </svg>
+          </button>
+          <button
+            class="panel-action-btn icon-only"
+            [title]="allCollapsed() ? 'Expand All' : 'Collapse All'"
+            (click)="toggleCollapseAll()"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor">
+              @if (allCollapsed()) {
+                <path d="M1 8a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 8zM8 1a.5.5 0 0 1 .5.5v13a.5.5 0 0 1-1 0v-13A.5.5 0 0 1 8 1z"/>
+              } @else {
+                <path d="M1 8a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 8z"/>
+              }
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="search-form-container">
+        <div class="search-input-wrapper">
+          <input
+            #searchInput
+            type="text"
+            class="sidebar-search-input"
+            [value]="searchQuery()"
+            (input)="onSearchInput($event)"
+            (keydown.enter)="runSearch()"
+          />
+          <div class="search-options">
+            <button
+              type="button"
+              class="option-toggle-btn"
+              [class.active]="matchCase()"
+              (click)="toggleMatchCase()"
+              title="Match Case (Alt+C)"
+            >
+              Aa
+            </button>
+            <button
+              type="button"
+              class="option-toggle-btn"
+              [class.active]="wholeWord()"
+              (click)="toggleWholeWord()"
+              title="Match Whole Word (Alt+W)"
+            >
+              \b
+            </button>
+            <button
+              type="button"
+              class="option-toggle-btn"
+              [class.active]="useRegex()"
+              (click)="toggleRegex()"
+              title="Use Regular Expression (Alt+R)"
+            >
+              .*
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="search-status-bar">
+        @if (isSearching()) {
+          <span class="status-searching">⌛ Searching files...</span>
+        } @else if (!searchQuery().trim()) {
+          <span class="status-hint">Type a term and press Enter</span>
+        } @else if (searchFileGroups().length === 0) {
+          <span class="status-no-results">No results found.</span>
+        } @else {
+          <span class="status-count">
+            {{ totalMatchesCount() }} result{{ totalMatchesCount() === 1 ? '' : 's' }} in {{ searchFileGroups().length }} file{{ searchFileGroups().length === 1 ? '' : 's' }}
+          </span>
+        }
+      </div>
+
+      <div class="search-results-tree">
+        @for (group of searchFileGroups(); track group.file.id) {
+          <div class="file-group">
+            <div class="file-group-header" (click)="toggleGroup(group)">
+              <span class="chevron" [class.expanded]="group.expanded">▶</span>
+              @if (isImageNode(group.file)) {
+                <span class="file-badge image-badge" title="Image">
+                  <svg class="file-icon-svg" viewBox="0 0 16 16" fill="currentColor">
+                    <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
+                  </svg>
+                </span>
+              } @else if (isOmniFluxNode(group.file)) {
+                <span class="file-badge icon-badge" title="OmniFlux">
+                  <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
+                </span>
+              } @else if (isPhpNode(group.file)) {
+                <span class="file-badge icon-badge" title="PHP">
+                  <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+                </span>
+              } @else if (isPerlNode(group.file)) {
+                <span class="file-badge icon-badge" title="Perl">
+                  <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
+                </span>
+              } @else {
+                <span class="file-badge" [attr.data-lang]="group.file.language">{{
+                  getFileIcon(group.file)
+                }}</span>
+              }
+              <span class="group-file-name" [title]="group.file.path">{{ group.file.name }}</span>
+              <span class="group-file-dir" [title]="group.file.path">{{ getFileDir(group.file.path) }}</span>
+              <span class="group-count-badge">{{ group.matches.length }}</span>
+            </div>
+
+            @if (group.expanded) {
+              <div class="file-group-matches">
+                @for (m of group.matches; track m.lineNumber + ':' + (m.matchStart ?? 0)) {
+                  <div class="match-item" (click)="selectMatch(m)">
+                    <span class="match-line-num">{{ m.lineNumber }}:</span>
+                    <span class="match-line-text" [innerHTML]="formatMatchPreview(m)"></span>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  } @else if (workspaceService.sidebarView() === 'git-changes') {
+    <!-- GIT CHANGES / SOURCE CONTROL PANEL -->
+    <div class="git-panel">
+      <div class="git-panel-header">
+        <div class="git-header-left">
+          <span class="git-panel-title">SOURCE CONTROL</span>
+          @if (workspaceService.gitBranch()) {
+            <button
+              type="button"
+              class="git-branch-tag"
+              (click)="workspaceService.openModal('git-branches')"
+              title="Switch or create Git branch"
+            >
+              ⎇ {{ workspaceService.gitBranch() }} ▾
+            </button>
+            @if (workspaceService.gitSyncStatus()?.has_remote) {
+              @if ((workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
+                <span class="git-sync-tag ahead" title="{{ workspaceService.gitSyncStatus()?.ahead }} commit(s) ahead">
+                  ↑{{ workspaceService.gitSyncStatus()?.ahead }}
+                </span>
+              }
+              @if ((workspaceService.gitSyncStatus()?.behind ?? 0) > 0) {
+                <span class="git-sync-tag behind" title="{{ workspaceService.gitSyncStatus()?.behind }} commit(s) behind">
+                  ↓{{ workspaceService.gitSyncStatus()?.behind }}
+                </span>
+              }
+            }
+          }
+        </div>
+        <div class="git-panel-actions">
+          <button
+            class="panel-action-btn icon-only"
+            title="Refresh Git Status"
+            (click)="workspaceService.refreshGitStatus()"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+            </svg>
+          </button>
+          <button
+            class="panel-action-btn"
+            title="Back to Files (Explorer)"
+            (click)="workspaceService.setSidebarView('explorer')"
+          >
+            <span>📁 Files</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Commit Note & Action Section -->
+      @if (workspaceService.gitBranch()) {
+        @if (workspaceService.changedFiles().length > 0) {
+          <div class="git-commit-box">
+            @if (isCommitting() || workspaceService.isCommitting()) {
+              <div class="git-progress-bar">
+                <div class="progress-bar-indicator"></div>
+              </div>
+            }
+            <div class="commit-input-wrapper">
+              <div class="commit-label-row">
+                <label class="commit-label">Commit Note</label>
+                <button
+                  type="button"
+                  class="btn-ai-note"
+                  [disabled]="isGeneratingCommitNote() || isCommitting() || workspaceService.isCommitting()"
+                  (click)="generateAiCommitNote()"
+                  title="Generate commit message using local AI (llama-server)"
+                >
+                  @if (isGeneratingCommitNote()) {
+                    <span class="btn-spinner-tiny"></span>
+                    <span>Thinking...</span>
+                  } @else {
+                    <span>✨ AI Suggest</span>
+                  }
+                </button>
+              </div>
+              <textarea
+                class="commit-textarea"
+                [value]="commitMessage()"
+                [disabled]="isCommitting() || workspaceService.isCommitting()"
+                (input)="onCommitMessageChange($event)"
+                (keydown.control.enter)="submitCommit()"
+                (keydown.meta.enter)="submitCommit()"
+                rows="2"
+              ></textarea>
+            </div>
+            <div class="commit-buttons-row">
+              <button
+                type="button"
+                class="btn-commit"
+                [class.loading]="(isCommitting() || workspaceService.isCommitting()) && !isCommitAndPushing()"
+                [disabled]="!canCommit() || isCommitting() || workspaceService.isCommitting() || isPushing() || workspaceService.isPushing()"
+                (click)="submitCommit()"
+                title="Commit changes locally (Ctrl+Enter)"
+              >
+                @if ((isCommitting() || workspaceService.isCommitting()) && !isCommitAndPushing()) {
+                  <span class="btn-spinner"></span>
+                  <span>Committing...</span>
+                } @else {
+                  <span>✓ Commit</span>
+                }
+              </button>
+              @if (workspaceService.gitSyncStatus()?.has_remote) {
+                <button
+                  type="button"
+                  class="btn-commit-push"
+                  [class.loading]="isCommitAndPushing()"
+                  [disabled]="!canCommit() || isCommitting() || workspaceService.isCommitting() || isPushing() || workspaceService.isPushing()"
+                  (click)="submitCommitAndPush()"
+                  title="Commit changes and push immediately to remote"
+                >
+                  @if (isCommitAndPushing()) {
+                    <span class="btn-spinner"></span>
+                    <span>Syncing...</span>
+                  } @else {
+                    <span>🚀 Commit & Push</span>
+                  }
+                </button>
+              }
+            </div>
+          </div>
+        } @else if (workspaceService.gitSyncStatus()?.has_remote && (workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
+          <div class="git-commit-box">
+            @if (isPushing() || workspaceService.isPushing()) {
+              <div class="git-progress-bar">
+                <div class="progress-bar-indicator push"></div>
+              </div>
+            }
+            <button
+              type="button"
+              class="btn-push"
+              [class.loading]="isPushing() || workspaceService.isPushing()"
+              [disabled]="isPushing() || workspaceService.isPushing()"
+              (click)="submitPush()"
+            >
+              @if (isPushing() || workspaceService.isPushing()) {
+                <span class="btn-spinner"></span>
+                <span>Pushing to remote...</span>
+              } @else {
+                <svg class="push-icon" viewBox="0 0 16 16" fill="currentColor">
+                  <path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/>
+                </svg>
+                <span>Push ({{ workspaceService.gitSyncStatus()?.ahead }} {{ (workspaceService.gitSyncStatus()?.ahead ?? 0) === 1 ? 'commit' : 'commits' }})</span>
+              }
+            </button>
+          </div>
+        }
+      }
+
+      <div class="git-changes-container">
+        <div class="git-changes-header">
+          <span class="git-changes-title">CHANGES</span>
+          <span class="changes-count-pill">{{ workspaceService.changedFiles().length }}</span>
+        </div>
+
+        <div class="git-files-list">
+          @if (!workspaceService.isRealWorkspace()) {
+            <div class="empty-changes-msg">
+              <span class="empty-icon">📁</span>
+              <span>No folder opened.</span>
+            </div>
+          } @else if (!workspaceService.gitBranch()) {
+            <div class="empty-changes-msg">
+              <span class="empty-icon">ℹ</span>
+              <span>The current folder is not a Git repository.</span>
+            </div>
+          } @else if (workspaceService.changedFiles().length === 0) {
+            <div class="empty-changes-msg">
+              <span class="empty-icon">✓</span>
+              <span>No changes detected against commit baseline.</span>
+            </div>
+          } @else {
+            @for (file of workspaceService.changedFiles(); track file.id) {
+              <div
+                class="git-file-row"
+                [class.active]="workspaceService.diffModeActive() && workspaceService.activeDiffFile()?.id === file.id"
+                (click)="workspaceService.openDiffView(file)"
+                title="Click to view Meld Side-by-Side Diff"
+              >
+                @if (isImageNode(file)) {
+                  <span class="file-icon-badge image-badge" title="Image">
+                    <svg class="file-icon-svg" viewBox="0 0 16 16" fill="currentColor">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
+                    </svg>
+                  </span>
+                } @else if (isOmniFluxNode(file)) {
+                  <span class="file-icon-badge icon-badge" title="OmniFlux">
+                    <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
+                  </span>
+                } @else if (isPhpNode(file)) {
+                  <span class="file-icon-badge icon-badge" title="PHP">
+                    <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+                  </span>
+                } @else if (isPerlNode(file)) {
+                  <span class="file-icon-badge icon-badge" title="Perl">
+                    <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
+                  </span>
+                } @else {
+                  <span class="file-icon-badge" [attr.data-lang]="file.language">{{ getFileIcon(file) }}</span>
+                }
+                <div class="git-file-meta">
+                  <span class="git-file-name">{{ file.name }}</span>
+                  <span class="git-file-path">{{ file.path }}</span>
+                </div>
+                <div class="git-file-actions">
+                  <button
+                    type="button"
+                    class="git-action-btn untrack-btn"
+                    [title]="file.gitStatus === 'untracked' ? 'Remove untracked file (ignore or delete)' : 'Remove from Git tracking (keep on disk)'"
+                    (click)="onUntrackFile(file, $event)"
+                  >
+                    🗑
+                  </button>
+                  <button
+                    type="button"
+                    class="git-action-btn revert-btn"
+                    title="Discard changes (Revert to HEAD)"
+                    (click)="onRevertFile(file, $event)"
+                  >
+                    ⎌
+                  </button>
+                  <button
+                    type="button"
+                    class="git-action-btn diff-btn"
+                    title="Open Meld Side-by-Side Diff"
+                    (click)="onOpenDiff(file, $event)"
+                  >
+                    ◫
+                  </button>
+                  <span
+                    class="status-letter-badge"
+                    [class.badge-m]="file.gitStatus === 'modified'"
+                    [class.badge-a]="file.gitStatus === 'added'"
+                    [class.badge-u]="file.gitStatus === 'untracked'"
+                  >
+                    {{ file.gitStatus === 'added' ? 'A' : file.gitStatus === 'untracked' ? 'U' : 'M' }}
+                  </span>
+                </div>
+              </div>
+            }
+          }
+        </div>
+      </div>
+
+      <!-- Recent Commits Section -->
+      @if (workspaceService.gitBranch()) {
+        <div class="git-commits-container">
+          <div class="git-commits-header" (click)="toggleCommitsExpanded()">
+            <div class="git-commits-header-left">
+              <span class="toggle-icon">{{ commitsExpanded() ? '▾' : '▸' }}</span>
+              <span class="git-commits-title">RECENT COMMITS</span>
+            </div>
+            <span class="commits-count-pill">{{ workspaceService.recentCommits().length }}</span>
+          </div>
+          @if (commitsExpanded()) {
+            <div class="git-commits-list">
+              @if (workspaceService.isLoadingCommits()) {
+                <div class="empty-commits-msg">Loading commits...</div>
+              } @else if (workspaceService.recentCommits().length === 0) {
+                <div class="empty-commits-msg">No commits found.</div>
+              } @else {
+                @for (commit of workspaceService.recentCommits(); track commit.hash) {
+                  <div class="git-commit-row" [title]="commit.hash">
+                    <div class="commit-row-top">
+                      <span class="commit-hash">{{ commit.shortHash }}</span>
+                      <span class="commit-msg">{{ commit.message }}</span>
+                      @if (commit.tags && commit.tags.length > 0) {
+                        @for (tag of commit.tags; track tag) {
+                          <span class="commit-tag-badge" [title]="'Tag: ' + tag">🏷️ {{ tag }}</span>
+                        }
+                      }
+                    </div>
+                    <div class="commit-row-meta">
+                      <span class="commit-author">{{ commit.author }}</span>
+                      <span class="commit-date">{{ commit.date }}</span>
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Sidebar Resize Handle -->
+  <div
+    class="sidebar-resizer"
+    [class.active]="isResizing()"
+    (mousedown)="onStartResize($event)"
+    (dblclick)="onResetWidth($event)"
+    title="Drag to resize sidebar (double-click to reset)"
+  ></div>
+</aside>

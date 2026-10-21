@@ -1,0 +1,107 @@
+<footer class="status-bar">
+  <div class="left-group">
+    @if (workspaceService.gitBranch()) {
+      <button
+        type="button"
+        class="status-btn branch-btn"
+        (click)="workspaceService.openModal('git-branches')"
+        [title]="'Current Git Branch: ' + workspaceService.gitBranch() + ' (Click to switch or create branch)'"
+      >
+        <span class="icon">⎇</span> {{ workspaceService.gitBranch() }}
+      </button>
+    }
+
+    <button
+      type="button"
+      class="status-btn git-changes-badge"
+      (click)="workspaceService.toggleSidebarView('git-changes')"
+      title="Click to view changed files compared to last commit"
+    >
+      <span class="git-diff-symbol">±</span>
+      <span>{{ workspaceService.changedFiles().length }} changed</span>
+    </button>
+
+    @if (workspaceService.isRealWorkspace()) {
+      <button
+        type="button"
+        class="status-btn terminal-badge"
+        (click)="workspaceService.openSystemTerminal()"
+        [title]="'Open System Terminal in ' + (workspaceService.nativeWorkspacePath() || 'workspace')"
+      >
+        <svg class="terminal-svg" viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+          <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/>
+          <path d="M5.854 5.646a.5.5 0 0 1 0 .708L3.707 8.5l2.147 2.146a.5.5 0 0 1-.708.708l-2.5-2.5a.5.5 0 0 1 0-.708l2.5-2.5a.5.5 0 0 1 .708 0zM8 10.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>
+        </svg>
+        <span>Terminal</span>
+      </button>
+    }
+
+    @if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as activeDiff) {
+      <button
+        type="button"
+        class="status-btn active-diff-badge"
+        (click)="workspaceService.closeDiffView()"
+        title="Currently in Meld Diff mode - Click to return to Editor"
+      >
+        <span class="diff-icon">◫</span>
+        <span>Diff: {{ activeDiff.name }}</span>
+        <span class="close-x">✕</span>
+      </button>
+    }
+
+    @if (workspaceService.statusNotification()) {
+      <span class="status-item notification">
+        📢 {{ workspaceService.statusNotification() }}
+      </span>
+    }
+  </div>
+
+  <div class="right-group">
+    <span class="status-item">
+      Ln {{ cursor().line }}, Col {{ cursor().column }}
+    </span>
+
+    <button
+      type="button"
+      class="status-btn"
+      (click)="workspaceService.openModal('indentation')"
+      title="Select Indentation Mode"
+    >
+      {{ indentationLabel() }}
+    </button>
+
+    <span class="status-item">UTF-8</span>
+
+    <button
+      type="button"
+      class="status-btn zoom-badge"
+      (click)="cycleZoom()"
+      [title]="'Zoom: ' + zoomService.zoomPercentage() + '% (Ctrl + / Ctrl - to zoom, Ctrl 0 to reset)'"
+    >
+      <span class="zoom-icon">🔍</span>
+      <span>{{ zoomService.zoomPercentage() }}%</span>
+    </button>
+
+    <button
+      type="button"
+      class="status-btn language-badge"
+      (click)="workspaceService.openModal('change-language')"
+      title="Select Language Mode (Change Syntax Coloring)"
+    >
+      {{ activeLanguageLabel() }}
+    </button>
+
+    <button
+      type="button"
+      class="status-btn ai-badge"
+      [class.online]="aiService.isServerOnline() && !aiService.isGenerating()"
+      [class.thinking]="aiService.isGenerating()"
+      [class.offline]="!aiService.isServerOnline()"
+      (click)="workspaceService.openModal('ai-settings')"
+      [title]="aiService.isGenerating() ? 'AI is generating code...' : (aiService.isServerOnline() ? 'AI Server Online (' + aiService.endpoint() + ') - Click for Settings' : 'AI Server Offline - Click to Configure / Start')"
+    >
+      <span class="ai-sparkle" [class.spinning]="aiService.isGenerating()">✨</span>
+      <span>AI: {{ aiService.isGenerating() ? 'Thinking...' : (aiService.isServerOnline() ? 'Online' : 'Offline') }}</span>
+    </button>
+  </div>
+</footer>

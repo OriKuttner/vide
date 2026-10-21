@@ -1,0 +1,70 @@
+<header class="header">
+  <div class="left-section">
+    <img class="app-logo-img" src="vector-logo-32.png" alt="Vector" width="18" height="18" />
+    <span class="app-title">Vector-IDE</span>
+    @if (workspaceService.activeFile(); as file) {
+      <span class="active-file-indicator">
+        - {{ file.name }}
+      </span>
+    }
+  </div>
+
+  <div class="center-section">
+    <button
+      class="nav-action-btn"
+      title="Open Folder from Disk (Browse)"
+      (click)="workspaceService.openDirectoryFromDisk()"
+    >
+      📁 Open Folder
+    </button>
+
+    @if (workspaceService.isDesktop()) {
+      <button
+        class="nav-action-btn"
+        title="Open Folder by Path (Direct input)"
+        (click)="workspaceService.openModal('open-folder-path')"
+      >
+        ⌨ Path...
+      </button>
+    }
+
+    @if (workspaceService.isRealWorkspace()) {
+      <button
+        class="nav-action-btn close-folder-nav-btn"
+        title="Close Folder (Return to Welcome / Recent)"
+        (click)="workspaceService.closeWorkspace()"
+      >
+        ✕ Close Folder
+      </button>
+    }
+
+    <button
+      class="nav-action-btn"
+      title="Save Active File (Ctrl+S)"
+      (click)="workspaceService.saveCurrentFile()"
+    >
+      💾 Save
+    </button>
+
+    <div class="search-box" (click)="workspaceService.openModal('file-search')">
+      <span class="search-icon">🔍</span>
+      <span class="search-placeholder">Vector IDE - Search files or symbols</span>
+    </div>
+  </div>
+
+  <div class="right-section">
+    <button
+      class="theme-toggle-btn"
+      (click)="themeService.toggleTheme()"
+      [title]="'Switch to ' + (themeService.currentTheme() === 'light' ? 'Dark' : 'Light') + ' Mode'"
+    >
+      @if (themeService.currentTheme() === 'light') {
+        <span class="theme-icon">🌙</span> Dark Mode
+      } @else {
+        <span class="theme-icon">☀️</span> Light Mode
+      }
+    </button>
+    <span class="feature-tag">OmniFlux Ready</span>
+    <span class="feature-tag">LSP Ready</span>
+  </div>
+</header>
