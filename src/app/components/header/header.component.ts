@@ -38,6 +38,16 @@ import { ThemeService } from '../../services/theme.service';
           </button>
         }
 
+        @if (workspaceService.isRealWorkspace()) {
+          <button
+            class="nav-action-btn close-folder-nav-btn"
+            title="Close Folder (Return to Welcome / Recent)"
+            (click)="workspaceService.closeWorkspace()"
+          >
+            ✕ Close Folder
+          </button>
+        }
+
         <button
           class="nav-action-btn"
           title="Save Active File (Ctrl+S)"
@@ -137,6 +147,14 @@ import { ThemeService } from '../../services/theme.service';
           &:hover {
             background-color: var(--bg-btn-hover, #dcdcdc);
             border-color: #007acc;
+          }
+
+          &.close-folder-nav-btn {
+            color: #d32f2f;
+            &:hover {
+              background-color: rgba(211, 47, 47, 0.1);
+              border-color: #d32f2f;
+            }
           }
         }
 

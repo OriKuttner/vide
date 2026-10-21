@@ -49,6 +49,12 @@ pub struct FsEntryItem {
     pub size: u64,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FileMetadataResult {
+    pub mtime_ms: u64,
+    pub size: u64,
+}
+
 fn expand_path(p: &str) -> String {
     if p.starts_with("~/") {
         if let Ok(home) = std::env::var("HOME") {
@@ -510,7 +516,91 @@ fn read_file_base64(file_path: String) -> Result<String, String> {
 #[tauri::command]
 fn write_file_text(file_path: String, content: String) -> Result<(), String> {
     let clean_path = expand_path(&file_path);
+    if let Some(parent) = std::path::Path::new(&clean_path).parent() {
+        let _ = fs::create_dir_all(parent);
+    }
     fs::write(&clean_path, content).map_err(|e| format!("Failed to write file '{}': {}", clean_path, e))
+}
+
+#[tauri::command]
+fn get_file_metadata(file_path: String) -> Result<FileMetadataResult, String> {
+    let clean_path = expand_path(&file_path);
+    let metadata = fs::metadata(&clean_path)
+        .map_err(|e| format!("Failed to read metadata for '{}': {}", clean_path, e))?;
+    let mtime_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    Ok(FileMetadataResult {
+        mtime_ms,
+        size: metadata.len(),
+    })
+}
+
+#[tauri::command]
+fn create_directory(dir_path: String) -> Result<(), String> {
+    let clean_path = expand_path(&dir_path);
+    fs::create_dir_all(&clean_path).map_err(|e| format!("Failed to create directory '{}': {}", clean_path, e))
+}
+
+#[tauri::command]
+fn open_system_terminal(dir_path: String) -> Result<(), String> {
+    let clean_path = expand_path(&dir_path);
+    let path = std::path::Path::new(&clean_path);
+    if !path.exists() {
+        return Err(format!("Directory '{}' does not exist", clean_path));
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let candidates: &[(&str, &[&str])] = &[
+            ("x-terminal-emulator", &["--working-directory", &clean_path]),
+            ("mate-terminal", &["--working-directory", &clean_path]),
+            ("gnome-terminal", &["--working-directory", &clean_path]),
+            ("xfce4-terminal", &["--working-directory", &clean_path]),
+            ("konsole", &["--workdir", &clean_path]),
+            ("alacritty", &["--working-directory", &clean_path]),
+            ("kitty", &["--directory", &clean_path]),
+            ("terminator", &["--working-directory", &clean_path]),
+            ("tilix", &["--working-directory", &clean_path]),
+            ("x-terminal-emulator", &[]),
+            ("xterm", &[]),
+        ];
+
+        for (term, args) in candidates {
+            let mut cmd = std::process::Command::new(term);
+            cmd.current_dir(&clean_path);
+            for arg in *args {
+                cmd.arg(arg);
+            }
+            if cmd.spawn().is_ok() {
+                return Ok(());
+            }
+        }
+
+        return Err("No supported terminal emulator found on this system".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "cmd.exe"])
+            .current_dir(&clean_path)
+            .spawn()
+            .map_err(|e| format!("Failed to launch terminal on Windows: {}", e))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", "Terminal", &clean_path])
+            .spawn()
+            .map_err(|e| format!("Failed to launch terminal on macOS: {}", e))?;
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -619,6 +709,9 @@ pub fn run() {
             read_file_text,
             read_file_base64,
             write_file_text,
+            get_file_metadata,
+            create_directory,
+            open_system_terminal,
             get_cli_launch_payload,
         ])
         .run(tauri::generate_context!())

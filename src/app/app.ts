@@ -51,6 +51,12 @@ export class App {
     if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
       event.preventDefault();
       this.workspaceService.openModal('file-search');
+    } else if ((event.ctrlKey || event.metaKey) && (event.key === 'o' || event.key === 'O')) {
+      event.preventDefault();
+      this.workspaceService.openDirectoryFromDisk();
+    } else if ((event.ctrlKey || event.metaKey) && (event.key === 'n' || event.key === 'N')) {
+      event.preventDefault();
+      this.workspaceService.openModal('new-file');
     } else if (
       (event.ctrlKey || event.metaKey) &&
       event.shiftKey &&

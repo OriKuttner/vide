@@ -154,70 +154,105 @@ import {
         }
 
         @if (!workspaceService.activeFile() && !workspaceService.diffModeActive()) {
-          <div class="welcome-stage">
-            <div class="welcome-box">
-              <!-- 1. Centered Vector Logo -->
-              <div class="logo-wrapper">
-                <img class="welcome-logo" src="vector-logo.png" alt="Vector Logo" width="88" height="88" />
-              </div>
+          @if (!workspaceService.isRealWorkspace()) {
+            <div class="welcome-stage">
+              <div class="welcome-box">
+                <!-- 1. Centered Vector Logo -->
+                <div class="logo-wrapper">
+                  <img class="welcome-logo" src="vector-logo.png" alt="Vector Logo" width="88" height="88" />
+                </div>
 
-              <!-- 2. Centered Open Folder CTA -->
-              <div class="welcome-main-action">
-                <button
-                  type="button"
-                  class="open-folder-cta"
-                  (click)="workspaceService.openDirectoryFromDisk()"
-                  title="Open Folder (Ctrl+O)"
-                >
-                  <span class="cta-icon">📁</span>
-                  <span class="cta-text">Open Folder</span>
-                  <span class="cta-kbd">Ctrl+O</span>
-                </button>
-                @if (workspaceService.isDesktop()) {
+                <!-- 2. Centered Open Folder CTA -->
+                <div class="welcome-main-action">
                   <button
                     type="button"
-                    class="open-path-cta"
-                    (click)="workspaceService.openModal('open-folder-path')"
-                    title="Open Folder by Path"
+                    class="open-folder-cta"
+                    (click)="workspaceService.openDirectoryFromDisk()"
+                    title="Open Folder (Ctrl+O)"
                   >
-                    ⌨ Open by Path...
+                    <span class="cta-icon">📁</span>
+                    <span class="cta-text">Open Folder</span>
+                    <span class="cta-kbd">Ctrl+O</span>
                   </button>
+                  @if (workspaceService.isDesktop()) {
+                    <button
+                      type="button"
+                      class="open-path-cta"
+                      (click)="workspaceService.openModal('open-folder-path')"
+                      title="Open Folder by Path"
+                    >
+                      ⌨ Open by Path...
+                    </button>
+                  }
+                </div>
+
+                <!-- 3. Squares with names of recent folders -->
+                @if (workspaceService.recentWorkspaces().length > 0) {
+                  <div class="recent-tiles-section">
+                    <span class="recent-section-title">Recent Folders</span>
+                    <div class="recent-tiles-grid">
+                      @for (item of workspaceService.recentWorkspaces(); track item.path) {
+                        <div
+                          class="recent-tile"
+                          (click)="workspaceService.openRecentByPath(item.path)"
+                          [title]="item.path"
+                        >
+                          <button
+                            type="button"
+                            class="tile-remove-btn"
+                            (click)="workspaceService.removeRecentWorkspace(item.path, $event)"
+                            title="Remove from recent"
+                          >
+                            ×
+                          </button>
+                          <div class="tile-icon-box">
+                            <svg class="tile-folder-svg" width="36" height="36" viewBox="0 0 16 16" fill="currentColor">
+                              <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a1.99 1.99 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4H2.19zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139C1.72 3.042 1.95 3 2.19 3h7.638a3.003 3.003 0 0 1-.947-.707L8.053 1.465A1 1 0 0 0 7.34 1H6.172a1 1 0 0 0-.707.293L4.757 2.293z"/>
+                            </svg>
+                          </div>
+                          <span class="tile-name">{{ item.name }}</span>
+                          <span class="tile-path">{{ item.path }}</span>
+                        </div>
+                      }
+                    </div>
+                  </div>
                 }
               </div>
-
-              <!-- 3. Squares with names of recent folders -->
-              @if (workspaceService.recentWorkspaces().length > 0) {
-                <div class="recent-tiles-section">
-                  <span class="recent-section-title">Recent Folders</span>
-                  <div class="recent-tiles-grid">
-                    @for (item of workspaceService.recentWorkspaces(); track item.path) {
-                      <div
-                        class="recent-tile"
-                        (click)="workspaceService.openRecentByPath(item.path)"
-                        [title]="item.path"
-                      >
-                        <button
-                          type="button"
-                          class="tile-remove-btn"
-                          (click)="workspaceService.removeRecentWorkspace(item.path, $event)"
-                          title="Remove from recent"
-                        >
-                          ×
-                        </button>
-                        <div class="tile-icon-box">
-                          <svg class="tile-folder-svg" width="36" height="36" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a1.99 1.99 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4H2.19zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139C1.72 3.042 1.95 3 2.19 3h7.638a3.003 3.003 0 0 1-.947-.707L8.053 1.465A1 1 0 0 0 7.34 1H6.172a1 1 0 0 0-.707.293L4.757 2.293z"/>
-                          </svg>
-                        </div>
-                        <span class="tile-name">{{ item.name }}</span>
-                        <span class="tile-path">{{ item.path }}</span>
-                      </div>
-                    }
-                  </div>
-                </div>
-              }
             </div>
-          </div>
+          } @else {
+            <div class="empty-workspace-editor-stage">
+              <div class="empty-editor-watermark">
+                <img class="watermark-logo" src="vector-logo.png" alt="Vide Logo" width="64" height="64" />
+                <div class="workspace-heading">
+                  <span class="workspace-folder-icon">📂</span>
+                  <span class="workspace-folder-title">{{ workspaceService.workspaceName() }}</span>
+                </div>
+                @if (workspaceService.fileTree().length === 0) {
+                  <p class="empty-workspace-hint">This folder is empty. Create a file to get started.</p>
+                } @else {
+                  <p class="empty-workspace-hint">Select a file from the explorer or use a shortcut below.</p>
+                }
+                <div class="workspace-shortcuts-list">
+                  <button type="button" class="shortcut-row" (click)="workspaceService.openModal('new-file')">
+                    <span class="shortcut-label">New File</span>
+                    <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
+                  </button>
+                  <button type="button" class="shortcut-row" (click)="workspaceService.openModal('file-search')">
+                    <span class="shortcut-label">Go to File</span>
+                    <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>P</kbd></span>
+                  </button>
+                  <button type="button" class="shortcut-row" (click)="workspaceService.setSidebarView('search')">
+                    <span class="shortcut-label">Find in Files</span>
+                    <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F</kbd></span>
+                  </button>
+                  <button type="button" class="shortcut-row" (click)="workspaceService.openDirectoryFromDisk()">
+                    <span class="shortcut-label">Switch Folder</span>
+                    <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>O</kbd></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
         }
 
         <div
@@ -1326,6 +1361,108 @@ import {
                   overflow: hidden;
                   text-overflow: ellipsis;
                   white-space: nowrap;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      .empty-workspace-editor-stage {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--bg-editor, #1e1e1e);
+        user-select: none;
+        z-index: 10;
+        padding: 40px 20px;
+
+        .empty-editor-watermark {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          max-width: 480px;
+
+          .watermark-logo {
+            opacity: 0.3;
+            margin-bottom: 16px;
+            filter: grayscale(25%);
+          }
+
+          .workspace-heading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+
+            .workspace-folder-icon {
+              font-size: 20px;
+            }
+
+            .workspace-folder-title {
+              font-size: 16px;
+              font-weight: 600;
+              color: var(--text-primary, #cccccc);
+              letter-spacing: 0.5px;
+            }
+          }
+
+          .empty-workspace-hint {
+            font-size: 13px;
+            color: var(--text-muted, #858585);
+            margin: 0 0 24px 0;
+          }
+
+          .workspace-shortcuts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            max-width: 320px;
+
+            .shortcut-row {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              padding: 9px 14px;
+              background-color: rgba(255, 255, 255, 0.03);
+              border: 1px solid var(--border-color, #2b2b2b);
+              border-radius: 6px;
+              cursor: pointer;
+              transition: all 0.15s ease;
+              font-family: inherit;
+
+              &:hover {
+                background-color: rgba(255, 255, 255, 0.07);
+                border-color: var(--accent-color, #007acc);
+                transform: translateX(2px);
+              }
+
+              .shortcut-label {
+                font-size: 13px;
+                color: var(--text-primary, #cccccc);
+              }
+
+              .shortcut-keys {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 11px;
+                color: var(--text-muted, #858585);
+
+                kbd {
+                  display: inline-block;
+                  padding: 2px 6px;
+                  font-size: 11px;
+                  font-family: monospace;
+                  color: var(--text-primary, #cccccc);
+                  background: rgba(255, 255, 255, 0.08);
+                  border: 1px solid rgba(255, 255, 255, 0.12);
+                  border-radius: 3px;
+                  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
                 }
               }
             }

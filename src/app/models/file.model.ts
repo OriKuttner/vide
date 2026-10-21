@@ -15,6 +15,8 @@ export interface WorkspaceFile {
   isImage?: boolean; // True if file is an image (PNG, JPG, SVG, etc.)
   imageUrl?: string; // Blob URL or base64 data URL for preview
   fileSize?: number; // Size in bytes
+  lastDiskMtime?: number; // Last known modification time in ms (for disk change signature)
+  lastDiskSize?: number; // Last known size in bytes (for disk change signature)
   indentType?: 'tabs' | 'spaces';
   tabSize?: number;
   isIndentationCustom?: boolean;

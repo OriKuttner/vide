@@ -26,6 +26,21 @@ import { ZoomService } from '../../services/zoom.service';
           <span>{{ workspaceService.changedFiles().length }} changed</span>
         </button>
 
+        @if (workspaceService.isRealWorkspace()) {
+          <button
+            type="button"
+            class="status-btn terminal-badge"
+            (click)="workspaceService.openSystemTerminal()"
+            [title]="'Open System Terminal in ' + (workspaceService.nativeWorkspacePath() || 'workspace')"
+          >
+            <svg class="terminal-svg" viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+              <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/>
+              <path d="M5.854 5.646a.5.5 0 0 1 0 .708L3.707 8.5l2.147 2.146a.5.5 0 0 1-.708.708l-2.5-2.5a.5.5 0 0 1 0-.708l2.5-2.5a.5.5 0 0 1 .708 0zM8 10.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>
+            </svg>
+            <span>Terminal</span>
+          </button>
+        }
+
         @if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as activeDiff) {
           <button
             type="button"
@@ -163,6 +178,24 @@ import { ZoomService } from '../../services/zoom.service';
 
           &:hover {
             background-color: rgba(255, 255, 255, 0.3);
+          }
+        }
+
+        &.terminal-badge {
+          background-color: rgba(255, 255, 255, 0.12);
+          font-weight: 500;
+          padding: 2px 8px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+
+          &:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+          }
+
+          .terminal-svg {
+            display: block;
           }
         }
 

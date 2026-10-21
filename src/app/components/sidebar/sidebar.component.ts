@@ -174,6 +174,18 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                 }
               </svg>
             </button>
+            @if (workspaceService.isRealWorkspace()) {
+              <button
+                type="button"
+                class="close-folder-icon-btn"
+                (click)="workspaceService.closeWorkspace()"
+                title="Close Folder (Return to Welcome / Recent)"
+              >
+                <svg class="svg-btn-icon" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+                </svg>
+              </button>
+            }
           </div>
         </div>
 
@@ -274,7 +286,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
               }
             </ng-template>
 
-            @if (workspaceService.fileTree().length === 0) {
+            @if (!workspaceService.isRealWorkspace()) {
               <div class="empty-folder-state">
                 <span class="empty-folder-title">No Folder Opened</span>
                 <p class="empty-folder-desc">You have not yet opened a folder.</p>
@@ -285,6 +297,28 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                 >
                   📁 Open Folder
                 </button>
+              </div>
+            } @else if (workspaceService.fileTree().length === 0) {
+              <div class="empty-folder-state empty-workspace-state">
+                <span class="empty-workspace-icon">📂</span>
+                <span class="empty-folder-title">Folder is Empty</span>
+                <p class="empty-folder-desc">No files in this folder yet.</p>
+                <div class="empty-workspace-btn-group">
+                  <button
+                    type="button"
+                    class="empty-btn new-file-btn"
+                    (click)="workspaceService.openModal('new-file')"
+                  >
+                    <span>+</span> New File
+                  </button>
+                  <button
+                    type="button"
+                    class="empty-btn new-folder-btn"
+                    (click)="workspaceService.openModal('new-folder')"
+                  >
+                    <span>📁+</span> New Folder
+                  </button>
+                </div>
               </div>
             } @else {
               <ng-container
@@ -896,7 +930,8 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
           gap: 4px;
 
           .parent-up-btn,
-          .hidden-toggle-btn {
+          .hidden-toggle-btn,
+          .close-folder-icon-btn {
             background-color: var(--bg-btn, #e4e4e4);
             color: var(--text-primary, #333333);
             border: 1px solid var(--border-color, #cccccc);
@@ -927,6 +962,12 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
               background-color: var(--accent-color, #007acc);
               color: #ffffff;
               border-color: #007acc;
+            }
+
+            &.close-folder-icon-btn:hover {
+              background-color: #d32f2f;
+              border-color: #d32f2f;
+              color: #ffffff;
             }
           }
         }
@@ -1065,6 +1106,58 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
 
           &:hover {
             background-color: #0062a3;
+          }
+        }
+
+        &.empty-workspace-state {
+          .empty-workspace-icon {
+            font-size: 28px;
+            opacity: 0.65;
+            margin-bottom: 2px;
+          }
+
+          .empty-workspace-btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            max-width: 170px;
+            margin-top: 6px;
+
+            .empty-btn {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              padding: 7px 14px;
+              font-size: 12px;
+              font-family: inherit;
+              font-weight: 500;
+              border-radius: 4px;
+              cursor: pointer;
+              transition: all 0.15s ease;
+
+              &.new-file-btn {
+                color: #ffffff;
+                background-color: var(--accent-color, #007acc);
+                border: 1px solid var(--accent-color, #007acc);
+
+                &:hover {
+                  background-color: #0062a3;
+                  border-color: #0062a3;
+                }
+              }
+
+              &.new-folder-btn {
+                color: var(--text-primary, #cccccc);
+                background-color: rgba(255, 255, 255, 0.06);
+                border: 1px solid var(--border-color, #333333);
+
+                &:hover {
+                  background-color: rgba(255, 255, 255, 0.12);
+                }
+              }
+            }
           }
         }
       }

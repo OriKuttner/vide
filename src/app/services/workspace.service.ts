@@ -1,4 +1,4 @@
-import { Injectable, signal, computed, inject, NgZone } from '@angular/core';
+import { Injectable, signal, computed, inject, NgZone, effect } from '@angular/core';
 import {
   WorkspaceFile,
   FileTreeNode,
@@ -53,6 +53,7 @@ export interface RecentWorkspaceItem {
 // Heavy directories skipped during recursive background search indexing
 const BACKGROUND_INDEX_IGNORED_DIRS = new Set([
   '.git',
+  '.vide',
   'node_modules',
   '.cache',
 ]);
@@ -193,12 +194,15 @@ export class WorkspaceService {
   private recentGitDirHandle: any = null;
   private autoSyncIntervalId: any = null;
   private isAutoSyncing = false;
+  private isRestoringSession = false;
+  private saveSessionTimeout: any = null;
 
   constructor() {
     this.isDesktop.set(isTauriApp());
     this.loadRecentWorkspaces();
     this.initRecentWorkspace();
     this.setupAutoSync();
+    this.setupSessionPersistence();
   }
 
   public setSidebarView(view: 'explorer' | 'search' | 'git-changes'): void {
@@ -910,24 +914,53 @@ export class WorkspaceService {
   /**
    * Sets up auto-synchronization:
    * 1. Window focus & visibilitychange listener (e.g. returning from terminal).
-   * 2. Periodic background check every 30 seconds.
+   * 2. Periodic background check every 60 seconds ONLY while the window is focused.
+   * When window loses focus or becomes hidden, the timer is stopped to conserve system resources.
    */
   private setupAutoSync(): void {
     if (typeof window === 'undefined') return;
 
     window.addEventListener('focus', () => {
       this.syncExternalChanges();
+      this.startAutoSyncTimer();
+    });
+
+    window.addEventListener('blur', () => {
+      this.stopAutoSyncTimer();
     });
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         this.syncExternalChanges();
+        if (typeof document !== 'undefined' && document.hasFocus()) {
+          this.startAutoSyncTimer();
+        }
+      } else {
+        this.stopAutoSyncTimer();
       }
     });
 
+    if (typeof document !== 'undefined' && document.hasFocus() && document.visibilityState === 'visible') {
+      this.startAutoSyncTimer();
+    }
+  }
+
+  private startAutoSyncTimer(): void {
+    if (this.autoSyncIntervalId) return;
     this.autoSyncIntervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && (!document.hasFocus() || document.visibilityState !== 'visible')) {
+        this.stopAutoSyncTimer();
+        return;
+      }
       this.syncExternalChanges();
-    }, 30000);
+    }, 60000);
+  }
+
+  private stopAutoSyncTimer(): void {
+    if (this.autoSyncIntervalId) {
+      clearInterval(this.autoSyncIntervalId);
+      this.autoSyncIntervalId = null;
+    }
   }
 
   /**
@@ -960,6 +993,47 @@ export class WorkspaceService {
     }
 
     try {
+      let currentMtime: number | undefined;
+      let currentSize: number | undefined;
+
+      if (isTauriApp() && active.fsPath) {
+        try {
+          const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
+            filePath: active.fsPath,
+          });
+          currentMtime = meta.mtime_ms;
+          currentSize = meta.size;
+        } catch {
+          // File may be temporarily inaccessible or removed
+          return;
+        }
+      } else if (active.handle && typeof active.handle.getFile === 'function') {
+        try {
+          const fileObj = await active.handle.getFile();
+          currentMtime = fileObj.lastModified;
+          currentSize = fileObj.size;
+        } catch {
+          return;
+        }
+      } else if (active.rawFile) {
+        currentMtime = active.rawFile.lastModified;
+        currentSize = active.rawFile.size;
+      }
+
+      // Fast-path: if signature (mtime + size) matches our recorded state, disk did not change!
+      if (
+        active.isLoaded &&
+        active.lastDiskMtime !== undefined &&
+        active.lastDiskSize !== undefined &&
+        currentMtime !== undefined &&
+        currentSize !== undefined &&
+        currentMtime === active.lastDiskMtime &&
+        currentSize === active.lastDiskSize
+      ) {
+        return;
+      }
+
+      // Signature differs or was uninitialized: read full text from disk
       let diskContent: string | null = null;
 
       if (isTauriApp() && active.fsPath) {
@@ -975,54 +1049,147 @@ export class WorkspaceService {
 
       if (!active.isLoaded) {
         active.content = diskContent;
+        active.savedContent = diskContent;
         active.originalContent = diskContent;
         active.isLoaded = true;
+        active.lastDiskMtime = currentMtime;
+        active.lastDiskSize = currentSize;
+        active.fileSize = currentSize;
         this.files.update((files) =>
           files.map((f) =>
             f.id === active.id
-              ? { ...f, content: diskContent!, originalContent: diskContent!, isLoaded: true }
+              ? {
+                  ...f,
+                  content: diskContent!,
+                  savedContent: diskContent!,
+                  originalContent: diskContent!,
+                  isLoaded: true,
+                  lastDiskMtime: currentMtime,
+                  lastDiskSize: currentSize,
+                  fileSize: currentSize,
+                }
               : f
           )
         );
+        this.triggerSaveSessionState();
         return;
       }
 
-      if (diskContent !== active.content) {
-        if (active.isModified) {
-          if (diskContent === active.content) {
-            this.files.update((files) =>
-              files.map((f) =>
-                f.id === active.id
-                  ? { ...f, originalContent: diskContent!, isModified: false }
-                  : f
-              )
-            );
-          } else {
-            this.showNotification(`Disk update detected for ${active.name} (unsaved edits preserved)`);
-          }
-        } else {
-          this.files.update((files) =>
-            files.map((f) =>
-              f.id === active.id
-                ? {
-                    ...f,
-                    content: diskContent!,
-                    originalContent: diskContent!,
-                    isModified: false,
-                  }
-                : f
-            )
-          );
-          if (this.diffModeActive() && this.activeDiffFile()?.id === active.id) {
-            this.activeDiffFile.set({
-              ...active,
-              content: diskContent,
-              originalContent: diskContent,
-              isModified: false,
-            });
-          }
-          this.showNotification(`Reloaded ${active.name} (updated on disk)`);
+      const baseContent = active.savedContent !== undefined ? active.savedContent : active.originalContent;
+      const diskChanged = baseContent !== undefined ? diskContent !== baseContent : diskContent !== active.content;
+
+      // Update stored signature
+      active.lastDiskMtime = currentMtime;
+      active.lastDiskSize = currentSize;
+      active.fileSize = currentSize;
+
+      if (!diskChanged) {
+        // Disk signature might have changed (e.g. touch or save that produced identical content)
+        this.files.update((files) =>
+          files.map((f) =>
+            f.id === active.id
+              ? { ...f, lastDiskMtime: currentMtime, lastDiskSize: currentSize, fileSize: currentSize }
+              : f
+          )
+        );
+        this.openTabs.update((tabs) =>
+          tabs.map((t) =>
+            t.id === active.id
+              ? { ...t, lastDiskMtime: currentMtime, lastDiskSize: currentSize, fileSize: currentSize }
+              : t
+          )
+        );
+        this.triggerSaveSessionState();
+        return;
+      }
+
+      // Genuinely modified on disk externally by another process
+      if (active.isModified) {
+        active.savedContent = diskContent;
+        active.originalContent = diskContent;
+        this.files.update((files) =>
+          files.map((f) =>
+            f.id === active.id
+              ? {
+                  ...f,
+                  savedContent: diskContent!,
+                  originalContent: diskContent!,
+                  lastDiskMtime: currentMtime,
+                  lastDiskSize: currentSize,
+                  fileSize: currentSize,
+                }
+              : f
+          )
+        );
+        this.openTabs.update((tabs) =>
+          tabs.map((t) =>
+            t.id === active.id
+              ? {
+                  ...t,
+                  savedContent: diskContent!,
+                  originalContent: diskContent!,
+                  lastDiskMtime: currentMtime,
+                  lastDiskSize: currentSize,
+                  fileSize: currentSize,
+                }
+              : t
+          )
+        );
+        this.triggerSaveSessionState();
+        this.showNotification(`External disk change detected for ${active.name} (unsaved edits preserved)`);
+      } else {
+        active.content = diskContent;
+        active.savedContent = diskContent;
+        active.originalContent = diskContent;
+        active.isModified = false;
+        this.files.update((files) =>
+          files.map((f) =>
+            f.id === active.id
+              ? {
+                  ...f,
+                  content: diskContent!,
+                  savedContent: diskContent!,
+                  originalContent: diskContent!,
+                  isLoaded: true,
+                  isModified: false,
+                  lastDiskMtime: currentMtime,
+                  lastDiskSize: currentSize,
+                  fileSize: currentSize,
+                }
+              : f
+          )
+        );
+        this.openTabs.update((tabs) =>
+          tabs.map((t) =>
+            t.id === active.id
+              ? {
+                  ...t,
+                  content: diskContent!,
+                  savedContent: diskContent!,
+                  originalContent: diskContent!,
+                  isLoaded: true,
+                  isModified: false,
+                  lastDiskMtime: currentMtime,
+                  lastDiskSize: currentSize,
+                  fileSize: currentSize,
+                }
+              : t
+          )
+        );
+        if (this.diffModeActive() && this.activeDiffFile()?.id === active.id) {
+          this.activeDiffFile.set({
+            ...active,
+            content: diskContent,
+            savedContent: diskContent,
+            originalContent: diskContent,
+            isModified: false,
+            lastDiskMtime: currentMtime,
+            lastDiskSize: currentSize,
+            fileSize: currentSize,
+          });
         }
+        this.triggerSaveSessionState();
+        this.showNotification(`Reloaded ${active.name} (updated on disk)`);
       }
     } catch (err) {
       console.warn('Failed to check active file on disk:', err);
@@ -1146,11 +1313,16 @@ export class WorkspaceService {
     const parts = trimmed.split('/');
     const baseName = parts[parts.length - 1];
     const language = detectLanguageFromFilename(baseName);
+    const nativeRoot = this.nativeWorkspacePath();
+    const fsPath = nativeRoot
+      ? (nativeRoot.endsWith('/') ? `${nativeRoot}${trimmed}` : `${nativeRoot}/${trimmed}`)
+      : undefined;
 
     const newFile: WorkspaceFile = {
       id: trimmed,
       name: baseName,
       path: trimmed,
+      fsPath,
       language,
       content: '',
       isLoaded: true,
@@ -1163,6 +1335,7 @@ export class WorkspaceService {
       id: trimmed,
       name: baseName,
       path: trimmed,
+      fsPath,
       kind: 'file',
       language,
       file: newFile,
@@ -1180,11 +1353,16 @@ export class WorkspaceService {
     if (!trimmed) return;
     const parts = trimmed.split('/');
     const folderName = parts[parts.length - 1];
+    const nativeRoot = this.nativeWorkspacePath();
+    const fsPath = nativeRoot
+      ? (nativeRoot.endsWith('/') ? `${nativeRoot}${trimmed}` : `${nativeRoot}/${trimmed}`)
+      : undefined;
 
     const newNode: FileTreeNode = {
       id: trimmed,
       name: folderName,
       path: trimmed,
+      fsPath,
       kind: 'directory',
       expanded: true,
       isLoaded: true,
@@ -1192,6 +1370,12 @@ export class WorkspaceService {
       children: [],
       level: 0,
     };
+
+    if (isTauriApp() && fsPath) {
+      invoke('create_directory', { dirPath: fsPath }).catch((err) => {
+        console.error('Failed to create directory on disk:', err);
+      });
+    }
 
     this.fileTree.update((prev) => [newNode, ...prev]);
     this.showNotification(`Created folder: ${folderName}`);
@@ -1306,6 +1490,8 @@ export class WorkspaceService {
       file.language = 'image';
     }
 
+    const alreadyLoaded = file.isLoaded;
+
     if ((!file.isLoaded || (isImg && !file.imageUrl)) && (file.fsPath || file.handle || file.rawFile)) {
       try {
         if (isImg) {
@@ -1315,15 +1501,27 @@ export class WorkspaceService {
             try {
               const b64 = await invoke<string>('read_file_base64', { filePath: file.fsPath });
               imageUrl = `data:${mime};base64,${b64}`;
+              try {
+                const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
+                  filePath: file.fsPath,
+                });
+                file.lastDiskMtime = meta.mtime_ms;
+                file.lastDiskSize = meta.size;
+                file.fileSize = meta.size;
+              } catch {}
             } catch (err) {
               console.warn('Failed to load image in Tauri via read_file_base64:', err);
             }
           } else if (file.handle && typeof file.handle.getFile === 'function') {
             const fileObj = await file.handle.getFile();
             file.fileSize = fileObj.size;
+            file.lastDiskSize = fileObj.size;
+            file.lastDiskMtime = fileObj.lastModified;
             imageUrl = URL.createObjectURL(fileObj);
           } else if (file.rawFile) {
             file.fileSize = file.rawFile.size;
+            file.lastDiskSize = file.rawFile.size;
+            file.lastDiskMtime = file.rawFile.lastModified;
             imageUrl = URL.createObjectURL(file.rawFile);
           }
           file.imageUrl = imageUrl;
@@ -1331,15 +1529,36 @@ export class WorkspaceService {
           file.isLoaded = true;
         } else {
           let content = '';
+          let mtime: number | undefined;
+          let size: number | undefined;
+
           if (isTauriApp() && file.fsPath) {
             content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+            try {
+              const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
+                filePath: file.fsPath,
+              });
+              mtime = meta.mtime_ms;
+              size = meta.size;
+            } catch (err) {
+              console.warn('Failed to get metadata in openFile:', err);
+            }
           } else if (file.handle && typeof file.handle.getFile === 'function') {
             const fileObj = await file.handle.getFile();
             content = await fileObj.text();
+            mtime = fileObj.lastModified;
+            size = fileObj.size;
           } else if (file.rawFile) {
             content = await file.rawFile.text();
+            mtime = file.rawFile.lastModified;
+            size = file.rawFile.size;
           }
           file.content = content;
+          if (mtime !== undefined) file.lastDiskMtime = mtime;
+          if (size !== undefined) {
+            file.lastDiskSize = size;
+            file.fileSize = size;
+          }
           if (file.language === 'plaintext' || !file.language) {
             file.language = detectLanguage(file.name, content);
           }
@@ -1369,6 +1588,8 @@ export class WorkspaceService {
                     isImage: file.isImage,
                     imageUrl: file.imageUrl,
                     fileSize: file.fileSize,
+                    lastDiskMtime: file.lastDiskMtime,
+                    lastDiskSize: file.lastDiskSize,
                   }
                 : f
             );
@@ -1406,6 +1627,9 @@ export class WorkspaceService {
       );
     }
     this.activeFileId.set(file.id);
+    if (alreadyLoaded) {
+      this.reloadActiveFileIfChangedOnDisk();
+    }
   }
 
   public closeTab(fileId: string, event?: MouseEvent): void {
@@ -1712,6 +1936,136 @@ export class WorkspaceService {
     this.triggerTreeUpdate();
   }
 
+  private setupSessionPersistence(): void {
+    effect(() => {
+      // Automatically track openTabs and activeFileId changes
+      const tabs = this.openTabs();
+      const activeId = this.activeFileId();
+      if (this.isRealWorkspace() && !this.isRestoringSession) {
+        this.triggerSaveSessionState();
+      }
+    });
+  }
+
+  public triggerSaveSessionState(): void {
+    if (!this.isRealWorkspace() || this.isRestoringSession) return;
+    if (this.saveSessionTimeout) {
+      clearTimeout(this.saveSessionTimeout);
+    }
+    this.saveSessionTimeout = setTimeout(() => {
+      this.saveWorkspaceSessionState();
+    }, 250);
+  }
+
+  public async saveWorkspaceSessionState(): Promise<void> {
+    const rootPath = this.nativeWorkspacePath();
+    if (!this.isRealWorkspace()) return;
+
+    const openFiles = this.openTabs().map((t) => {
+      const item: { path: string; mtime?: number; size?: number } = {
+        path: t.path || t.id,
+      };
+      if (t.lastDiskMtime !== undefined) item.mtime = t.lastDiskMtime;
+      if (t.lastDiskSize !== undefined || t.fileSize !== undefined) {
+        item.size = t.lastDiskSize ?? t.fileSize;
+      }
+      return item;
+    });
+    const activeFile = this.activeFile()?.path || this.activeFileId() || null;
+
+    const state = {
+      openFiles,
+      activeFile,
+    };
+
+    const jsonStr = JSON.stringify(state, null, 2);
+
+    if (this.isDesktop() && rootPath) {
+      const videDir = rootPath.endsWith('/') ? `${rootPath}.vide` : `${rootPath}/.vide`;
+      const configPath = `${videDir}/workspace.json`;
+      try {
+        await invoke('write_file_text', {
+          filePath: configPath,
+          content: jsonStr,
+        });
+      } catch (err) {
+        console.warn('Failed to save .vide/workspace.json:', err);
+      }
+    } else if (this.recentDirHandle) {
+      try {
+        const videHandle = await this.recentDirHandle.getDirectoryHandle('.vide', { create: true });
+        const fileHandle = await videHandle.getFileHandle('workspace.json', { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(jsonStr);
+        await writable.close();
+      } catch (err) {
+        console.warn('Failed to save .vide/workspace.json in browser mode:', err);
+      }
+    }
+  }
+
+  public async loadWorkspaceSessionState(): Promise<{
+    openFiles: Array<{ path: string; mtime?: number; size?: number }>;
+    activeFile: string | null;
+  } | null> {
+    const rootPath = this.nativeWorkspacePath();
+    if (!this.isRealWorkspace()) return null;
+
+    const parseSession = (content: string) => {
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed && Array.isArray(parsed.openFiles)) {
+          const normalizedOpenFiles: Array<{ path: string; mtime?: number; size?: number }> = [];
+          for (const item of parsed.openFiles) {
+            if (typeof item === 'string' && item.trim()) {
+              normalizedOpenFiles.push({ path: item.trim() });
+            } else if (item && typeof item === 'object' && typeof item.path === 'string' && item.path.trim()) {
+              normalizedOpenFiles.push({
+                path: item.path.trim(),
+                mtime: typeof item.mtime === 'number' ? item.mtime : undefined,
+                size: typeof item.size === 'number' ? item.size : undefined,
+              });
+            }
+          }
+          return {
+            openFiles: normalizedOpenFiles,
+            activeFile: typeof parsed.activeFile === 'string' ? parsed.activeFile : null,
+          };
+        }
+      } catch {
+        // Invalid JSON
+      }
+      return null;
+    };
+
+    if (this.isDesktop() && rootPath) {
+      const configPath = rootPath.endsWith('/')
+        ? `${rootPath}.vide/workspace.json`
+        : `${rootPath}/.vide/workspace.json`;
+      try {
+        const content = await invoke<string>('read_file_text', { filePath: configPath });
+        if (content) {
+          return parseSession(content);
+        }
+      } catch {
+        // File does not exist or invalid JSON; return null
+      }
+    } else if (this.recentDirHandle) {
+      try {
+        const videHandle = await this.recentDirHandle.getDirectoryHandle('.vide', { create: false });
+        const fileHandle = await videHandle.getFileHandle('workspace.json', { create: false });
+        const fileObj = await fileHandle.getFile();
+        const content = await fileObj.text();
+        if (content) {
+          return parseSession(content);
+        }
+      } catch {
+        // Does not exist
+      }
+    }
+    return null;
+  }
+
   /**
    * Opens directory using HTML5 File System Access API with instant shallow root load.
    */
@@ -1760,6 +2114,7 @@ export class WorkspaceService {
   }
 
   public async loadFromNativePath(rootPath: string, cliFiles?: CliFileToOpen[]): Promise<void> {
+    this.isRestoringSession = true;
     this.isScanning.set(true);
     const folderName = rootPath.split('/').filter(Boolean).pop() || rootPath;
     this.scanProgress.set(`Opening ${folderName}...`);
@@ -1857,8 +2212,55 @@ export class WorkspaceService {
             this.activeFileId.set(found.id);
           }
         }
-      } else if (rootFiles.length > 0) {
-        await this.openFile(rootFiles[0]);
+      } else {
+        const session = await this.loadWorkspaceSessionState();
+        if (session && session.openFiles.length > 0) {
+          for (const item of session.openFiles) {
+            const relPath = item.path;
+            let fileToOpen = rootFiles.find(
+              (f) => f.path === relPath || f.id === relPath || f.fsPath === relPath
+            );
+            if (!fileToOpen) {
+              const fullFsPath = rootPath.endsWith('/') ? `${rootPath}${relPath}` : `${rootPath}/${relPath}`;
+              const baseName = relPath.split('/').pop() || relPath;
+              fileToOpen = {
+                id: relPath,
+                name: baseName,
+                path: relPath,
+                fsPath: fullFsPath,
+                language: detectLanguageFromFilename(baseName),
+                content: '',
+                isLoaded: false,
+                isModified: false,
+                lastDiskMtime: item.mtime,
+                lastDiskSize: item.size,
+                fileSize: item.size,
+              };
+              this.files.update((files) => [...files, fileToOpen!]);
+            } else {
+              if (item.mtime !== undefined) fileToOpen.lastDiskMtime = item.mtime;
+              if (item.size !== undefined) {
+                fileToOpen.lastDiskSize = item.size;
+                fileToOpen.fileSize = item.size;
+              }
+            }
+            try {
+              await this.openFile(fileToOpen);
+            } catch (err) {
+              console.warn(`Failed to restore file ${relPath}:`, err);
+            }
+          }
+          if (session.activeFile) {
+            const activeTarget = this.files().find(
+              (f) => f.path === session.activeFile || f.id === session.activeFile
+            );
+            if (activeTarget) {
+              this.activeFileId.set(activeTarget.id);
+            }
+          }
+        } else if (rootFiles.length > 0) {
+          await this.openFile(rootFiles[0]);
+        }
       }
 
       this.showNotification(`Opened ${folderName}`);
@@ -1868,6 +2270,7 @@ export class WorkspaceService {
       console.error('Failed to load native directory:', err);
       this.showNotification(`Error: ${err.message || err}`);
     } finally {
+      this.isRestoringSession = false;
       this.isScanning.set(false);
     }
   }
@@ -2136,10 +2539,53 @@ export class WorkspaceService {
     const rootFiles = rootNodes.filter((n) => n.file).map((n) => n.file!);
     this.files.set(rootFiles);
 
-    // Find first file to open
-    const firstFileNode = rootNodes.find((n) => n.kind === 'file');
-    if (firstFileNode?.file) {
-      await this.openFile(firstFileNode.file);
+    // Restore session state or find first file to open
+    const session = await this.loadWorkspaceSessionState();
+    if (session && session.openFiles.length > 0) {
+      for (const item of session.openFiles) {
+        const relPath = item.path;
+        let fileToOpen = rootFiles.find((f) => f.path === relPath || f.id === relPath);
+        if (!fileToOpen) {
+          const baseName = relPath.split('/').pop() || relPath;
+          fileToOpen = {
+            id: relPath,
+            name: baseName,
+            path: relPath,
+            language: detectLanguageFromFilename(baseName),
+            content: '',
+            isLoaded: false,
+            isModified: false,
+            lastDiskMtime: item.mtime,
+            lastDiskSize: item.size,
+            fileSize: item.size,
+          };
+          this.files.update((files) => [...files, fileToOpen!]);
+        } else {
+          if (item.mtime !== undefined) fileToOpen.lastDiskMtime = item.mtime;
+          if (item.size !== undefined) {
+            fileToOpen.lastDiskSize = item.size;
+            fileToOpen.fileSize = item.size;
+          }
+        }
+        try {
+          await this.openFile(fileToOpen);
+        } catch (err) {
+          console.warn(`Failed to restore file ${relPath}:`, err);
+        }
+      }
+      if (session.activeFile) {
+        const activeTarget = this.files().find(
+          (f) => f.path === session.activeFile || f.id === session.activeFile
+        );
+        if (activeTarget) {
+          this.activeFileId.set(activeTarget.id);
+        }
+      }
+    } else {
+      const firstFileNode = rootNodes.find((n) => n.kind === 'file');
+      if (firstFileNode?.file) {
+        await this.openFile(firstFileNode.file);
+      }
     }
 
     this.showNotification(`Opened ${dirHandle.name}`);
@@ -2308,6 +2754,22 @@ export class WorkspaceService {
     this.activeDiffFile.set(null);
     this.gitBranch.set(null);
     this.showNotification('Folder closed');
+  }
+
+  public async openSystemTerminal(): Promise<void> {
+    const rootPath = this.nativeWorkspacePath();
+    if (!this.isDesktop() || !rootPath) {
+      this.showNotification('Terminal is only available in desktop mode with an open folder');
+      return;
+    }
+
+    try {
+      await invoke('open_system_terminal', { dirPath: rootPath });
+      this.showNotification('Terminal opened');
+    } catch (err: any) {
+      console.error('Failed to open system terminal:', err);
+      this.showNotification(`Terminal error: ${err.message || err}`);
+    }
   }
 
   private async saveLastDirectoryHandle(dirHandle: any): Promise<void> {
@@ -2560,12 +3022,43 @@ export class WorkspaceService {
           filePath: file.fsPath,
           content: file.content,
         });
+        try {
+          const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
+            filePath: file.fsPath,
+          });
+          file.lastDiskMtime = meta.mtime_ms;
+          file.lastDiskSize = meta.size;
+          file.fileSize = meta.size;
+        } catch {}
         this.files.update((files) =>
-          files.map((f) => (f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f))
+          files.map((f) =>
+            f.id === file.id
+              ? {
+                  ...f,
+                  isModified: false,
+                  savedContent: file.content,
+                  lastDiskMtime: file.lastDiskMtime,
+                  lastDiskSize: file.lastDiskSize,
+                  fileSize: file.fileSize,
+                }
+              : f
+          )
         );
         this.openTabs.update((tabs) =>
-          tabs.map((t) => (t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t))
+          tabs.map((t) =>
+            t.id === file.id
+              ? {
+                  ...t,
+                  isModified: false,
+                  savedContent: file.content,
+                  lastDiskMtime: file.lastDiskMtime,
+                  lastDiskSize: file.lastDiskSize,
+                  fileSize: file.fileSize,
+                }
+              : t
+          )
         );
+        this.triggerSaveSessionState();
         this.showNotification(`Saved ${file.name} to disk`);
         await this.refreshGitStatus();
         return true;
@@ -2582,12 +3075,44 @@ export class WorkspaceService {
         await writable.write(file.content);
         await writable.close();
 
+        if (typeof file.handle.getFile === 'function') {
+          try {
+            const fileObj = await file.handle.getFile();
+            file.lastDiskMtime = fileObj.lastModified;
+            file.lastDiskSize = fileObj.size;
+            file.fileSize = fileObj.size;
+          } catch {}
+        }
+
         this.files.update((files) =>
-          files.map((f) => (f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f))
+          files.map((f) =>
+            f.id === file.id
+              ? {
+                  ...f,
+                  isModified: false,
+                  savedContent: file.content,
+                  lastDiskMtime: file.lastDiskMtime,
+                  lastDiskSize: file.lastDiskSize,
+                  fileSize: file.fileSize,
+                }
+              : f
+          )
         );
         this.openTabs.update((tabs) =>
-          tabs.map((t) => (t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t))
+          tabs.map((t) =>
+            t.id === file.id
+              ? {
+                  ...t,
+                  isModified: false,
+                  savedContent: file.content,
+                  lastDiskMtime: file.lastDiskMtime,
+                  lastDiskSize: file.lastDiskSize,
+                  fileSize: file.fileSize,
+                }
+              : t
+          )
         );
+        this.triggerSaveSessionState();
         this.showNotification(`Saved ${file.name} to disk`);
         this.refreshGitStatus();
         return true;
