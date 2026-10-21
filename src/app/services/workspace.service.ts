@@ -126,6 +126,9 @@ export class WorkspaceService {
   readonly activeDiffFile = signal<WorkspaceFile | null>(null);
   readonly diffRenderSideBySide = signal<boolean>(true);
 
+  // Markdown & HTML Preview Mode state ('none' | 'split' | 'full')
+  readonly previewMode = signal<'none' | 'split' | 'full'>('none');
+
   // Changed files computed signal (files that differ from last commit / HEAD)
   readonly changedFiles = computed(() => {
     if (!this.isRealWorkspace()) return [];
@@ -331,6 +334,23 @@ export class WorkspaceService {
         this.openDiffView(file);
       }
     }
+  }
+
+  public setPreviewMode(mode: 'none' | 'split' | 'full'): void {
+    this.previewMode.set(mode);
+  }
+
+  public togglePreview(): void {
+    const current = this.previewMode();
+    if (current === 'none') {
+      this.previewMode.set('split');
+    } else {
+      this.previewMode.set('none');
+    }
+  }
+
+  public closePreview(): void {
+    this.previewMode.set('none');
   }
 
   public async revertFile(fileId: string): Promise<void> {

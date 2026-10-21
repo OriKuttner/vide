@@ -205,6 +205,24 @@ export function isPerlFile(filename?: string, lang?: string): boolean {
   return lower.endsWith('.pl') || lower.endsWith('.pm') || lower.endsWith('.t');
 }
 
+export function isMarkdownFile(filename?: string, lang?: string): boolean {
+  if (lang === 'markdown') return true;
+  if (!filename) return false;
+  const lower = filename.toLowerCase();
+  return lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.mdown') || lower.endsWith('.mkd');
+}
+
+export function isHtmlFile(filename?: string, lang?: string): boolean {
+  if (lang === 'html') return true;
+  if (!filename) return false;
+  const lower = filename.toLowerCase();
+  return lower.endsWith('.html') || lower.endsWith('.htm');
+}
+
+export function isPreviewableFile(filename?: string, lang?: string): boolean {
+  return isMarkdownFile(filename, lang) || isHtmlFile(filename, lang);
+}
+
 
 export interface CliFileToOpen {
   name: string;

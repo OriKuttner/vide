@@ -12,13 +12,22 @@ import {
   computed,
 } from '@angular/core';
 import * as monaco from 'monaco-editor';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { marked } from 'marked';
 import { WorkspaceService } from '../../services/workspace.service';
 import { InlineCompletionService } from '../../services/inline-completion.service';
 import { ThemeService } from '../../services/theme.service';
 import { ZoomService } from '../../services/zoom.service';
 import { registerOmniFlux } from '../../languages/omniflux.language';
 import { registerAllLanguageSnippets } from '../../languages/snippets.registry';
-import { WorkspaceFile, isImageFile, detectLanguage } from '../../models/file.model';
+import {
+  WorkspaceFile,
+  isImageFile,
+  detectLanguage,
+  isMarkdownFile,
+  isHtmlFile,
+  isPreviewableFile,
+} from '../../models/file.model';
 
 @Component({
   selector: 'app-editor',
@@ -94,7 +103,7 @@ import { WorkspaceFile, isImageFile, detectLanguage } from '../../models/file.mo
         </div>
       }
 
-      <div class="editor-stage">
+      <div class="editor-stage" [class.resizing-preview]="isResizingPreview()">
         @if (activeFileIsImage(); as imgFile) {
           <div class="image-viewer-container">
             <div class="image-viewer-toolbar">
@@ -214,8 +223,105 @@ import { WorkspaceFile, isImageFile, detectLanguage } from '../../models/file.mo
         <div
           #editorContainer
           class="monaco-host"
-          [class.hidden-pane]="workspaceService.diffModeActive() || activeFileIsImage()"
+          [style.width.%]="isSplitPreview() ? previewSplitPercent() : 100"
+          [class.hidden-pane]="workspaceService.diffModeActive() || activeFileIsImage() || isFullPreview()"
         ></div>
+
+        @if (isSplitPreview()) {
+          <div
+            class="preview-resizer"
+            [style.left.%]="previewSplitPercent()"
+            [class.resizing]="isResizingPreview()"
+            (mousedown)="onStartResizePreview($event)"
+            (dblclick)="previewSplitPercent.set(50)"
+            title="Drag to resize / Double-click to reset 50%"
+          >
+            <div class="resizer-handle"></div>
+          </div>
+        }
+
+        @if (isPreviewActive()) {
+          <div
+            class="preview-pane-container"
+            [class.full-screen]="isFullPreview()"
+            [style.width.%]="isFullPreview() ? 100 : (100 - previewSplitPercent())"
+          >
+            <div class="preview-toolbar">
+              <div class="preview-meta-left">
+                <span class="preview-badge" [class.badge-html]="isCurrentHtml()">
+                  <svg class="badge-icon" viewBox="0 0 16 16" fill="currentColor">
+                    @if (isCurrentHtml()) {
+                      <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm5.854 4.146a.5.5 0 0 0-.708 0l-3 3a.5.5 0 0 0 0 .708l3 3a.5.5 0 0 0 .708-.708L3.207 9.5l2.647-2.646a.5.5 0 0 0 0-.708zm4.292 0a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L12.793 9.5l-2.647-2.646a.5.5 0 0 1 0-.708z"/>
+                    } @else {
+                      <path d="M14 3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h12zM2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H2z"/>
+                      <path fill-rule="evenodd" d="M2.5 5h1.5v6H2.5V7l1-1-1-1zm3 0h1.5l1.25 3.5L9.5 5H11v6H9.5V7.5L8.25 11h-1L6 7.5V11H4.5V5h1z"/>
+                    }
+                  </svg>
+                  <span>{{ isCurrentHtml() ? 'HTML' : 'MARKDOWN' }}</span>
+                </span>
+                <span class="preview-filename">{{ workspaceService.activeFile()?.name }}</span>
+                <span class="live-dot" title="Live synchronized preview">● Live</span>
+              </div>
+
+              <div class="preview-mode-switch">
+                <button
+                  type="button"
+                  class="preview-tool-btn"
+                  [class.active]="workspaceService.previewMode() === 'split'"
+                  (click)="workspaceService.setPreviewMode('split')"
+                  title="Side by Side (Split View)"
+                >
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+                    <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm1 0a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6V2H1zm8 10h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H9v11z"/>
+                  </svg>
+                  <span>Split</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="preview-tool-btn"
+                  [class.active]="workspaceService.previewMode() === 'full'"
+                  (click)="workspaceService.setPreviewMode('full')"
+                  title="Full View (Preview Only)"
+                >
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+                    <path d="M1.5 1a.5.5 0 0 0-.5.5v3a.5.5 0 0 1-1 0v-3A1.5 1.5 0 0 1 1.5 0h3a.5.5 0 0 1 0 1h-3zM11 .5a.5.5 0 0 1 .5-.5h3A1.5 1.5 0 0 1 16 1.5v3a.5.5 0 0 1-1 0v-3a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5zM.5 11a.5.5 0 0 1 .5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 1 0 1h-3A1.5 1.5 0 0 1 0 14.5v-3a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 1 .5-.5z"/>
+                  </svg>
+                  <span>Full</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="preview-tool-btn close-btn"
+                  (click)="workspaceService.setPreviewMode('none')"
+                  title="Close Preview (Ctrl+Shift+V)"
+                >
+                  <span>✕</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="preview-viewport">
+              @if (isCurrentHtml()) {
+                <iframe
+                  class="html-preview-iframe"
+                  [srcdoc]="renderedHtmlDoc()"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+                  title="HTML Preview"
+                ></iframe>
+              } @else {
+                <div class="markdown-preview-scroll">
+                  <div
+                    class="markdown-body"
+                    [style.font-size.px]="zoomService.editorFontSize()"
+                    [innerHTML]="renderedMarkdownHtml()"
+                  ></div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
         <div
           #diffContainer
           class="monaco-diff-host"
@@ -250,6 +356,14 @@ import { WorkspaceFile, isImageFile, detectLanguage } from '../../models/file.mo
         position: relative;
         min-height: 0;
         overflow: hidden;
+
+        &.resizing-preview {
+          user-select: none;
+
+          iframe {
+            pointer-events: none;
+          }
+        }
       }
       .monaco-host,
       .monaco-diff-host {
@@ -266,6 +380,405 @@ import { WorkspaceFile, isImageFile, detectLanguage } from '../../models/file.mo
           visibility: hidden;
           pointer-events: none;
           z-index: 0;
+        }
+      }
+
+      /* Preview Resizer */
+      .preview-resizer {
+        position: absolute;
+        top: 0;
+        width: 8px;
+        height: 100%;
+        transform: translateX(-50%);
+        z-index: 20;
+        cursor: col-resize;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        transition: background-color 0.15s ease;
+
+        &:hover,
+        &.resizing {
+          background-color: var(--accent-color, #007acc);
+        }
+
+        .resizer-handle {
+          width: 2px;
+          height: 100%;
+          background: var(--border-color, #e5e5e5);
+        }
+      }
+
+      /* Preview Pane Container */
+      .preview-pane-container {
+        position: absolute;
+        top: 0;
+        right: 0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background-color: var(--bg-primary, #ffffff);
+        border-left: 1px solid var(--border-color, #e5e5e5);
+        z-index: 10;
+        overflow: hidden;
+
+        &.full-screen {
+          left: 0;
+          width: 100% !important;
+          border-left: none;
+        }
+
+        .preview-toolbar {
+          height: 35px;
+          min-height: 35px;
+          padding: 0 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid var(--border-color, #e5e5e5);
+          background-color: var(--bg-secondary, #fafafa);
+          user-select: none;
+
+          .preview-meta-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            .preview-badge {
+              font-size: 10px;
+              font-weight: 700;
+              letter-spacing: 0.5px;
+              padding: 2px 6px;
+              border-radius: 3px;
+              background: rgba(0, 122, 204, 0.12);
+              color: #007acc;
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+
+              &.badge-html {
+                background: rgba(227, 76, 38, 0.12);
+                color: #e34c26;
+              }
+
+              .badge-icon {
+                width: 11px;
+                height: 11px;
+              }
+            }
+
+            .preview-filename {
+              font-size: 12px;
+              font-weight: 600;
+              color: var(--text-primary, #333333);
+            }
+
+            .live-dot {
+              font-size: 10.5px;
+              color: #2ea043;
+              font-weight: 600;
+            }
+          }
+
+          .preview-mode-switch {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+
+            .preview-tool-btn {
+              background: transparent;
+              border: 1px solid var(--border-color, #dcdcdc);
+              border-radius: 3px;
+              padding: 3px 8px;
+              font-size: 11.5px;
+              cursor: pointer;
+              color: var(--text-secondary, #555555);
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+
+              &:hover {
+                background-color: var(--bg-item-hover, #ececec);
+                color: var(--text-primary, #1e1e1e);
+              }
+
+              &.active {
+                background-color: rgba(0, 122, 204, 0.12);
+                border-color: #007acc;
+                color: #007acc;
+                font-weight: 600;
+              }
+
+              &.close-btn {
+                padding: 3px 6px;
+                font-size: 12px;
+                &:hover {
+                  color: #e5534b;
+                  border-color: #e5534b;
+                }
+              }
+            }
+          }
+        }
+
+        .preview-viewport {
+          flex: 1;
+          height: calc(100% - 35px);
+          overflow: hidden;
+          position: relative;
+          background: var(--bg-primary, #ffffff);
+
+          .html-preview-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #ffffff;
+          }
+
+          .markdown-preview-scroll {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: auto;
+            padding: 24px 32px;
+            box-sizing: border-box;
+
+            &::-webkit-scrollbar {
+              width: 8px;
+              height: 8px;
+            }
+
+            &::-webkit-scrollbar-thumb {
+              background-color: var(--scrollbar-thumb, rgba(100, 100, 100, 0.3));
+              border-radius: 4px;
+            }
+          }
+        }
+      }
+
+      /* GitHub Markdown Typography */
+      .markdown-body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+        font-size: var(--editor-font-size, 22px);
+        line-height: 1.6;
+        color: var(--text-primary, #24292f);
+        word-wrap: break-word;
+
+        h1, h2, h3, h4, h5, h6 {
+          margin-top: 24px;
+          margin-bottom: 16px;
+          font-weight: 600;
+          line-height: 1.25;
+          color: var(--text-primary, #1e1e1e);
+        }
+
+        h1 {
+          font-size: 1.85em;
+          padding-bottom: 0.3em;
+          border-bottom: 1px solid var(--border-color, #d0d7de);
+        }
+
+        h2 {
+          font-size: 1.45em;
+          padding-bottom: 0.3em;
+          border-bottom: 1px solid var(--border-color, #d0d7de);
+        }
+
+        h3 { font-size: 1.25em; }
+        h4 { font-size: 1em; }
+
+        p {
+          margin-top: 0;
+          margin-bottom: 16px;
+        }
+
+        a {
+          color: #0969da;
+          text-decoration: none;
+          &:hover {
+            text-decoration: underline;
+          }
+        }
+
+        strong { font-weight: 600; }
+
+        hr {
+          height: 2px;
+          padding: 0;
+          margin: 24px 0;
+          background-color: var(--border-color, #d0d7de);
+          border: 0;
+        }
+
+        blockquote {
+          padding: 0 1em;
+          color: var(--text-muted, #57606a);
+          border-left: 3.5px solid #007acc;
+          margin: 0 0 16px 0;
+        }
+
+        ul, ol {
+          margin-top: 0;
+          margin-bottom: 16px;
+          padding-left: 2em;
+        }
+
+        li {
+          margin-top: 0.25em;
+
+          & > p {
+            margin-top: 0.5em;
+            margin-bottom: 0;
+          }
+        }
+
+        code {
+          padding: 0.2em 0.4em;
+          margin: 0;
+          font-size: 85%;
+          background-color: var(--bg-secondary, rgba(175, 184, 193, 0.2));
+          border-radius: 4px;
+          font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+        }
+
+        pre {
+          padding: 14px 16px;
+          overflow: auto;
+          font-size: 85%;
+          line-height: 1.45;
+          background-color: var(--bg-secondary, #f6f8fa);
+          border: 1px solid var(--border-color, #d0d7de);
+          border-radius: 6px;
+          margin-top: 0;
+          margin-bottom: 16px;
+
+          code {
+            padding: 0;
+            margin: 0;
+            background-color: transparent;
+            border: 0;
+            font-size: 100%;
+            word-break: normal;
+            white-space: pre;
+          }
+        }
+
+        table {
+          border-spacing: 0;
+          border-collapse: collapse;
+          margin-top: 0;
+          margin-bottom: 16px;
+          width: 100%;
+          overflow: auto;
+          display: block;
+
+          th, td {
+            padding: 6px 13px;
+            border: 1px solid var(--border-color, #d0d7de);
+          }
+
+          th {
+            font-weight: 600;
+            background-color: var(--bg-secondary, #f6f8fa);
+          }
+
+          tr:nth-child(2n) {
+            background-color: var(--bg-secondary, #f6f8fa);
+          }
+        }
+
+        input[type='checkbox'] {
+          margin: 0 0.35em 0.25em -1.4em;
+          vertical-align: middle;
+        }
+
+        img {
+          max-width: 100%;
+          box-sizing: border-box;
+          border-radius: 4px;
+        }
+      }
+
+      /* Dark Mode overrides for preview */
+      :host-context(body.theme-dark) {
+        .preview-pane-container {
+          background-color: #1e1e1e;
+          border-color: #333333;
+
+          .preview-toolbar {
+            background-color: #252526;
+            border-color: #333333;
+
+            .preview-filename {
+              color: #cccccc;
+            }
+
+            .preview-tool-btn {
+              border-color: #3c3c3c;
+              color: #aaaaaa;
+
+              &:hover {
+                background-color: #2a2d2e;
+                color: #ffffff;
+              }
+
+              &.active {
+                background-color: rgba(0, 122, 204, 0.25);
+                border-color: #007acc;
+                color: #3794ff;
+              }
+            }
+          }
+
+          .preview-viewport {
+            background-color: #1e1e1e;
+
+            .markdown-body {
+              color: #c9d1d9;
+
+              h1, h2, h3, h4, h5, h6 {
+                color: #e6edf3;
+                border-color: #30363d;
+              }
+
+              a {
+                color: #58a6ff;
+              }
+
+              hr {
+                background-color: #30363d;
+              }
+
+              code {
+                background-color: rgba(110, 118, 129, 0.4);
+                color: #e6edf3;
+              }
+
+              pre {
+                background-color: #161b22;
+                border-color: #30363d;
+              }
+
+              table {
+                th, td {
+                  border-color: #30363d;
+                }
+                th {
+                  background-color: #161b22;
+                }
+                tr:nth-child(2n) {
+                  background-color: #161b22;
+                }
+              }
+
+              blockquote {
+                color: #8b949e;
+                border-color: #007acc;
+              }
+            }
+          }
         }
       }
 
@@ -833,9 +1346,96 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   public zoomService = inject(ZoomService);
   private inlineCompletionService = inject(InlineCompletionService);
   private themeService = inject(ThemeService);
+  private sanitizer = inject(DomSanitizer);
 
   public readonly cursorChange = output<{ line: number; column: number }>();
   public readonly diffChunkCount = signal<number>(0);
+
+  // Markdown & HTML Live Preview state
+  public previewSplitPercent = signal<number>(50);
+  public isResizingPreview = signal<boolean>(false);
+
+  readonly isCurrentMarkdown = computed(() => {
+    const f = this.workspaceService.activeFile();
+    return f ? isMarkdownFile(f.name) : false;
+  });
+
+  readonly isCurrentHtml = computed(() => {
+    const f = this.workspaceService.activeFile();
+    return f ? isHtmlFile(f.name) : false;
+  });
+
+  readonly isCurrentPreviewable = computed(() => {
+    const f = this.workspaceService.activeFile();
+    return f ? isPreviewableFile(f.name) : false;
+  });
+
+  readonly isPreviewActive = computed(() => {
+    const mode = this.workspaceService.previewMode();
+    return (mode === 'split' || mode === 'full') && this.isCurrentPreviewable();
+  });
+
+  readonly isSplitPreview = computed(() => {
+    return this.workspaceService.previewMode() === 'split' && this.isCurrentPreviewable();
+  });
+
+  readonly isFullPreview = computed(() => {
+    return this.workspaceService.previewMode() === 'full' && this.isCurrentPreviewable();
+  });
+
+  readonly renderedMarkdownHtml = computed<SafeHtml>(() => {
+    if (!this.isPreviewActive() || !this.isCurrentMarkdown()) {
+      return '';
+    }
+    const f = this.workspaceService.activeFile();
+    const rawContent = f?.content ?? '';
+    try {
+      const parsed = marked.parse(rawContent, {
+        async: false,
+        gfm: true,
+        breaks: true,
+      }) as string;
+      return this.sanitizer.bypassSecurityTrustHtml(parsed);
+    } catch (err) {
+      console.error('Error parsing markdown:', err);
+      return this.sanitizer.bypassSecurityTrustHtml('<div class="preview-error">Failed to parse Markdown</div>');
+    }
+  });
+
+  readonly renderedHtmlDoc = computed<string>(() => {
+    if (!this.isPreviewActive() || !this.isCurrentHtml()) {
+      return '';
+    }
+    const f = this.workspaceService.activeFile();
+    const rawContent = f?.content ?? '';
+    const isDoc = /<!doctype\s+html|<html[\s>]/i.test(rawContent);
+    if (isDoc) {
+      return rawContent;
+    }
+    const isDark = this.themeService.currentTheme() === 'dark';
+    const bg = isDark ? '#1e1e1e' : '#ffffff';
+    const color = isDark ? '#d4d4d4' : '#1f2328';
+    const fontSize = this.zoomService.editorFontSize();
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+      font-size: ${fontSize}px;
+      margin: 16px;
+      line-height: 1.5;
+      background: ${bg};
+      color: ${color};
+    }
+  </style>
+</head>
+<body>
+${rawContent}
+</body>
+</html>`;
+  });
 
   // Image viewer state
   readonly Math = Math;
@@ -1016,6 +1616,17 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
           insertSpaces: !isTabs,
           tabSize: size,
         });
+      }
+    });
+
+    // Effect to re-layout Monaco editor when preview mode or split changes
+    effect(() => {
+      this.workspaceService.previewMode();
+      this.previewSplitPercent();
+      if (this.editorInstance) {
+        setTimeout(() => {
+          this.editorInstance?.layout();
+        }, 30);
       }
     });
   }
@@ -1302,6 +1913,16 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Numpad0, () => {
       this.zoomService.resetZoom();
     });
+
+    // Keyboard shortcut: Ctrl+Shift+V to toggle preview if active file is previewable
+    this.editorInstance.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV,
+      () => {
+        if (this.isCurrentPreviewable()) {
+          this.workspaceService.togglePreview();
+        }
+      }
+    );
 
     // Precision resize handling for both standard and diff editor
     this.resizeObserver = new ResizeObserver(() => {
@@ -1612,5 +2233,32 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  public onStartResizePreview(event: MouseEvent): void {
+    event.preventDefault();
+    this.isResizingPreview.set(true);
+
+    const stageEl = this.editorContainer.nativeElement.parentElement;
+    if (!stageEl) return;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = stageEl.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const offsetX = e.clientX - rect.left;
+      let percent = (offsetX / rect.width) * 100;
+      percent = Math.max(20, Math.min(80, percent));
+      this.previewSplitPercent.set(Math.round(percent * 10) / 10);
+    };
+
+    const onMouseUp = () => {
+      this.isResizingPreview.set(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      this.editorInstance?.layout();
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
   }
 }

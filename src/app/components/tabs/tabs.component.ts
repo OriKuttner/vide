@@ -2,7 +2,7 @@ import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ThemeService } from '../../services/theme.service';
-import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
+import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isPreviewableFile } from '../../models/file.model';
 
 @Component({
   selector: 'app-tabs',
@@ -46,6 +46,20 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } fro
               }
               {{ tab.name }}
             </span>
+            @if (isPreviewable(tab)) {
+              <button
+                type="button"
+                class="tab-preview-btn"
+                [class.active]="tab.id === workspaceService.activeFileId() && workspaceService.previewMode() !== 'none'"
+                [title]="(tab.id === workspaceService.activeFileId() && workspaceService.previewMode() !== 'none') ? 'Close Preview (Ctrl+Shift+V)' : 'Open Live Preview (Ctrl+Shift+V)'"
+                (click)="onToggleTabPreview(tab, $event)"
+              >
+                <svg class="svg-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            }
             @if (workspaceService.hasGitChanges(tab)) {
               <button
                 type="button"
@@ -254,6 +268,39 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } fro
           }
         }
 
+        .tab-preview-btn {
+          background: transparent;
+          border: none;
+          padding: 2px 3px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-muted, #717171);
+          cursor: pointer;
+          border-radius: 3px;
+          opacity: 0.75;
+          margin-left: 2px;
+          transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+
+          &:hover {
+            opacity: 1;
+            color: #007acc;
+            background-color: rgba(0, 122, 204, 0.15);
+          }
+
+          &.active {
+            opacity: 1;
+            color: #007acc;
+            background-color: rgba(0, 122, 204, 0.2);
+          }
+
+          .svg-icon {
+            width: 13px;
+            height: 13px;
+            display: block;
+          }
+        }
+
         .modified-dot {
           font-size: 11px;
           color: #111111;
@@ -267,6 +314,21 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } fro
         :host-context(.theme-dark) .modified-dot,
         body.theme-dark .modified-dot {
           color: #ffffff;
+        }
+
+        :host-context(.theme-dark) .tab-preview-btn,
+        body.theme-dark .tab-preview-btn {
+          color: #9d9d9d;
+
+          &:hover {
+            color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.15);
+          }
+
+          &.active {
+            color: #3794ff;
+            background-color: rgba(55, 148, 255, 0.25);
+          }
         }
 
         .close-btn {
@@ -294,6 +356,7 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } fro
         padding: 0 10px;
         height: 100%;
         border-left: 1px solid var(--border-color, #e5e5e5);
+        flex-shrink: 0;
 
         .action-btn {
           background: transparent;
@@ -301,12 +364,21 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } fro
           color: var(--text-primary, #333333);
           font-size: 14px;
           padding: 4px 7px;
+          min-width: 28px;
+          height: 26px;
           border-radius: 4px;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
           transition: background-color 0.15s, border-color 0.15s;
+
+          .svg-icon {
+            width: 16px;
+            height: 16px;
+            display: block;
+          }
 
           &:hover {
             background-color: var(--bg-btn-hover, #dcdcdc);
@@ -380,6 +452,20 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } fro
           }
         }
       }
+
+      :host-context(body.theme-dark) .tabs-actions,
+      body.theme-dark .tabs-actions {
+        border-left-color: var(--border-color, #333333);
+
+        .action-btn {
+          color: var(--text-primary, #cccccc);
+
+          &:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+          }
+        }
+      }
     `,
   ],
 })
@@ -403,6 +489,10 @@ export class TabsComponent {
     return isPerlFile(tab.name, tab.language);
   }
 
+  public isPreviewable(tab: WorkspaceFile): boolean {
+    return isPreviewableFile(tab.name, tab.language);
+  }
+
 
   public onOpenDiff(tab: WorkspaceFile, event: MouseEvent): void {
     event.stopPropagation();
@@ -410,6 +500,16 @@ export class TabsComponent {
       this.workspaceService.closeDiffView();
     } else {
       this.workspaceService.openDiffView(tab);
+    }
+  }
+
+  public onToggleTabPreview(tab: WorkspaceFile, event: MouseEvent): void {
+    event.stopPropagation();
+    if (tab.id !== this.workspaceService.activeFileId()) {
+      this.workspaceService.openFile(tab);
+      this.workspaceService.setPreviewMode('split');
+    } else {
+      this.workspaceService.togglePreview();
     }
   }
 }
