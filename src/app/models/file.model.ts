@@ -60,8 +60,8 @@ export function detectLanguageFromFilename(filename: string): string {
 
   // Special extensionless files or exact names
   if (lower === 'dockerfile' || lower.startsWith('dockerfile.')) return 'dockerfile';
-  if (lower === 'makefile' || lower === 'gnumakefile') return 'makefile';
-  if (lower === '.gitignore' || lower === '.gitattributes' || lower === '.gitmodules') return 'properties';
+  if (lower === 'makefile' || lower === 'gnumakefile') return 'shell';
+  if (lower === '.gitignore' || lower === '.gitattributes' || lower === '.gitmodules') return 'ini';
   if (lower === '.env' || lower.startsWith('.env.')) return 'ini';
 
   if (lower.endsWith('.of')) return 'omniflux';

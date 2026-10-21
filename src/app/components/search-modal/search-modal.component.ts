@@ -49,7 +49,7 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
             <button class="close-x" (click)="close()">×</button>
           </div>
 
-          @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'ai-download') {
+          @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'ai-download' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm') {
             <div class="input-container">
               <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
               <input
@@ -81,6 +81,52 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
               <button type="button" class="btn btn-secondary" (click)="cancelUnsavedClose()">Cancel</button>
               <button type="button" class="btn btn-danger" (click)="discardAndClose()">Don't Save</button>
               <button type="button" class="btn btn-primary" (click)="saveAndClose()">Save</button>
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'delete-file-confirm' && workspaceService.pendingDeleteFile(); as delFile) {
+            <div class="unsaved-modal-body">
+              <div class="unsaved-warning-icon delete-icon">
+                <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#ef4444" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <div class="unsaved-message-box">
+                <h3 class="unsaved-title">Delete "{{ delFile.name }}" permanently?</h3>
+                <p class="unsaved-desc">Are you sure you want to permanently delete this file from disk? This action cannot be undone.</p>
+              </div>
+            </div>
+            <div class="action-footer unsaved-footer">
+              <button type="button" class="btn btn-secondary" (click)="cancelDeleteFile()">Cancel</button>
+              <button type="button" class="btn btn-danger" (click)="executeDeleteFile(delFile)">Delete Permanently</button>
+            </div>
+          }
+
+          @if (workspaceService.activeModal() === 'git-untrack-confirm' && workspaceService.pendingGitUntrackFile(); as untrackFile) {
+            <div class="unsaved-modal-body">
+              <div class="unsaved-warning-icon untrack-icon">
+                <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#f59e0b" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div class="unsaved-message-box">
+                @if (untrackFile.gitStatus === 'untracked') {
+                  <h3 class="unsaved-title">Remove untracked file "{{ untrackFile.name }}"?</h3>
+                  <p class="unsaved-desc">This file has never been committed. You can add it to .gitignore to keep it on disk, or delete it permanently from disk.</p>
+                } @else {
+                  <h3 class="unsaved-title">Remove "{{ untrackFile.name }}" from Git tracking?</h3>
+                  <p class="unsaved-desc">The file will remain safely on your disk, but will be staged for removal from Git in the next commit and added to .gitignore.</p>
+                }
+              </div>
+            </div>
+            <div class="action-footer unsaved-footer">
+              <button type="button" class="btn btn-secondary" (click)="cancelGitUntrack()">Cancel</button>
+              @if (untrackFile.gitStatus === 'untracked') {
+                <button type="button" class="btn btn-danger" (click)="executeDeleteUntrackedFile(untrackFile)">Delete from Disk</button>
+                <button type="button" class="btn btn-primary" (click)="executeGitUntrack(untrackFile, true)">Ignore in .gitignore</button>
+              } @else {
+                <button type="button" class="btn btn-primary" (click)="executeGitUntrack(untrackFile, true)">Remove from Git & Ignore</button>
+              }
             </div>
           }
 
@@ -1377,6 +1423,28 @@ export class SearchModalComponent {
   public cancelUnsavedClose(): void {
     this.workspaceService.pendingUnsavedFile.set(null);
     this.close();
+  }
+
+  public cancelDeleteFile(): void {
+    this.workspaceService.pendingDeleteFile.set(null);
+    this.close();
+  }
+
+  public async executeDeleteFile(file: WorkspaceFile): Promise<void> {
+    await this.workspaceService.deleteFilePermanently(file);
+  }
+
+  public cancelGitUntrack(): void {
+    this.workspaceService.pendingGitUntrackFile.set(null);
+    this.close();
+  }
+
+  public async executeGitUntrack(file: WorkspaceFile, addToGitignore: boolean): Promise<void> {
+    await this.workspaceService.untrackFileFromGit(file, addToGitignore);
+  }
+
+  public async executeDeleteUntrackedFile(file: WorkspaceFile): Promise<void> {
+    await this.workspaceService.deleteFilePermanently(file);
   }
 
   public getFileBadge(file: WorkspaceFile): string {

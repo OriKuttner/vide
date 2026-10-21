@@ -2040,11 +2040,11 @@ ${rawContent}
         const model = this.editorInstance.getModel();
         if (
           model &&
-          (activeFile.language === 'plaintext' || model.getLanguageId() === 'plaintext') &&
+          (!activeFile.language || activeFile.language === 'plaintext') &&
           val.length < 50000
         ) {
           const detected = detectLanguage(activeFile.name, val);
-          if (detected !== 'plaintext' && detected !== model.getLanguageId()) {
+          if (detected !== 'plaintext' && detected !== activeFile.language) {
             activeFile.language = detected;
             monaco.editor.setModelLanguage(model, detected);
             this.workspaceService.updateFileLanguage(activeFile.id, detected);
@@ -2157,6 +2157,7 @@ ${rawContent}
 
     // Modified editor content changes sync back to WorkspaceService
     this.diffEditorInstance.getModifiedEditor().onDidChangeModelContent(() => {
+      if (this.isProgrammaticUpdate) return;
       const activeDiff = this.workspaceService.activeDiffFile();
       if (activeDiff && this.diffEditorInstance) {
         const val = this.diffEditorInstance.getModifiedEditor().getValue();
@@ -2210,47 +2211,52 @@ ${rawContent}
   private setupDiffModels(file: WorkspaceFile): void {
     if (!this.diffEditorInstance) return;
 
-    // Modified model (Working tree)
-    const modModel = this.getOrCreateModel(file);
-    if (modModel.getValue() !== file.content) {
-      modModel.setValue(file.content);
-    }
-
-    // Original model (HEAD baseline)
-    const safeId = encodeURIComponent(file.id || file.path || file.name);
-    const origUri = monaco.Uri.parse(`inmemory://diff-original/${safeId}`);
-    let origModel = this.originalDiffModels.get(file.id);
-    const originalText = file.originalContent !== undefined ? file.originalContent : file.content;
-
-    if (!origModel) {
-      const existing = monaco.editor.getModel(origUri);
-      if (existing) {
-        origModel = existing;
-      } else {
-        origModel = monaco.editor.createModel(originalText, file.language, origUri);
+    this.isProgrammaticUpdate = true;
+    try {
+      // Modified model (Working tree)
+      const modModel = this.getOrCreateModel(file);
+      if (modModel.getValue() !== file.content) {
+        modModel.setValue(file.content);
       }
-      const modOpts = modModel.getOptions();
-      origModel.updateOptions({
-        insertSpaces: modOpts.insertSpaces,
-        tabSize: modOpts.tabSize,
+
+      // Original model (HEAD baseline)
+      const safeId = encodeURIComponent(file.id || file.path || file.name);
+      const origUri = monaco.Uri.parse(`inmemory://diff-original/${safeId}`);
+      let origModel = this.originalDiffModels.get(file.id);
+      const originalText = file.originalContent !== undefined ? file.originalContent : file.content;
+
+      if (!origModel) {
+        const existing = monaco.editor.getModel(origUri);
+        if (existing) {
+          origModel = existing;
+        } else {
+          origModel = monaco.editor.createModel(originalText, file.language, origUri);
+        }
+        const modOpts = modModel.getOptions();
+        origModel.updateOptions({
+          insertSpaces: modOpts.insertSpaces,
+          tabSize: modOpts.tabSize,
+        });
+        this.originalDiffModels.set(file.id, origModel);
+      }
+
+      if (origModel.getValue() !== originalText) {
+        origModel.setValue(originalText);
+      }
+
+      this.diffEditorInstance.setModel({
+        original: origModel,
+        modified: modModel,
       });
-      this.originalDiffModels.set(file.id, origModel);
+
+      requestAnimationFrame(() => {
+        this.diffEditorInstance?.layout();
+        this.diffEditorInstance?.getOriginalEditor().layout();
+        this.diffEditorInstance?.getModifiedEditor().layout();
+      });
+    } finally {
+      this.isProgrammaticUpdate = false;
     }
-
-    if (origModel.getValue() !== originalText) {
-      origModel.setValue(originalText);
-    }
-
-    this.diffEditorInstance.setModel({
-      original: origModel,
-      modified: modModel,
-    });
-
-    requestAnimationFrame(() => {
-      this.diffEditorInstance?.layout();
-      this.diffEditorInstance?.getOriginalEditor().layout();
-      this.diffEditorInstance?.getModifiedEditor().layout();
-    });
   }
 
   public discardChanges(fileId: string): void {
@@ -2290,9 +2296,9 @@ ${rawContent}
 
       // Detect language from content if currently plaintext
       const currentContent = file.content ?? model.getValue();
-      if ((file.language === 'plaintext' || model.getLanguageId() === 'plaintext') && currentContent) {
+      if ((!file.language || file.language === 'plaintext') && currentContent) {
         const detected = detectLanguage(file.name, currentContent);
-        if (detected !== 'plaintext' && detected !== model.getLanguageId()) {
+        if (detected !== 'plaintext' && detected !== file.language) {
           file.language = detected;
           monaco.editor.setModelLanguage(model, detected);
           untracked(() => {

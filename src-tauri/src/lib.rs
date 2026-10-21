@@ -74,16 +74,75 @@ fn expand_path(p: &str) -> String {
 #[tauri::command]
 fn get_git_branch(repo_path: String) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
-    let output = Command::new("git")
-        .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "HEAD"])
+
+    // 1. Verify if the directory is actually inside a Git work tree
+    let check = Command::new("git")
+        .args(["-C", &clean_repo, "rev-parse", "--is-inside-work-tree"])
         .output()
         .map_err(|e| format!("Failed to execute git: {}", e))?;
 
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    if !check.status.success() {
+        return Err("Not a git repository".to_string());
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    // 2. Try symbolic-ref --short HEAD (works on empty repos and normal repos with branch)
+    let sym_output = Command::new("git")
+        .args(["-C", &clean_repo, "symbolic-ref", "--short", "HEAD"])
+        .output();
+
+    if let Ok(out) = sym_output {
+        if out.status.success() {
+            let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !name.is_empty() {
+                return Ok(name);
+            }
+        }
+    }
+
+    // 3. Try branch --show-current
+    let branch_output = Command::new("git")
+        .args(["-C", &clean_repo, "branch", "--show-current"])
+        .output();
+
+    if let Ok(out) = branch_output {
+        if out.status.success() {
+            let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !name.is_empty() {
+                return Ok(name);
+            }
+        }
+    }
+
+    // 4. Try rev-parse --abbrev-ref HEAD
+    let abbrev_output = Command::new("git")
+        .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output();
+
+    if let Ok(out) = abbrev_output {
+        if out.status.success() {
+            let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !name.is_empty() && name != "HEAD" {
+                return Ok(name);
+            }
+        }
+    }
+
+    // 5. If HEAD is detached, get short commit hash
+    let rev_output = Command::new("git")
+        .args(["-C", &clean_repo, "rev-parse", "--short", "HEAD"])
+        .output();
+
+    if let Ok(out) = rev_output {
+        if out.status.success() {
+            let hash = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !hash.is_empty() {
+                return Ok(format!("HEAD ({})", hash));
+            }
+        }
+    }
+
+    // Fallback: If repo is empty and HEAD ref cannot be resolved, default to "main"
+    Ok("main".to_string())
 }
 
 #[tauri::command]
@@ -136,7 +195,7 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
 #[tauri::command]
 fn get_git_diff_baseline(repo_path: String, file_path: String) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
-    let clean_file = file_path.trim_start_matches('/');
+    let clean_file = file_path.trim_start_matches('/').trim_start_matches("./");
     let git_spec = format!("HEAD:{}", clean_file);
     let output = Command::new("git")
         .args(["-C", &clean_repo, "show", &git_spec])
@@ -154,7 +213,7 @@ fn get_git_diff_baseline(repo_path: String, file_path: String) -> Result<String,
 #[tauri::command]
 fn revert_git_file(repo_path: String, file_path: String) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
-    let clean_file = file_path.trim_start_matches('/');
+    let clean_file = file_path.trim_start_matches('/').trim_start_matches("./");
     let output = Command::new("git")
         .args(["-C", &clean_repo, "checkout", "HEAD", "--", clean_file])
         .output()
@@ -187,7 +246,15 @@ fn get_git_commits(repo_path: String, limit: Option<usize>) -> Result<Vec<GitCom
         .map_err(|e| format!("Failed to execute git log: {}", e))?;
 
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("does not have any commits yet")
+            || stderr.contains("unknown revision")
+            || stderr.contains("bad default revision 'HEAD'")
+            || stderr.contains("fatal: ambiguous argument 'HEAD'")
+        {
+            return Ok(Vec::new());
+        }
+        return Err(stderr.to_string());
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
@@ -242,6 +309,49 @@ fn create_git_commit(repo_path: String, message: String) -> Result<String, Strin
     }
 
     Ok(String::from_utf8_lossy(&commit_output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+fn git_untrack_file(repo_path: String, file_path: String, add_to_gitignore: bool) -> Result<(), String> {
+    let clean_repo = expand_path(&repo_path);
+    let clean_file = file_path
+        .trim_start_matches('/')
+        .trim_start_matches("./");
+
+    // 1. If tracked in Git index, remove it from cache
+    let _ = Command::new("git")
+        .args(["-C", &clean_repo, "rm", "--cached", "-f", "--", clean_file])
+        .output();
+
+    // 2. Append to .gitignore if requested
+    if add_to_gitignore {
+        let gitignore_path = Path::new(&clean_repo).join(".gitignore");
+        let content = if gitignore_path.exists() {
+            fs::read_to_string(&gitignore_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let entry = if clean_file.starts_with('/') {
+            clean_file.to_string()
+        } else {
+            format!("/{}", clean_file)
+        };
+
+        let already_present = content.lines().any(|l| l.trim() == entry || l.trim() == clean_file);
+        if !already_present {
+            let mut new_content = content;
+            if !new_content.is_empty() && !new_content.ends_with('\n') {
+                new_content.push('\n');
+            }
+            new_content.push_str(&entry);
+            new_content.push('\n');
+            fs::write(&gitignore_path, new_content)
+                .map_err(|e| format!("Failed to update .gitignore: {}", e))?;
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -558,6 +668,35 @@ fn get_file_metadata(file_path: String) -> Result<FileMetadataResult, String> {
 fn create_directory(dir_path: String) -> Result<(), String> {
     let clean_path = expand_path(&dir_path);
     fs::create_dir_all(&clean_path).map_err(|e| format!("Failed to create directory '{}': {}", clean_path, e))
+}
+
+#[tauri::command]
+fn delete_workspace_file(repo_path: Option<String>, file_path: String) -> Result<(), String> {
+    let clean_path = if let Some(repo) = repo_path {
+        let repo_clean = expand_path(&repo);
+        let p = Path::new(&file_path);
+        if p.is_absolute() {
+            expand_path(&file_path)
+        } else {
+            let relative = file_path.trim_start_matches('/').trim_start_matches("./");
+            Path::new(&repo_clean).join(relative).to_string_lossy().to_string()
+        }
+    } else {
+        expand_path(&file_path)
+    };
+
+    let target = Path::new(&clean_path);
+    if !target.exists() {
+        return Err(format!("File or directory '{}' does not exist", clean_path));
+    }
+
+    if target.is_dir() {
+        fs::remove_dir_all(target).map_err(|e| format!("Failed to delete directory '{}': {}", clean_path, e))?;
+    } else {
+        fs::remove_file(target).map_err(|e| format!("Failed to delete file '{}': {}", clean_path, e))?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -1216,6 +1355,8 @@ pub fn run() {
             stop_ai_sidecar,
             get_ai_sidecar_status,
             get_git_diff_for_commit,
+            git_untrack_file,
+            delete_workspace_file,
             check_ai_model_status,
             download_ai_model,
             cancel_ai_model_download,

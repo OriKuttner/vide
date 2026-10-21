@@ -74,6 +74,12 @@ export class App {
       event.preventDefault();
       this.workspaceService.toggleHiddenFiles();
     } else if (
+      event.key === 'F5' ||
+      ((event.ctrlKey || event.metaKey) && (event.key === 'r' || event.key === 'R'))
+    ) {
+      event.preventDefault();
+      this.workspaceService.refreshAll();
+    } else if (
       (event.ctrlKey || event.metaKey) &&
       (event.key === '+' ||
         event.key === '=' ||

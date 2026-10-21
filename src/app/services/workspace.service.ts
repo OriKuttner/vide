@@ -81,6 +81,7 @@ export class WorkspaceService {
 
   // Scanning / loading state
   readonly isScanning = signal<boolean>(false);
+  readonly isRefreshingTree = signal<boolean>(false);
   readonly scanProgress = signal<string>('');
 
   // All files in workspace map for active tabs & retrieval
@@ -108,9 +109,11 @@ export class WorkspaceService {
 
   // Active search/modal mode
   readonly activeModal = signal<
-    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | null
+    'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | null
   >(null);
   readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
+  readonly pendingDeleteFile = signal<WorkspaceFile | null>(null);
+  readonly pendingGitUntrackFile = signal<WorkspaceFile | null>(null);
 
   // Line jump request (from Grep search)
   readonly pendingLineJump = signal<{ lineNumber: number; column?: number } | null>(null);
@@ -429,6 +432,119 @@ export class WorkspaceService {
       this.showNotification(`Reverted ${file.name} to HEAD baseline`);
       await this.refreshGitStatus();
     }
+  }
+
+  public confirmDeleteFile(file: WorkspaceFile): void {
+    this.pendingDeleteFile.set(file);
+    this.openModal('delete-file-confirm');
+  }
+
+  private removeNodeFromTree(nodes: FileTreeNode[], target: WorkspaceFile): FileTreeNode[] {
+    const normTarget = target.path.replace(/^\.\//, '').replace(/^\//, '');
+    const targetFs = target.fsPath;
+
+    return nodes
+      .filter((n) => {
+        if (n.id === target.id) return false;
+        const normNode = n.path.replace(/^\.\//, '').replace(/^\//, '');
+        if (normNode === normTarget) return false;
+        if (targetFs && n.fsPath && n.fsPath === targetFs) return false;
+        if (n.file && (n.file.id === target.id || n.file.path === target.path)) return false;
+        return true;
+      })
+      .map((n) => {
+        if (n.children && n.children.length > 0) {
+          return {
+            ...n,
+            children: this.removeNodeFromTree(n.children, target),
+          };
+        }
+        return n;
+      });
+  }
+
+  public async deleteFilePermanently(file: WorkspaceFile): Promise<boolean> {
+    if (!file) return false;
+
+    // 1. Close open tab if present
+    this.forceCloseTab(file.id);
+    const currentTabs = this.openTabs();
+    const newTabs = currentTabs.filter(
+      (t) => t.id !== file.id && t.path !== file.path && (!file.fsPath || t.fsPath !== file.fsPath)
+    );
+    if (newTabs.length !== currentTabs.length) {
+      this.openTabs.set(newTabs);
+      if (this.activeFileId() === file.id || !newTabs.some((t) => t.id === this.activeFileId())) {
+        this.activeFileId.set(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : '');
+      }
+    }
+
+    if (this.activeDiffFile()?.id === file.id || this.activeDiffFile()?.path === file.path) {
+      this.closeDiffView();
+    }
+
+    // 2. Perform deletion on disk if running under Tauri
+    if (isTauriApp()) {
+      try {
+        await invoke('delete_workspace_file', {
+          repoPath: this.nativeWorkspacePath(),
+          filePath: file.path,
+        });
+      } catch (err: any) {
+        console.error('Failed to delete file from disk:', err);
+        this.showNotification(`Failed to delete file: ${err?.message || err}`);
+        this.closeModal();
+        return false;
+      }
+    }
+
+    // 3. Remove file from in-memory state and file tree
+    this.files.update((files) =>
+      files.filter((f) => f.id !== file.id && f.path !== file.path && (!file.fsPath || f.fsPath !== file.fsPath))
+    );
+    this.fileTree.update((nodes) => this.removeNodeFromTree(nodes, file));
+
+    // 4. Clean up active modal
+    this.pendingDeleteFile.set(null);
+    this.closeModal();
+    this.showNotification(`✓ Deleted "${file.name}"`);
+
+    // 5. Refresh File Tree from disk and Git status
+    await this.refreshFileTree();
+    await this.refreshGitStatus();
+    return true;
+  }
+
+  public confirmGitUntrackFile(file: WorkspaceFile): void {
+    this.pendingGitUntrackFile.set(file);
+    this.openModal('git-untrack-confirm');
+  }
+
+  public async untrackFileFromGit(file: WorkspaceFile, addToGitignore = true): Promise<boolean> {
+    if (!file) return false;
+
+    if (isTauriApp() && this.nativeWorkspacePath()) {
+      try {
+        await invoke('git_untrack_file', {
+          repoPath: this.nativeWorkspacePath()!,
+          filePath: file.path,
+          addToGitignore,
+        });
+
+        this.pendingGitUntrackFile.set(null);
+        this.closeModal();
+        this.showNotification(`✓ Removed "${file.name}" from Git tracking (file kept on disk)`);
+        await this.refreshFileTree();
+        await this.refreshGitStatus();
+        return true;
+      } catch (err: any) {
+        console.error('Failed to untrack file from git:', err);
+        this.showNotification(`Failed to untrack file: ${err?.message || err}`);
+        this.closeModal();
+        return false;
+      }
+    }
+    return false;
   }
 
   public async loadRecentCommits(): Promise<void> {
@@ -969,7 +1085,7 @@ export class WorkspaceService {
   }
 
   /**
-   * Synchronizes git status and active file from disk.
+   * Synchronizes file tree, git status and active file from disk.
    */
   public async syncExternalChanges(): Promise<void> {
     if (this.isAutoSyncing) return;
@@ -977,12 +1093,36 @@ export class WorkspaceService {
 
     this.isAutoSyncing = true;
     try {
+      await this.refreshFileTree();
       await this.refreshGitStatus();
       await this.reloadActiveFileIfChangedOnDisk();
     } catch (e) {
       console.warn('Auto-sync error:', e);
     } finally {
       this.isAutoSyncing = false;
+    }
+  }
+
+  /**
+   * Manually refreshes the entire workspace: file tree, git status, active file and search index.
+   */
+  public async refreshAll(): Promise<void> {
+    if (this.isRefreshingTree()) return;
+    this.isRefreshingTree.set(true);
+    try {
+      await this.refreshFileTree();
+      await this.refreshGitStatus();
+      await this.reloadActiveFileIfChangedOnDisk();
+      const nativePath = this.nativeWorkspacePath();
+      if (nativePath) {
+        this.indexNativeDirectoryInBackground(nativePath);
+      }
+      this.showNotification('✓ Workspace refreshed');
+    } catch (err: any) {
+      console.error('Failed to refresh workspace:', err);
+      this.showNotification(`Failed to refresh: ${err?.message || err}`);
+    } finally {
+      this.isRefreshingTree.set(false);
     }
   }
 
@@ -1280,7 +1420,19 @@ export class WorkspaceService {
   private fallbackRootName = '';
 
   public openModal(
-    mode: 'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download'
+    mode:
+      | 'grep'
+      | 'file-search'
+      | 'new-file'
+      | 'new-folder'
+      | 'open-folder-path'
+      | 'indentation'
+      | 'change-language'
+      | 'unsaved-changes'
+      | 'ai-settings'
+      | 'ai-download'
+      | 'delete-file-confirm'
+      | 'git-untrack-confirm'
   ): void {
     if (mode === 'grep') {
       this.setSidebarView('search');

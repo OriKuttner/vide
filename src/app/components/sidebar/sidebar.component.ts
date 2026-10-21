@@ -157,6 +157,20 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                 ⬆
               </button>
             }
+            @if (workspaceService.isRealWorkspace()) {
+              <button
+                type="button"
+                class="refresh-tree-btn"
+                [class.spinning]="workspaceService.isRefreshingTree()"
+                (click)="workspaceService.refreshAll()"
+                title="Refresh Explorer & Git (F5)"
+              >
+                <svg class="svg-btn-icon" viewBox="0 0 16 16" fill="currentColor">
+                  <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                  <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                </svg>
+              </button>
+            }
             <button
               type="button"
               class="hidden-toggle-btn"
@@ -265,6 +279,14 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                     }
                     <span class="node-name" [title]="node.path">{{ node.name }}</span>
                     <div class="row-status-indicators">
+                      <button
+                        type="button"
+                        class="tree-delete-btn"
+                        title="Delete file permanently from disk"
+                        (click)="onDeleteFileFromTree(node.file || node, $event)"
+                      >
+                        🗑
+                      </button>
                       @if (workspaceService.hasGitChanges(node.file || node)) {
                         <button
                           type="button"
@@ -671,6 +693,14 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                     <div class="git-file-actions">
                       <button
                         type="button"
+                        class="git-action-btn untrack-btn"
+                        [title]="file.gitStatus === 'untracked' ? 'Remove untracked file (ignore or delete)' : 'Remove from Git tracking (keep on disk)'"
+                        (click)="onUntrackFile(file, $event)"
+                      >
+                        🗑
+                      </button>
+                      <button
+                        type="button"
                         class="git-action-btn revert-btn"
                         title="Discard changes (Revert to HEAD)"
                         (click)="onRevertFile(file, $event)"
@@ -947,6 +977,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
           gap: 4px;
 
           .parent-up-btn,
+          .refresh-tree-btn,
           .hidden-toggle-btn,
           .close-folder-icon-btn {
             background-color: var(--bg-btn, #e4e4e4);
@@ -979,6 +1010,10 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
               background-color: var(--accent-color, #007acc);
               color: #ffffff;
               border-color: #007acc;
+            }
+
+            &.spinning .svg-btn-icon {
+              animation: spin 0.8s linear infinite;
             }
 
             &.close-folder-icon-btn:hover {
@@ -1240,6 +1275,10 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
         }
 
         &.file {
+          &:hover .tree-delete-btn {
+            display: inline-flex;
+          }
+
           &.active {
             background-color: var(--bg-item-active, #e2effd);
             color: var(--text-item-active, #005fb8);
@@ -1362,6 +1401,28 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
           gap: 6px;
           flex-shrink: 0;
           padding-right: 2px;
+        }
+
+        .tree-delete-btn {
+          background: transparent;
+          border: none;
+          padding: 1px 3px;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          color: var(--text-muted, #717171);
+          cursor: pointer;
+          border-radius: 3px;
+          opacity: 0.7;
+          transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+
+          &:hover {
+            opacity: 1;
+            color: #ef4444;
+            transform: scale(1.15);
+            background-color: rgba(239, 68, 68, 0.15);
+          }
         }
 
         .tree-git-btn {
@@ -2104,6 +2165,10 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                 &.revert-btn:hover {
                   color: #d32f2f;
                 }
+
+                &.untrack-btn:hover {
+                  color: #f97316;
+                }
               }
 
               .status-letter-badge {
@@ -2499,6 +2564,19 @@ export class SidebarComponent {
   public onRevertFile(file: WorkspaceFile, event: MouseEvent): void {
     event.stopPropagation();
     this.workspaceService.revertFile(file.id);
+  }
+
+  public onDeleteFileFromTree(node: any, event: MouseEvent): void {
+    event.stopPropagation();
+    const file = node?.file || (node?.path ? node : this.workspaceService.files().find((f: any) => f.path === node?.path || f.id === node?.id));
+    if (file) {
+      this.workspaceService.confirmDeleteFile(file);
+    }
+  }
+
+  public onUntrackFile(file: WorkspaceFile, event: MouseEvent): void {
+    event.stopPropagation();
+    this.workspaceService.confirmGitUntrackFile(file);
   }
 
   // Git Commit & History state
