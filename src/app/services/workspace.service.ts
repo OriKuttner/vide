@@ -547,41 +547,49 @@ export class WorkspaceService {
     return false;
   }
 
+  private recentCommitsPromise: Promise<void> | null = null;
   public async loadRecentCommits(): Promise<void> {
+    if (this.recentCommitsPromise) {
+      return this.recentCommitsPromise;
+    }
     if (!this.isRealWorkspace()) {
       this.recentCommits.set([]);
       return;
     }
 
     if (isTauriApp() && this.nativeWorkspacePath()) {
-      this.isLoadingCommits.set(true);
-      try {
-        const repoPath = this.nativeWorkspacePath()!;
-        const commits = await invoke<
-          Array<{
-            hash: string;
-            short_hash: string;
-            author: string;
-            date: string;
-            message: string;
-          }>
-        >('get_git_commits', { repoPath, limit: 15 });
+      this.recentCommitsPromise = (async () => {
+        this.isLoadingCommits.set(true);
+        try {
+          const repoPath = this.nativeWorkspacePath()!;
+          const commits = await invoke<
+            Array<{
+              hash: string;
+              short_hash: string;
+              author: string;
+              date: string;
+              message: string;
+            }>
+          >('get_git_commits', { repoPath, limit: 15 });
 
-        this.recentCommits.set(
-          commits.map((c) => ({
-            hash: c.hash,
-            shortHash: c.short_hash,
-            author: c.author,
-            date: c.date,
-            message: c.message,
-          }))
-        );
-      } catch (err) {
-        console.warn('Failed to load git commits:', err);
-        this.recentCommits.set([]);
-      } finally {
-        this.isLoadingCommits.set(false);
-      }
+          this.recentCommits.set(
+            commits.map((c) => ({
+              hash: c.hash,
+              shortHash: c.short_hash,
+              author: c.author,
+              date: c.date,
+              message: c.message,
+            }))
+          );
+        } catch (err) {
+          console.warn('Failed to load git commits:', err);
+          this.recentCommits.set([]);
+        } finally {
+          this.isLoadingCommits.set(false);
+          this.recentCommitsPromise = null;
+        }
+      })();
+      return this.recentCommitsPromise;
     }
   }
 
@@ -605,8 +613,6 @@ export class WorkspaceService {
         this.showNotification('Committed successfully');
       });
       await this.refreshGitStatus();
-      await this.loadRecentCommits();
-      await this.loadGitSyncStatus();
       return true;
     } catch (err: any) {
       console.error('Failed to commit changes:', err);
@@ -619,20 +625,41 @@ export class WorkspaceService {
     }
   }
 
+  private gitSyncStatusPromise: Promise<void> | null = null;
   public async loadGitSyncStatus(): Promise<void> {
+    if (this.gitSyncStatusPromise) {
+      return this.gitSyncStatusPromise;
+    }
     if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
       this.gitSyncStatus.set(null);
       return;
     }
 
-    try {
-      const repoPath = this.nativeWorkspacePath()!;
-      const status = await invoke<GitSyncStatus>('get_git_sync_status', { repoPath });
-      this.ngZone.run(() => this.gitSyncStatus.set(status));
-    } catch (err) {
-      console.warn('Failed to load git sync status:', err);
-      this.ngZone.run(() => this.gitSyncStatus.set(null));
-    }
+    this.gitSyncStatusPromise = (async () => {
+      try {
+        const repoPath = this.nativeWorkspacePath()!;
+        const status = await invoke<GitSyncStatus>('get_git_sync_status', { repoPath });
+        const prev = this.gitSyncStatus();
+        if (
+          !prev ||
+          prev.ahead !== status.ahead ||
+          prev.behind !== status.behind ||
+          prev.has_remote !== status.has_remote ||
+          prev.upstream !== status.upstream
+        ) {
+          this.ngZone.run(() => this.gitSyncStatus.set(status));
+        }
+      } catch (err) {
+        console.warn('Failed to load git sync status:', err);
+        if (this.gitSyncStatus() !== null) {
+          this.ngZone.run(() => this.gitSyncStatus.set(null));
+        }
+      } finally {
+        this.gitSyncStatusPromise = null;
+      }
+    })();
+
+    return this.gitSyncStatusPromise;
   }
 
   public async pushChanges(): Promise<boolean> {
@@ -649,8 +676,6 @@ export class WorkspaceService {
         this.showNotification('Pushed changes successfully to remote');
       });
       await this.refreshGitStatus();
-      await this.loadRecentCommits();
-      await this.loadGitSyncStatus();
       return true;
     } catch (err: any) {
       console.error('Failed to push changes:', err);
@@ -806,8 +831,7 @@ export class WorkspaceService {
           const branch = await invoke<string>('get_git_branch', { repoPath });
           this.gitBranch.set(branch);
           if (branch) {
-            this.loadRecentCommits();
-            this.loadGitSyncStatus();
+            await Promise.all([this.loadRecentCommits(), this.loadGitSyncStatus()]);
           } else {
             this.recentCommits.set([]);
             this.gitSyncStatus.set(null);

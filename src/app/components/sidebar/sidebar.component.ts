@@ -592,20 +592,40 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                     rows="2"
                   ></textarea>
                 </div>
-                <button
-                  type="button"
-                  class="btn-commit"
-                  [class.loading]="isCommitting() || workspaceService.isCommitting()"
-                  [disabled]="!canCommit() || isCommitting() || workspaceService.isCommitting()"
-                  (click)="submitCommit()"
-                >
-                  @if (isCommitting() || workspaceService.isCommitting()) {
-                    <span class="btn-spinner"></span>
-                    <span>Committing...</span>
-                  } @else {
-                    <span>✓ Commit</span>
+                <div class="commit-buttons-row">
+                  <button
+                    type="button"
+                    class="btn-commit"
+                    [class.loading]="(isCommitting() || workspaceService.isCommitting()) && !isCommitAndPushing()"
+                    [disabled]="!canCommit() || isCommitting() || workspaceService.isCommitting() || isPushing() || workspaceService.isPushing()"
+                    (click)="submitCommit()"
+                    title="Commit changes locally (Ctrl+Enter)"
+                  >
+                    @if ((isCommitting() || workspaceService.isCommitting()) && !isCommitAndPushing()) {
+                      <span class="btn-spinner"></span>
+                      <span>Committing...</span>
+                    } @else {
+                      <span>✓ Commit</span>
+                    }
+                  </button>
+                  @if (workspaceService.gitSyncStatus()?.has_remote) {
+                    <button
+                      type="button"
+                      class="btn-commit-push"
+                      [class.loading]="isCommitAndPushing()"
+                      [disabled]="!canCommit() || isCommitting() || workspaceService.isCommitting() || isPushing() || workspaceService.isPushing()"
+                      (click)="submitCommitAndPush()"
+                      title="Commit changes and push immediately to remote"
+                    >
+                      @if (isCommitAndPushing()) {
+                        <span class="btn-spinner"></span>
+                        <span>Syncing...</span>
+                      } @else {
+                        <span>🚀 Commit & Push</span>
+                      }
+                    </button>
                   }
-                </button>
+                </div>
               </div>
             } @else if (workspaceService.gitSyncStatus()?.has_remote && (workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
               <div class="git-commit-box">
@@ -1940,12 +1960,19 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             }
           }
 
+          .commit-buttons-row {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+          }
+
           .btn-commit,
+          .btn-commit-push,
           .btn-push {
             background-color: #007acc;
             color: #ffffff;
             border: none;
-            padding: 7px 12px;
+            padding: 7px 10px;
             font-size: 12px;
             font-weight: 600;
             border-radius: 4px;
@@ -1953,8 +1980,14 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 7px;
+            gap: 6px;
+            flex: 1;
+            min-width: 0;
             transition: background-color 0.15s ease, opacity 0.15s ease;
+
+            * {
+              pointer-events: none;
+            }
 
             &:hover:not(:disabled) {
               background-color: #0062a3;
@@ -1988,6 +2021,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             }
           }
 
+          .btn-commit-push,
           .btn-push {
             background-color: #238636;
 
@@ -2585,6 +2619,7 @@ export class SidebarComponent {
   public commitsExpanded = signal<boolean>(true);
   public readonly isPushing = signal<boolean>(false);
   public readonly isCommitting = signal<boolean>(false);
+  public readonly isCommitAndPushing = signal<boolean>(false);
   public readonly isGeneratingCommitNote = signal<boolean>(false);
 
   public async generateAiCommitNote(): Promise<void> {
@@ -2627,7 +2662,20 @@ export class SidebarComponent {
 
   public async submitCommit(): Promise<void> {
     const msg = this.commitMessage().trim();
-    if (!msg || !this.canCommit() || this.isCommitting() || this.workspaceService.isCommitting()) return;
+    if (
+      !msg ||
+      !this.canCommit() ||
+      this.isCommitting() ||
+      this.workspaceService.isCommitting() ||
+      this.isPushing() ||
+      this.workspaceService.isPushing()
+    ) {
+      return;
+    }
+
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
 
     this.isCommitting.set(true);
     this.cdr.detectChanges();
@@ -2646,8 +2694,49 @@ export class SidebarComponent {
     }
   }
 
+  public async submitCommitAndPush(): Promise<void> {
+    const msg = this.commitMessage().trim();
+    if (
+      !msg ||
+      !this.canCommit() ||
+      this.isCommitting() ||
+      this.workspaceService.isCommitting() ||
+      this.isPushing() ||
+      this.workspaceService.isPushing()
+    ) {
+      return;
+    }
+
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    this.isCommitAndPushing.set(true);
+    this.isCommitting.set(true);
+    this.cdr.detectChanges();
+    await new Promise((r) => setTimeout(r, 40));
+
+    try {
+      const success = await this.workspaceService.commitChanges(msg);
+      if (success) {
+        this.commitMessage.set('');
+        await this.workspaceService.pushChanges();
+      }
+    } finally {
+      this.ngZone.run(() => {
+        this.isCommitting.set(false);
+        this.isCommitAndPushing.set(false);
+        this.cdr.detectChanges();
+      });
+    }
+  }
+
   public async submitPush(): Promise<void> {
-    if (this.isPushing() || this.workspaceService.isPushing()) return;
+    if (this.isPushing() || this.workspaceService.isPushing() || this.isCommitting() || this.workspaceService.isCommitting()) return;
+
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
 
     this.isPushing.set(true);
     this.cdr.detectChanges();
