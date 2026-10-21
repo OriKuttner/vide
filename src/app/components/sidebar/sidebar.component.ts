@@ -502,11 +502,17 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
           @if (workspaceService.gitBranch()) {
             @if (workspaceService.changedFiles().length > 0) {
               <div class="git-commit-box">
+                @if (workspaceService.isCommitting()) {
+                  <div class="git-progress-bar">
+                    <div class="progress-bar-indicator"></div>
+                  </div>
+                }
                 <div class="commit-input-wrapper">
                   <label class="commit-label">Commit Note</label>
                   <textarea
                     class="commit-textarea"
                     [value]="commitMessage()"
+                    [disabled]="workspaceService.isCommitting()"
                     (input)="onCommitMessageChange($event)"
                     (keydown.control.enter)="submitCommit()"
                     (keydown.meta.enter)="submitCommit()"
@@ -520,6 +526,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                   (click)="submitCommit()"
                 >
                   @if (workspaceService.isCommitting()) {
+                    <span class="btn-spinner"></span>
                     <span>Committing...</span>
                   } @else {
                     <span>✓ Commit</span>
@@ -528,6 +535,11 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
               </div>
             } @else if (workspaceService.gitSyncStatus()?.has_remote && (workspaceService.gitSyncStatus()?.ahead ?? 0) > 0) {
               <div class="git-commit-box">
+                @if (workspaceService.isPushing()) {
+                  <div class="git-progress-bar">
+                    <div class="progress-bar-indicator push"></div>
+                  </div>
+                }
                 <button
                   type="button"
                   class="btn-push"
@@ -535,6 +547,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
                   (click)="submitPush()"
                 >
                   @if (workspaceService.isPushing()) {
+                    <span class="btn-spinner"></span>
                     <span>Pushing...</span>
                   } @else {
                     <svg class="push-icon" viewBox="0 0 16 16" fill="currentColor">
@@ -1057,6 +1070,18 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
       @keyframes spin {
         to {
           transform: rotate(360deg);
+        }
+      }
+
+      @keyframes gitProgressAnim {
+        0% {
+          transform: translateX(-100%);
+        }
+        50% {
+          transform: translateX(120%);
+        }
+        100% {
+          transform: translateX(250%);
         }
       }
 
@@ -1632,6 +1657,8 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
         }
 
         .git-commit-box {
+          position: relative;
+          overflow: hidden;
           flex-shrink: 0;
           padding: 10px 12px;
           border-bottom: 1px solid var(--border-color, #e5e5e5);
@@ -1639,6 +1666,29 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
           flex-direction: column;
           gap: 8px;
           background: var(--bg-secondary, #fafafa);
+
+          .git-progress-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2.5px;
+            background: rgba(0, 122, 204, 0.15);
+            overflow: hidden;
+            z-index: 10;
+
+            .progress-bar-indicator {
+              width: 45%;
+              height: 100%;
+              background: #007acc;
+              border-radius: 2px;
+              animation: gitProgressAnim 1.2s infinite ease-in-out;
+
+              &.push {
+                background: #238636;
+              }
+            }
+          }
 
           .commit-input-wrapper {
             display: flex;
@@ -1698,6 +1748,17 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
             &:disabled {
               opacity: 0.5;
               cursor: not-allowed;
+            }
+
+            .btn-spinner {
+              width: 12px;
+              height: 12px;
+              border: 2px solid rgba(255, 255, 255, 0.35);
+              border-top-color: #ffffff;
+              border-radius: 50%;
+              animation: spin 0.65s linear infinite;
+              display: inline-block;
+              flex-shrink: 0;
             }
 
             .push-icon {
