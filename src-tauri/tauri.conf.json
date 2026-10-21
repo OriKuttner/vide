@@ -1,6 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "vector-ide",
+  "productName": "vide",
+  "mainBinaryName": "vide",
   "version": "0.1.0",
   "identifier": "com.vector.ide",
   "build": {
@@ -26,6 +27,9 @@
   },
   "bundle": {
     "active": true,
+    "category": "DeveloperTool",
+    "shortDescription": "Vector IDE",
+    "longDescription": "Vector IDE - Modern Lightweight Development Environment",
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -34,6 +38,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "linux": {
+      "deb": {
+        "section": "devel",
+        "desktopTemplate": "desktop.template"
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

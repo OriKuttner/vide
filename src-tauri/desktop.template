@@ -1,0 +1,11 @@
+[Desktop Entry]
+Categories=Development;IDE;TextEditor;
+Comment=Vector IDE - Lightweight Code Editor
+Exec={{exec}} %F
+Icon={{icon}}
+Name=Vector IDE
+StartupNotify=true
+StartupWMClass={{exec}}
+Terminal=false
+Type=Application
+MimeType=text/plain;inode/directory;
