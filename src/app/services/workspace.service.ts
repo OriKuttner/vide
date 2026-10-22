@@ -153,14 +153,19 @@ export class WorkspaceService {
   // Changed files computed signal (files that differ from last commit / HEAD)
   readonly changedFiles = computed(() => {
     if (!this.isRealWorkspace()) return [];
-    const list = this.files().filter(
-      (f) =>
-        f.isModified ||
-        f.gitStatus === 'added' ||
-        f.gitStatus === 'modified' ||
-        f.gitStatus === 'untracked' ||
-        (f.originalContent !== undefined && f.content !== f.originalContent)
-    );
+    const isGit = !!this.gitBranch();
+    const list = this.files().filter((f) => {
+      if (isGit) {
+        return (
+          f.isModified ||
+          f.gitStatus === 'added' ||
+          f.gitStatus === 'modified' ||
+          f.gitStatus === 'untracked' ||
+          f.gitStatus === 'deleted'
+        );
+      }
+      return f.isModified || (f.originalContent !== undefined && f.content !== f.originalContent);
+    });
     return list.sort((a, b) => {
       // Show modified files first, then untracked/added
       if (a.gitStatus === 'modified' && b.gitStatus !== 'modified') return -1;
@@ -709,6 +714,24 @@ export class WorkspaceService {
       this.ngZone.run(() => {
         this.showNotification('Committed successfully');
       });
+      // Synchronize in-memory content baseline so all saved edits are recognized as committed
+      this.files.update((files) =>
+        files.map((f) => ({
+          ...f,
+          originalContent: f.savedContent ?? f.content,
+          gitStatus: undefined,
+        }))
+      );
+      this.openTabs.update((tabs) =>
+        tabs.map((t) => ({
+          ...t,
+          originalContent: t.savedContent ?? t.content,
+          gitStatus: undefined,
+        }))
+      );
+      if (this.diffModeActive()) {
+        this.closeDiffView();
+      }
       await this.refreshGitStatus();
       return true;
     } catch (err: any) {
@@ -1047,19 +1070,20 @@ export class WorkspaceService {
           Array<{ path: string; status: 'modified' | 'untracked' | 'added' | 'deleted'; staged: boolean }>
         >('get_git_status', { repoPath });
 
-        const statusMap = new Map(gitItems.map((item) => [item.path, item]));
+        const statusMap = new Map(gitItems.map((item) => [item.path.replace(/^\.\//, '').replace(/^\//, ''), item]));
         const currentFiles = [...this.files()];
-        const knownPaths = new Set(currentFiles.map((f) => f.path));
+        const knownPaths = new Set(currentFiles.map((f) => f.path.replace(/^\.\//, '').replace(/^\//, '')));
 
         for (const item of gitItems) {
-          if (!knownPaths.has(item.path)) {
-            const parts = item.path.split('/');
+          const normItemPath = item.path.replace(/^\.\//, '').replace(/^\//, '');
+          if (!knownPaths.has(normItemPath)) {
+            const parts = normItemPath.split('/');
             const name = parts[parts.length - 1];
             const newFile: WorkspaceFile = {
-              id: item.path,
+              id: normItemPath,
               name,
-              path: item.path,
-              fsPath: `${repoPath}/${item.path}`,
+              path: normItemPath,
+              fsPath: `${repoPath}/${normItemPath}`,
               language: detectLanguageFromFilename(name),
               content: '',
               isLoaded: false,
@@ -1067,25 +1091,33 @@ export class WorkspaceService {
               isModified: false,
             };
             currentFiles.push(newFile);
-            knownPaths.add(item.path);
+            knownPaths.add(normItemPath);
           }
         }
 
-        const updated = currentFiles.map((file) => {
-          const normPath = file.path.replace(/^\.\//, '').replace(/^\//, '');
-          const item = statusMap.get(normPath);
-          if (item) {
-            return {
-              ...file,
-              gitStatus: item.status,
-            };
-          } else {
-            return {
-              ...file,
-              gitStatus: undefined,
-            };
-          }
-        });
+        const updated = currentFiles
+          .filter((file) => {
+            if (file.gitStatus === 'deleted' && !statusMap.has(file.path.replace(/^\.\//, '').replace(/^\//, ''))) {
+              return false;
+            }
+            return true;
+          })
+          .map((file) => {
+            const normPath = file.path.replace(/^\.\//, '').replace(/^\//, '');
+            const item = statusMap.get(normPath);
+            if (item) {
+              return {
+                ...file,
+                gitStatus: item.status,
+              };
+            } else {
+              return {
+                ...file,
+                gitStatus: undefined,
+                originalContent: !file.isModified ? (file.savedContent ?? file.content) : file.originalContent,
+              };
+            }
+          });
 
         this.files.set(updated);
         this.openTabs.update((tabs) =>
@@ -1095,9 +1127,29 @@ export class WorkspaceService {
             return {
               ...tab,
               gitStatus: item ? item.status : undefined,
+              originalContent: !tab.isModified && !item ? (tab.savedContent ?? tab.content) : tab.originalContent,
             };
           })
         );
+
+        // Also update file tree nodes to reflect updated gitStatus and trigger tree re-render
+        const updateTreeGitStatus = (nodes: FileTreeNode[]) => {
+          for (const node of nodes) {
+            if (node.file) {
+              const normPath = node.file.path.replace(/^\.\//, '').replace(/^\//, '');
+              const item = statusMap.get(normPath);
+              node.file.gitStatus = item ? item.status : undefined;
+              if (!item && !node.file.isModified) {
+                node.file.originalContent = node.file.savedContent ?? node.file.content;
+              }
+            }
+            if (node.children && node.children.length > 0) {
+              updateTreeGitStatus(node.children);
+            }
+          }
+        };
+        updateTreeGitStatus(this.fileTree());
+        this.triggerTreeUpdate();
         return;
       } catch (err) {
         this.gitBranch.set(null);
@@ -2546,7 +2598,7 @@ export class WorkspaceService {
         this.recentWorkspaceName.set(folderName);
         this.addRecentWorkspace(folderName, rootPath);
       }
-      this.workspaceName.set(folderName.toUpperCase());
+      this.workspaceName.set(folderName);
       this.isRealWorkspace.set(true);
 
       // Reset editor tabs and diff mode for the new folder
@@ -2994,7 +3046,7 @@ export class WorkspaceService {
         return a.name.localeCompare(b.name);
       });
 
-      this.workspaceName.set(dirHandle.name.toUpperCase());
+      this.workspaceName.set(dirHandle.name);
       this.isRealWorkspace.set(true);
       this.openTabs.set([]);
       this.activeFileId.set('');
@@ -3618,15 +3670,25 @@ export class WorkspaceService {
   public hasGitChanges(fileOrPath: WorkspaceFile | string): boolean {
     const path = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.path;
     const id = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.id;
-    const file = this.files().find((f) => f.path === path || f.id === id);
-    const status = file?.gitStatus || (typeof fileOrPath === 'object' ? fileOrPath.gitStatus : undefined);
+    const normPath = path?.replace(/^\.\//, '').replace(/^\//, '');
+    const normId = id?.replace(/^\.\//, '').replace(/^\//, '');
+    const file = this.files().find((f) => {
+      const fNorm = f.path.replace(/^\.\//, '').replace(/^\//, '');
+      return fNorm === normPath || f.id === normId || f.path === path;
+    });
+    const status = file ? file.gitStatus : (typeof fileOrPath === 'object' ? fileOrPath.gitStatus : undefined);
     return status === 'modified' || status === 'added' || status === 'untracked' || status === 'deleted';
   }
 
   public isFileModified(fileOrPath: WorkspaceFile | string): boolean {
     const path = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.path;
     const id = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.id;
-    const file = this.files().find((f) => f.path === path || f.id === id);
+    const normPath = path?.replace(/^\.\//, '').replace(/^\//, '');
+    const normId = id?.replace(/^\.\//, '').replace(/^\//, '');
+    const file = this.files().find((f) => {
+      const fNorm = f.path.replace(/^\.\//, '').replace(/^\//, '');
+      return fNorm === normPath || f.id === normId || f.path === path;
+    });
     if (file && file.isModified !== undefined) {
       return file.isModified;
     }
@@ -3744,7 +3806,7 @@ export class WorkspaceService {
         const firstPath = filesList[0].webkitRelativePath || filesList[0].name;
         const slashIdx = firstPath.indexOf('/');
         this.fallbackRootName = slashIdx !== -1 ? firstPath.substring(0, slashIdx) : 'WORKSPACE';
-        this.workspaceName.set(this.fallbackRootName.toUpperCase());
+        this.workspaceName.set(this.fallbackRootName);
         this.isRealWorkspace.set(true);
         if (typeof window !== 'undefined') {
           localStorage.setItem('vector_last_workspace_name', this.fallbackRootName);

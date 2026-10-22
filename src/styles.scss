@@ -227,4 +227,149 @@ body.theme-dark .monaco-editor .vide-highlight-yellow {
   width: 5px !important;
 }
 
+/* Monaco Editor Find Widget (Ctrl+F) Font & Size Scaling */
+.monaco-editor .find-widget,
+.find-widget {
+  height: auto !important;
+  min-height: 44px !important;
+  min-width: 440px !important;
+  padding: 4px 6px !important;
 
+  > .find-part,
+  > .replace-part {
+    margin: 3px 28px 3px 18px !important;
+    font-size: 21px !important;
+    align-items: center !important;
+  }
+
+  .monaco-findInput,
+  .monaco-replaceInput {
+    .monaco-inputbox {
+      min-height: 34px !important;
+      font-size: 21px !important;
+
+      .input {
+        font-size: 21px !important;
+        line-height: 26px !important;
+        min-height: 26px !important;
+        padding: 2px 6px !important;
+      }
+
+      input::placeholder {
+        font-size: inherit;
+      }
+    }
+
+    > .controls {
+      top: 5px !important;
+    }
+  }
+
+  .matchesCount {
+    font-size: 15px !important;
+    height: 34px !important;
+    line-height: 34px !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 4px !important;
+  }
+
+  .find-actions,
+  .replace-actions {
+    height: 34px !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  .button {
+    width: 22px !important;
+    height: 22px !important;
+    margin-left: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    &.toggle {
+      width: 20px !important;
+      height: 100% !important;
+    }
+
+    &.wide {
+      width: auto !important;
+      font-size: 13px !important;
+      height: 26px !important;
+      line-height: 26px !important;
+      padding: 0 6px !important;
+    }
+  }
+
+  > .button.codicon-widget-close {
+    top: 8px !important;
+    right: 4px !important;
+    width: 22px !important;
+    height: 22px !important;
+  }
+}
+
+/* Monaco Editor Go to Line / Quick Input Widget (Ctrl+G) Font & Size Scaling */
+.quick-input-widget,
+.monaco-editor .quick-input-widget {
+  font-size: 18px !important;
+
+  .quick-input-header {
+    padding: 8px 10px 6px 10px !important;
+  }
+
+  .quick-input-box {
+    .monaco-findInput .monaco-inputbox,
+    .monaco-inputbox {
+      min-height: 36px !important;
+      font-size: 22px !important;
+      border-radius: 4px;
+
+      .input {
+        font-size: 22px !important;
+        line-height: 28px !important;
+        height: 32px !important;
+        padding: 2px 8px !important;
+      }
+
+      input::placeholder {
+        font-size: inherit;
+      }
+    }
+  }
+
+  .quick-input-title {
+    font-size: 16px !important;
+    line-height: 24px !important;
+  }
+
+  .quick-input-description,
+  .quick-input-message {
+    font-size: 15px !important;
+    line-height: 22px !important;
+  }
+
+  .quick-input-list {
+    .monaco-list-row {
+      font-size: 17px !important;
+      line-height: 22px !important;
+    }
+
+    .quick-input-list-entry {
+      font-size: 17px !important;
+      line-height: 22px !important;
+
+      .monaco-highlighted-label {
+        font-size: 17px !important;
+        line-height: 22px !important;
+      }
+
+      .quick-input-list-label {
+        font-size: 17px !important;
+        line-height: 22px !important;
+      }
+    }
+  }
+}

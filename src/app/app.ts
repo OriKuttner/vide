@@ -5,6 +5,7 @@ import { TabsComponent } from './components/tabs/tabs.component';
 import { EditorComponent } from './components/editor/editor.component';
 import { StatusBarComponent } from './components/status-bar/status-bar.component';
 import { SearchModalComponent } from './components/search-modal/search-modal.component';
+import { AgentChatComponent } from './components/agent-chat/agent-chat.component';
 import { WorkspaceService } from './services/workspace.service';
 import { ZoomService } from './services/zoom.service';
 
@@ -18,6 +19,7 @@ import { ZoomService } from './services/zoom.service';
     EditorComponent,
     StatusBarComponent,
     SearchModalComponent,
+    AgentChatComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',

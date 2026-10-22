@@ -154,8 +154,22 @@ fn get_git_branch(repo_path: String) -> Result<String, String> {
 #[tauri::command]
 fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
     let clean_repo = expand_path(&repo_path);
+
+    // Check if repo_path is inside a git work tree and get prefix if in a subdirectory
+    let prefix = Command::new("git")
+        .args(["-C", &clean_repo, "rev-parse", "--show-prefix"])
+        .output()
+        .map(|o| {
+            if o.status.success() {
+                String::from_utf8_lossy(&o.stdout).trim().to_string()
+            } else {
+                String::new()
+            }
+        })
+        .unwrap_or_default();
+
     let output = Command::new("git")
-        .args(["-C", &clean_repo, "status", "--porcelain=v1", "-unormal"])
+        .args(["-C", &clean_repo, "status", "--porcelain=v1", "-unormal", "."])
         .output()
         .map_err(|e| format!("Failed to execute git status: {}", e))?;
 
@@ -173,8 +187,22 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
         let index_status = line.chars().nth(0).unwrap_or(' ');
         let worktree_status = line.chars().nth(1).unwrap_or(' ');
         let raw_file_path = line[3..].trim();
+
+        // Handle possible rename syntax: "R  old -> new"
+        let target_raw = if raw_file_path.contains(" -> ") {
+            raw_file_path.split(" -> ").last().unwrap_or(raw_file_path).trim()
+        } else {
+            raw_file_path
+        };
+
         // Remove surrounding quotes if git output contains them
-        let file_path = raw_file_path.trim_matches('"').to_string();
+        let mut file_path = target_raw.trim_matches('"').to_string();
+
+        // If in a subdirectory, git paths start with prefix (e.g. "src/").
+        // Strip the prefix so file_path is relative to the open workspace (clean_repo).
+        if !prefix.is_empty() && file_path.starts_with(&prefix) {
+            file_path = file_path[prefix.len()..].to_string();
+        }
 
         let status = if index_status == '?' && worktree_status == '?' {
             "untracked".to_string()
@@ -202,11 +230,26 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
 fn get_git_diff_baseline(repo_path: String, file_path: String) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
     let clean_file = file_path.trim_start_matches('/').trim_start_matches("./");
-    let git_spec = format!("HEAD:{}", clean_file);
-    let output = Command::new("git")
-        .args(["-C", &clean_repo, "show", &git_spec])
+
+    // Try HEAD:./<clean_file> first (works from any subdirectory or root)
+    let git_spec_relative = format!("HEAD:./{}", clean_file);
+    let mut output = Command::new("git")
+        .args(["-C", &clean_repo, "show", &git_spec_relative])
         .output()
         .map_err(|e| format!("Failed to execute git show: {}", e))?;
+
+    if !output.status.success() {
+        // Fallback to HEAD:<clean_file> (in case path was already repo-root relative)
+        let git_spec_root = format!("HEAD:{}", clean_file);
+        if let Ok(out) = Command::new("git")
+            .args(["-C", &clean_repo, "show", &git_spec_root])
+            .output()
+        {
+            if out.status.success() {
+                output = out;
+            }
+        }
+    }
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -1661,7 +1704,7 @@ fn get_git_diff_for_commit(repo_path: String) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
 
     let staged = Command::new("git")
-        .args(["-C", &clean_repo, "diff", "--staged"])
+        .args(["-C", &clean_repo, "diff", "--staged", "."])
         .output()
         .map_err(|e| format!("Failed to run git diff --staged: {}", e))?;
 
@@ -1671,7 +1714,7 @@ fn get_git_diff_for_commit(repo_path: String) -> Result<String, String> {
     }
 
     let unstaged = Command::new("git")
-        .args(["-C", &clean_repo, "diff"])
+        .args(["-C", &clean_repo, "diff", "."])
         .output()
         .map_err(|e| format!("Failed to run git diff: {}", e))?;
 
@@ -1681,11 +1724,42 @@ fn get_git_diff_for_commit(repo_path: String) -> Result<String, String> {
     }
 
     let status = Command::new("git")
-        .args(["-C", &clean_repo, "status", "--short"])
+        .args(["-C", &clean_repo, "status", "--short", "."])
         .output()
         .map_err(|e| format!("Failed to run git status: {}", e))?;
 
     Ok(String::from_utf8_lossy(&status.stdout).trim().to_string())
+}
+
+#[tauri::command]
+fn get_vector_session_token() -> Result<Option<String>, String> {
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    let path = PathBuf::from(home)
+        .join(".local/share/com.heliconbooks.vector/localstorage/https_assistant.heliconbooks.com_0.localstorage");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let data = fs::read(&path).map_err(|e| e.to_string())?;
+    let key = b"session_token";
+    if let Some(pos) = data.windows(key.len()).position(|w| w == key) {
+        let val_start = pos + key.len();
+        let rest = &data[val_start..];
+        for offset in 0..16.min(rest.len()) {
+            if val_start + offset + 128 <= data.len() {
+                let slice = &rest[offset..offset + 128];
+                let is_hex_utf16 = slice.chunks_exact(2).all(|c| {
+                    c[1] == 0 && c[0].is_ascii_hexdigit()
+                });
+                if is_hex_utf16 {
+                    let chars: Vec<u8> = slice.chunks_exact(2).map(|c| c[0]).collect();
+                    if let Ok(token) = String::from_utf8(chars) {
+                        return Ok(Some(token));
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1863,6 +1937,7 @@ pub fn run() {
             create_git_branch,
             get_git_tags,
             create_git_tag,
+            get_vector_session_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

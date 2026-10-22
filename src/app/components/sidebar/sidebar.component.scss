@@ -12,6 +12,7 @@
   user-select: none;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
     sans-serif;
+  font-size: 20px;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
@@ -33,8 +34,8 @@
 }
 
 .sidebar-header {
-  padding: 6px 3px 6px 8px;
-  font-size: 11px;
+  padding: 8px 6px 8px 12px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.8px;
   color: var(--text-muted, #717171);
@@ -159,8 +160,8 @@
 }
 
 .section-title {
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 10px 14px;
+  font-size: 19px;
   font-weight: 700;
   color: var(--text-secondary, #555555);
   display: flex;
@@ -172,20 +173,22 @@
   .title-left {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     overflow: hidden;
     min-width: 0;
 
     .arrow {
-      font-size: 9px;
+      font-size: 14px;
       color: var(--text-muted, #8c8c8c);
     }
 
     .workspace-label {
-      font-size: 13px;
+      font-size: 21px;
+      font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      text-transform: none;
     }
 
   }
@@ -202,9 +205,9 @@
       background-color: var(--bg-btn, #e4e4e4);
       color: var(--text-primary, #333333);
       border: 1px solid var(--border-color, #cccccc);
-      border-radius: 3px;
-      padding: 2px 7px;
-      font-size: 11.5px;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 14.5px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -214,8 +217,8 @@
       justify-content: center;
 
       .svg-btn-icon {
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
         display: block;
       }
 
@@ -274,14 +277,14 @@
     min-width: 0;
 
     .recent-label {
-      font-size: 10px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       opacity: 0.7;
     }
 
     .recent-title {
-      font-size: 13px;
+      font-size: 14.5px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
@@ -291,7 +294,7 @@
   }
 
   .recent-action {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--accent-color, #007acc);
     white-space: nowrap;
@@ -325,13 +328,13 @@
   }
 
   .scan-title {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--text-primary, #333333);
   }
 
   .scan-subtitle {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-muted, #8c8c8c);
     max-width: 200px;
     overflow: hidden;
@@ -350,13 +353,13 @@
   gap: 12px;
 
   .empty-folder-title {
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 600;
     color: var(--text-primary, #cccccc);
   }
 
   .empty-folder-desc {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-muted, #8c8c8c);
     margin: 0;
     line-height: 1.4;
@@ -365,7 +368,7 @@
   .open-folder-main-btn {
     margin-top: 8px;
     padding: 7px 16px;
-    font-size: 12px;
+    font-size: 13.5px;
     font-family: inherit;
     font-weight: 500;
     color: #ffffff;
@@ -454,11 +457,11 @@
 .tree-row {
   display: flex;
   align-items: center;
-  height: 29px;
-  line-height: 29px;
-  font-size: 14px;
+  height: 30px;
+  line-height: 30px;
+  font-size: 22px;
   cursor: pointer;
-  gap: 7px;
+  gap: 8px;
   transition: background-color 0.15s ease;
   padding-right: 12px;
 
@@ -471,7 +474,7 @@
     color: var(--text-primary, #333333);
 
     .chevron {
-      font-size: 10px;
+      font-size: 13px;
       color: var(--text-muted, #8c8c8c);
       display: inline-block;
       transition: transform 0.15s ease;
@@ -484,11 +487,11 @@
     }
 
     .folder-icon {
-      font-size: 16px;
+      font-size: 20px;
     }
 
     .loading-dot {
-      font-size: 12px;
+      font-size: 14px;
       margin-left: auto;
     }
   }
@@ -506,13 +509,13 @@
   }
 
   .file-badge {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: bold;
-    padding: 1px 5px;
+    padding: 1px 6px;
     border-radius: 3px;
-    min-width: 26px;
+    min-width: 28px;
     text-align: center;
-    line-height: 16px;
+    line-height: 18px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -520,11 +523,11 @@
     &.image-badge {
       background-color: #107c41;
       color: #ffffff;
-      padding: 1px 5px;
+      padding: 1px 6px;
 
       .file-icon-svg {
-        width: 14px;
-        height: 14px;
+        width: 17px;
+        height: 17px;
         display: block;
       }
     }
@@ -532,16 +535,16 @@
     &.icon-badge {
       background-color: transparent !important;
       padding: 0;
-      min-width: 26px;
-      width: 26px;
-      height: 18px;
+      min-width: 28px;
+      width: 28px;
+      height: 20px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
 
       .file-badge-img {
-        width: 16px;
-        height: 16px;
+        width: 19px;
+        height: 19px;
         object-fit: contain;
         display: block;
       }
@@ -602,7 +605,7 @@
     &[data-lang='image'] {
       background-color: #107c41;
       color: #fff;
-      font-size: 13px;
+      font-size: 15px;
     }
   }
 
@@ -611,6 +614,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.2;
   }
 
   .row-status-indicators {
@@ -625,11 +631,11 @@
   .tree-delete-btn {
     background: transparent;
     border: none;
-    padding: 1px 3px;
+    padding: 1px 4px;
     display: none;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 15px;
     color: var(--text-muted, #717171);
     cursor: pointer;
     border-radius: 3px;
@@ -664,13 +670,13 @@
     }
 
     .svg-icon {
-      width: 13px;
-      height: 13px;
+      width: 16px;
+      height: 16px;
     }
   }
 
   .dirty-dot {
-    font-size: 11px;
+    font-size: 14px;
     color: #111111;
     line-height: 1;
     display: inline-block;
@@ -758,7 +764,7 @@
     border-bottom: 1px solid var(--border-color, #e5e5e5);
 
     .search-panel-title {
-      font-size: 11px;
+      font-size: 12.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
       color: var(--text-secondary, #555555);
@@ -774,7 +780,7 @@
         border: 1px solid transparent;
         border-radius: 3px;
         color: var(--text-secondary, #555555);
-        font-size: 11px;
+        font-size: 12.5px;
         padding: 2px 6px;
         cursor: pointer;
         display: flex;
@@ -821,8 +827,8 @@
         outline: none;
         background: transparent;
         color: var(--text-primary, #333333);
-        font-size: 12px;
-        padding: 5px 8px;
+        font-size: 14px;
+        padding: 6px 9px;
         min-width: 0;
       }
 
@@ -836,9 +842,9 @@
           background: transparent;
           border: 1px solid transparent;
           border-radius: 2px;
-          font-size: 11px;
+          font-size: 12px;
           font-family: monospace;
-          padding: 1px 4px;
+          padding: 2px 5px;
           color: var(--text-muted, #8c8c8c);
           cursor: pointer;
           transition: all 0.15s;
@@ -859,8 +865,8 @@
   }
 
   .search-status-bar {
-    padding: 4px 10px 6px 10px;
-    font-size: 11px;
+    padding: 5px 10px 7px 10px;
+    font-size: 12.5px;
     color: var(--text-muted, #8c8c8c);
     border-bottom: 1px solid var(--border-color, #e5e5e5);
   }
@@ -877,11 +883,11 @@
       .file-group-header {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         padding: 4px 10px;
         cursor: pointer;
         user-select: none;
-        font-size: 12px;
+        font-size: 15px;
         transition: background-color 0.1s;
 
         &:hover {
@@ -889,10 +895,10 @@
         }
 
         .chevron {
-          font-size: 8px;
+          font-size: 12px;
           color: var(--text-muted, #8c8c8c);
           transition: transform 0.15s ease;
-          width: 10px;
+          width: 12px;
           text-align: center;
 
           &.expanded {
@@ -901,6 +907,7 @@
         }
 
         .group-file-name {
+          font-size: 22px;
           font-weight: 600;
           color: var(--text-primary, #333333);
           white-space: nowrap;
@@ -909,7 +916,7 @@
         }
 
         .group-file-dir {
-          font-size: 10px;
+          font-size: 15px;
           color: var(--text-muted, #8c8c8c);
           white-space: nowrap;
           overflow: hidden;
@@ -919,8 +926,8 @@
 
         .group-count-badge {
           margin-left: auto;
-          font-size: 10px;
-          padding: 1px 6px;
+          font-size: 13px;
+          padding: 2px 7px;
           border-radius: 8px;
           background-color: var(--bg-badge, #e0e0e0);
           color: var(--text-secondary, #555555);
@@ -936,8 +943,8 @@
           display: flex;
           align-items: baseline;
           gap: 8px;
-          padding: 3px 10px 3px 26px;
-          font-size: 11px;
+          padding: 3px 10px 3px 28px;
+          font-size: 16px;
           font-family: monospace;
           cursor: pointer;
           white-space: pre;
@@ -951,9 +958,9 @@
 
           .match-line-num {
             color: var(--text-muted, #8c8c8c);
-            min-width: 22px;
+            min-width: 24px;
             text-align: right;
-            font-size: 10px;
+            font-size: 13.5px;
           }
 
           .match-line-text {
@@ -995,14 +1002,14 @@
     }
 
     .git-panel-title {
-      font-size: 13px;
+      font-size: 14.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
       color: var(--text-secondary, #555555);
     }
 
     .git-branch-tag {
-      font-size: 12px;
+      font-size: 13.5px;
       background: rgba(0, 122, 204, 0.12);
       color: #007acc;
       padding: 2px 7px;
@@ -1022,7 +1029,7 @@
     }
 
     .git-sync-tag {
-      font-size: 11px;
+      font-size: 12px;
       padding: 1px 6px;
       border-radius: 9px;
       font-weight: 700;
@@ -1044,7 +1051,7 @@
       background: transparent;
       border: 1px solid var(--border-color, #dcdcdc);
       padding: 3px 8px;
-      font-size: 12px;
+      font-size: 13px;
       border-radius: 3px;
       cursor: pointer;
       color: var(--text-primary, #333333);
@@ -1105,7 +1112,7 @@
         justify-content: space-between;
 
         .commit-label {
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.5px;
@@ -1116,7 +1123,7 @@
           background: none;
           border: none;
           cursor: pointer;
-          font-size: 11px;
+          font-size: 12px;
           font-weight: 600;
           color: #8957e5;
           padding: 1px 6px;
@@ -1154,7 +1161,7 @@
         resize: vertical;
         min-height: 48px;
         font-family: inherit;
-        font-size: 12.5px;
+        font-size: 14px;
         padding: 6px 8px;
         border: 1px solid var(--border-color, #dcdcdc);
         border-radius: 4px;
@@ -1183,7 +1190,7 @@
       color: #ffffff;
       border: none;
       padding: 7px 10px;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       border-radius: 4px;
       cursor: pointer;
@@ -1256,7 +1263,7 @@
       align-items: center;
       gap: 8px;
       padding: 10px 14px 8px;
-      font-size: 13px;
+      font-size: 14.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
       color: var(--text-muted, #717171);
@@ -1264,7 +1271,7 @@
       .changes-count-pill {
         background-color: var(--bg-item-active, #e2effd);
         color: #007acc;
-        font-size: 12px;
+        font-size: 13px;
         padding: 2px 7px;
         border-radius: 8px;
         font-weight: 700;
@@ -1285,7 +1292,7 @@
       gap: 8px;
       padding: 30px 16px;
       color: var(--text-muted, #888888);
-      font-size: 13.5px;
+      font-size: 15px;
       text-align: center;
 
       .empty-icon {
@@ -1298,7 +1305,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 14px;
+      padding: 4px 14px;
       cursor: pointer;
       transition: background-color 0.12s ease;
 
@@ -1315,9 +1322,9 @@
       }
 
       .file-icon-badge {
-        font-size: 13px;
+        font-size: 15px;
         font-weight: 700;
-        width: 24px;
+        width: 28px;
         text-align: center;
         color: var(--text-muted, #717171);
         display: inline-flex;
@@ -1328,8 +1335,8 @@
           color: #107c41;
 
           .file-icon-svg {
-            width: 15px;
-            height: 15px;
+            width: 18px;
+            height: 18px;
             display: block;
           }
         }
@@ -1337,15 +1344,15 @@
         &.icon-badge {
           background-color: transparent !important;
           padding: 0;
-          width: 24px;
-          height: 18px;
+          width: 28px;
+          height: 22px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
 
           .file-badge-img {
-            width: 16px;
-            height: 16px;
+            width: 20px;
+            height: 20px;
             object-fit: contain;
             display: block;
           }
@@ -1353,7 +1360,7 @@
 
         &[data-lang='image'] {
           color: #107c41;
-          font-size: 14px;
+          font-size: 16px;
         }
       }
 
@@ -1364,8 +1371,8 @@
         min-width: 0;
 
         .git-file-name {
-          font-size: 14.5px;
-          font-weight: 500;
+          font-size: 22px;
+          font-weight: 600;
           color: var(--text-primary, #1e1e1e);
           white-space: nowrap;
           overflow: hidden;
@@ -1373,7 +1380,7 @@
         }
 
         .git-file-path {
-          font-size: 12px;
+          font-size: 15px;
           color: var(--text-muted, #888888);
           white-space: nowrap;
           overflow: hidden;
@@ -1390,10 +1397,10 @@
           background: transparent;
           border: none;
           cursor: pointer;
-          padding: 2px 6px;
+          padding: 3px 6px;
           border-radius: 3px;
           color: var(--text-muted, #717171);
-          font-size: 14px;
+          font-size: 16px;
           opacity: 0;
           transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 
@@ -1452,7 +1459,7 @@
       padding: 8px 12px;
       cursor: pointer;
       user-select: none;
-      font-size: 12px;
+      font-size: 13.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
       color: var(--text-muted, #717171);
@@ -1468,14 +1475,14 @@
       }
 
       .toggle-icon {
-        font-size: 10px;
+        font-size: 11px;
         width: 12px;
       }
 
       .commits-count-pill {
         background-color: var(--bg-item-active, #e2effd);
         color: #007acc;
-        font-size: 11px;
+        font-size: 12px;
         padding: 1px 6px;
         border-radius: 8px;
         font-weight: 700;
@@ -1492,7 +1499,7 @@
       .empty-commits-msg {
         padding: 14px;
         text-align: center;
-        font-size: 12px;
+        font-size: 13.5px;
         color: var(--text-muted, #888888);
       }
 
@@ -1517,7 +1524,7 @@
 
           .commit-hash {
             font-family: monospace;
-            font-size: 11px;
+            font-size: 12px;
             background: rgba(0, 122, 204, 0.1);
             color: #007acc;
             padding: 1px 5px;
@@ -1527,7 +1534,7 @@
           }
 
           .commit-msg {
-            font-size: 12px;
+            font-size: 14px;
             font-weight: 500;
             color: var(--text-primary, #1e1e1e);
             white-space: nowrap;
@@ -1536,7 +1543,7 @@
           }
 
           .commit-tag-badge {
-            font-size: 10px;
+            font-size: 11px;
             background: rgba(16, 185, 129, 0.15);
             color: #10b981;
             padding: 1px 5px;
@@ -1551,7 +1558,7 @@
           display: flex;
           align-items: center;
           justify-content: space-between;
-          font-size: 11px;
+          font-size: 12px;
           color: var(--text-muted, #888888);
           padding-left: 2px;
 

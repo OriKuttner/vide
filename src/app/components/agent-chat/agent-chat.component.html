@@ -1,0 +1,274 @@
+<!-- Floating Draggable Trigger Button (Only visible when chat is closed to avoid covering the chat) -->
+@if (!isOpen()) {
+  <div class="agent-floating-btn"
+       [style.left.px]="buttonPos().x"
+       [style.top.px]="buttonPos().y"
+       (pointerdown)="onButtonPointerDown($event)"
+       (pointermove)="onButtonPointerMove($event)"
+       (pointerup)="onButtonPointerUp($event)"
+       (click)="toggleChat()"
+       [class.thinking]="assistantService.isLoading()"
+       [title]="assistantService.currentAgent().name + ' — לחץ לפתיחת שיחה'">
+    <div class="avatar-ring">
+      <img [src]="assistantService.currentAgent().image" [alt]="assistantService.currentAgent().name" class="btn-avatar" />
+      @if (assistantService.isLoading()) {
+        <div class="thinking-spinner"></div>
+      }
+    </div>
+  </div>
+}
+
+<!-- Resizable Floating Chat Window -->
+@if (isOpen()) {
+  <div class="agent-chat-window"
+       [style.width.px]="windowSize().width"
+       [style.height.px]="windowSize().height"
+       [style.right.px]="20"
+       [style.bottom.px]="30">
+
+    <!-- Resize Handles -->
+    <div class="resize-handle handle-top" (pointerdown)="onResizeStart($event, 'top')"></div>
+    <div class="resize-handle handle-left" (pointerdown)="onResizeStart($event, 'left')"></div>
+    <div class="resize-handle handle-top-left" (pointerdown)="onResizeStart($event, 'top-left')"></div>
+
+    <!-- Chat Header -->
+    <header class="chat-header">
+      <div class="agent-selector-wrapper">
+        <button type="button" class="agent-title-btn" (click)="toggleAgentMenu()" title="החלפת סוכנת">
+          <img [src]="assistantService.currentAgent().image" [alt]="assistantService.currentAgent().name" class="header-avatar" />
+          <div class="header-titles">
+            <span class="agent-name">{{ assistantService.currentAgent().name }}</span>
+            <span class="agent-subtitle">{{ assistantService.currentAgent().title }}</span>
+          </div>
+          <svg class="chevron-icon" [class.rotated]="isAgentMenuOpen()" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9l6 6 6-6"></path>
+          </svg>
+        </button>
+
+        <!-- Dropdown Menu for Agent Selection -->
+        @if (isAgentMenuOpen()) {
+          <div class="agent-dropdown-menu">
+            <div class="dropdown-header">בחר סוכנת:</div>
+            @for (agent of assistantService.assistants(); track agent.identifier) {
+              <button type="button"
+                      class="dropdown-item"
+                      [class.active]="agent.identifier === assistantService.currentAgent().identifier"
+                      (click)="selectAgent(agent)">
+                <img [src]="agent.image" [alt]="agent.name" class="dropdown-avatar" />
+                <div class="dropdown-info">
+                  <span class="dropdown-name">{{ agent.name }}</span>
+                  <span class="dropdown-desc">{{ agent.title }}</span>
+                </div>
+                @if (agent.identifier === assistantService.currentAgent().identifier) {
+                  <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                }
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="header-actions">
+        <!-- Refresh Button -->
+        <button type="button"
+                class="header-btn refresh-btn"
+                [class.spinning]="assistantService.isRefreshing()"
+                (click)="refreshFeed()"
+                title="רענן שיחה">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+
+        <!-- Close / Minimize Button -->
+        <button type="button" class="header-btn close-btn" (click)="closeChat()" title="סגור חלון">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Error Banner / Login Fallback Banner -->
+    @if (!assistantService.isAuthenticated()) {
+      <div class="auth-fallback-banner">
+        <span>נדרשת התחברות לחשבון לקבלת גישה לסוכנת</span>
+        <button type="button" class="login-action-btn" (click)="assistantService.loginWithGoogle()">
+          התחבר עם Google
+        </button>
+      </div>
+    } @else if (assistantService.errorMessage()) {
+      <div class="error-banner">
+        <span>{{ assistantService.errorMessage() }}</span>
+      </div>
+    }
+
+    <!-- Messages Container -->
+    <div class="chat-messages" #messagesContainer (scroll)="onChatScroll()" (wheel)="onChatWheel($event)">
+      @if (assistantService.feed().length === 0 && !assistantService.isLoading()) {
+        <div class="empty-state">
+          <img [src]="assistantService.currentAgent().image" [alt]="assistantService.currentAgent().name" class="empty-avatar" />
+          <p class="empty-greeting">{{ assistantService.currentAgent().greeting }}</p>
+        </div>
+      }
+
+      @for (msg of assistantService.feed(); track (msg.id || $index)) {
+        <div class="message-row" [class.user-row]="msg.role === 'user'" [class.assistant-row]="msg.role === 'assistant'" [class.system-row]="msg.role === 'system'">
+          <div class="message-bubble">
+            <div class="message-meta">
+              <span class="sender-name">
+                @if (msg.role === 'user') { אתה }
+                @else if (msg.role === 'assistant') { {{ assistantService.currentAgent().name }} }
+                @else { מערכת }
+              </span>
+              @if (msg.role === 'assistant') {
+                @if (msg.model) {
+                  <span class="meta-tag model-tag">{{ msg.model }}</span>
+                }
+                @if (msg.elapsed) {
+                  <span class="meta-tag elapsed-tag">{{ msg.elapsed }}s</span>
+                }
+              }
+              @if (msg.tm) {
+                <span class="time-tag">{{ msg.tm }}</span>
+              }
+            </div>
+
+            <!-- Thoughts Accordion (from stored steps or thoughts) -->
+            @if (msg.role === 'assistant' && (msg.thoughts || (msg.steps && msg.steps.length > 0))) {
+              <div class="thoughts-section">
+                <button type="button" class="thoughts-toggle-btn" (click)="toggleThoughts(msg.id || $index)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 16v-4M12 8h.01"></path>
+                  </svg>
+                  <span>תהליך חשיבה{{ msg.steps && msg.steps.length > 0 ? (' (' + msg.steps.length + ' צעדים)') : '' }}</span>
+                  <svg class="chevron-sm" [class.open]="isThoughtsExpanded(msg.id || $index)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                @if (isThoughtsExpanded(msg.id || $index)) {
+                  <div class="thoughts-body">
+                    @if (msg.steps && msg.steps.length > 0) {
+                      <div class="steps-list">
+                        @for (step of msg.steps; track $index) {
+                          <div class="step-item" [class.thought-item]="step.type === 'thought'" [class.tool-item]="step.type === 'tool'">
+                            @if (step.type === 'thought') {
+                              <div class="step-header">
+                                <span class="step-label">💭 חשיבה</span>
+                                @if (step.timestamp) { <small class="step-time">{{ step.timestamp }}</small> }
+                              </div>
+                              <div class="step-text" dir="ltr">{{ step.text }}</div>
+                            } @else {
+                              <div class="step-tool-badge">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                  <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                                <span>{{ step.text }}</span>
+                                @if (step.timestamp) { <small class="step-time">{{ step.timestamp }}</small> }
+                              </div>
+                            }
+                          </div>
+                        }
+                      </div>
+                    } @else if (msg.thoughts) {
+                      <div class="thought-raw" dir="ltr">{{ msg.thoughts }}</div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            <!-- Rendered Message Content -->
+            @if (msg.role === 'assistant') {
+              <div class="message-content" [innerHTML]="msg.message | markdown"></div>
+            } @else {
+              <div class="message-content user-text">{{ msg.message }}</div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Live Thinking Box while agent is processing -->
+      @if (assistantService.isLoading()) {
+        <div class="message-row assistant-row">
+          <div class="message-bubble live-thinking-card">
+            <div class="live-thinking-header">
+              <span class="live-spinner"></span>
+              <span class="live-title">{{ assistantService.currentAgent().name }} מעבדת את הבקשה...</span>
+            </div>
+
+            @if (assistantService.thinkingSteps().length > 0) {
+              <div class="live-steps-container">
+                @for (step of assistantService.thinkingSteps(); track $index) {
+                  <div class="live-step-item" [class.tool-step]="step.type === 'tool'" [class.thought-step]="step.type === 'thought'">
+                    @if (step.type === 'thought') {
+                      <div class="step-thought-box">
+                        <div class="step-subhead">💭 חשיבה:</div>
+                        <div class="step-body" dir="ltr">{{ step.text }}</div>
+                      </div>
+                    } @else {
+                      <div class="step-tool-row">
+                        @if (step.done) {
+                          <span class="tool-icon tool-done">✓</span>
+                        } @else {
+                          <span class="tool-icon tool-active">⚙</span>
+                        }
+                        <span class="tool-text">{{ step.text }}</span>
+                        @if (step.timestamp) {
+                          <small class="tool-time">{{ step.timestamp }}</small>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="live-thinking-empty">
+                <span>מנתחת את ההקשר ומכינה תשובה...</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Scroll-to-bottom pill button if user is scrolled up -->
+    @if (isUserScrolledUp()) {
+      <button type="button" class="scroll-bottom-pill" (click)="scrollToBottomManually()" title="גלול לסוף השיחה">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+        <span>גלול למטה</span>
+      </button>
+    }
+
+    <!-- Input Footer (CRITICAL: No placeholder attribute!) -->
+    <footer class="chat-footer">
+      <div class="input-wrapper">
+        <textarea #inputField
+                  [(ngModel)]="messageText"
+                  (keydown)="onKeyDown($event)"
+                  rows="1"
+                  class="chat-textarea"></textarea>
+        <button type="button"
+                class="send-btn"
+                [disabled]="!messageText().trim() || assistantService.isLoading()"
+                (click)="sendMessage()"
+                title="שלח הודעה">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+    </footer>
+
+  </div>
+}
