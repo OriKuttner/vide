@@ -252,6 +252,9 @@ export interface CliFileToOpen {
 export interface CliLaunchPayload {
   workspace_path: string | null;
   files: CliFileToOpen[];
+  target_file?: string | null;
+  highlight_start?: number | null;
+  highlight_end?: number | null;
 }
 
 export interface GitCommit {

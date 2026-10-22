@@ -211,3 +211,20 @@ body.theme-light .monaco-ai-thinking-widget .monaco-ai-thinking-pill {
   }
 }
 
+/* Ada CLI Goto Yellow Highlight Range */
+.monaco-editor .vide-highlight-yellow {
+  background-color: rgba(254, 240, 138, 0.40) !important;
+  border-left: 3px solid #eab308 !important;
+}
+
+body.theme-dark .monaco-editor .vide-highlight-yellow {
+  background-color: rgba(234, 179, 8, 0.28) !important;
+  border-left: 3px solid #facc15 !important;
+}
+
+.monaco-editor .vide-highlight-gutter {
+  background-color: #facc15 !important;
+  width: 5px !important;
+}
+
+

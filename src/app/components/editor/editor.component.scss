@@ -1100,3 +1100,18 @@
     }
   }
 }
+
+:host ::ng-deep .vide-highlight-yellow {
+  background-color: rgba(254, 240, 138, 0.35) !important;
+}
+
+:host-context(.dark-theme) ::ng-deep .vide-highlight-yellow,
+:host ::ng-deep body.dark-theme .vide-highlight-yellow {
+  background-color: rgba(234, 179, 8, 0.25) !important;
+}
+
+:host ::ng-deep .vide-highlight-gutter {
+  background-color: #facc15 !important;
+  width: 5px !important;
+}
+

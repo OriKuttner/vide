@@ -17,6 +17,7 @@
       <div
         class="tab"
         [class.active]="tab.id === workspaceService.activeFileId()"
+        [title]="getTabTooltip(tab)"
         (click)="workspaceService.openFile(tab)"
       >
         <span class="tab-title">

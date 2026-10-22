@@ -11,6 +11,7 @@ import {
   signal,
   computed,
   untracked,
+  HostListener,
 } from '@angular/core';
 import * as monaco from 'monaco-editor';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -160,6 +161,7 @@ ${rawContent}
   private static markersListenerRegistered = false;
   private isProgrammaticUpdate = false;
   private aiThinkingWidget: AiThinkingWidget | null = null;
+  private highlightDecorations: monaco.editor.IEditorDecorationsCollection | null = null;
 
   constructor() {
     this.initMonacoEnvironment();
@@ -301,6 +303,18 @@ ${rawContent}
       }
     });
 
+    // Effect to highlight line range and scroll into center (from Ada / CLI goto)
+    effect(() => {
+      const hl = this.workspaceService.pendingHighlight();
+      if (hl && this.editorInstance) {
+        const active = this.workspaceService.activeFile();
+        if (active && (active.id === hl.fileId || active.path === hl.fileId)) {
+          this.applyHighlight(hl.highlightStart, hl.highlightEnd);
+          this.workspaceService.pendingHighlight.set(null);
+        }
+      }
+    });
+
     // Effect to toggle Sticky Scroll dynamically
     effect(() => {
       const enabled = this.workspaceService.stickyScrollEnabled();
@@ -427,6 +441,9 @@ ${rawContent}
       this.aiThinkingWidget = null;
     }
 
+    this.highlightDecorations?.clear();
+    this.highlightDecorations = null;
+
     this.editorInstance?.dispose();
     this.diffEditorInstance?.dispose();
   }
@@ -435,29 +452,45 @@ ${rawContent}
     if (typeof window !== 'undefined' && !(window as any).MonacoEnvironment) {
       (window as any).MonacoEnvironment = {
         getWorker: (_: any, label: string) => {
-          if (label === 'json') {
-            return new Worker(new URL('../../workers/json.worker', import.meta.url), {
-              type: 'module',
-            });
+          const isDevServer =
+            typeof window !== 'undefined' &&
+            window.location.protocol === 'http:' &&
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+          if (isDevServer) {
+            try {
+              if (label === 'json') {
+                return new Worker(new URL('../../workers/json.worker', import.meta.url), {
+                  type: 'module',
+                });
+              }
+              if (label === 'css' || label === 'scss' || label === 'less') {
+                return new Worker(new URL('../../workers/css.worker', import.meta.url), {
+                  type: 'module',
+                });
+              }
+              if (label === 'html' || label === 'handlebars' || label === 'razor') {
+                return new Worker(new URL('../../workers/html.worker', import.meta.url), {
+                  type: 'module',
+                });
+              }
+              if (label === 'typescript' || label === 'javascript') {
+                return new Worker(new URL('../../workers/ts.worker', import.meta.url), {
+                  type: 'module',
+                });
+              }
+              return new Worker(new URL('../../workers/editor.worker', import.meta.url), {
+                type: 'module',
+              });
+            } catch {
+              // Fallback to main thread
+            }
           }
-          if (label === 'css' || label === 'scss' || label === 'less') {
-            return new Worker(new URL('../../workers/css.worker', import.meta.url), {
-              type: 'module',
-            });
-          }
-          if (label === 'html' || label === 'handlebars' || label === 'razor') {
-            return new Worker(new URL('../../workers/html.worker', import.meta.url), {
-              type: 'module',
-            });
-          }
-          if (label === 'typescript' || label === 'javascript') {
-            return new Worker(new URL('../../workers/ts.worker', import.meta.url), {
-              type: 'module',
-            });
-          }
-          return new Worker(new URL('../../workers/editor.worker', import.meta.url), {
-            type: 'module',
-          });
+
+          // In packaged desktop mode on Linux (WebKitGTK under custom scheme or tauri.localhost),
+          // ES module workers fail to handshake and cause Monaco to hang indefinitely.
+          // Throwing here cleanly triggers Monaco's built-in synchronous main-thread worker.
+          throw new Error('Web Workers disabled for WebKitGTK desktop packaged mode');
         },
       };
     }
@@ -690,6 +723,7 @@ ${rawContent}
     // Listen to content changes
     this.editorInstance.onDidChangeModelContent(() => {
       if (this.isProgrammaticUpdate) return;
+      this.clearHighlight();
       const activeFile = this.workspaceService.activeFile();
       if (activeFile && this.editorInstance) {
         const val = this.editorInstance.getValue();
@@ -708,6 +742,11 @@ ${rawContent}
           }
         }
       }
+    });
+
+    // Keyboard shortcut: Escape to dismiss/clear highlight decorations
+    this.editorInstance.addCommand(monaco.KeyCode.Escape, () => {
+      this.clearHighlight();
     });
 
     // Keyboard shortcut: Ctrl+S (Cmd+S) to save active file
@@ -935,12 +974,58 @@ ${rawContent}
     }
   }
 
+  @HostListener('window:keydown.escape')
+  public onGlobalEscape(): void {
+    this.clearHighlight();
+  }
+
+  public applyHighlight(start: number, end: number): void {
+    if (!this.editorInstance) return;
+    this.editorInstance.revealRangeInCenter(
+      new monaco.Range(start, 1, end, 1),
+      monaco.editor.ScrollType.Smooth
+    );
+    this.editorInstance.setPosition({ lineNumber: start, column: 1 });
+    this.editorInstance.focus();
+
+    if (this.highlightDecorations) {
+      this.highlightDecorations.clear();
+    }
+
+    this.highlightDecorations = this.editorInstance.createDecorationsCollection([
+      {
+        range: new monaco.Range(start, 1, end, 1),
+        options: {
+          isWholeLine: true,
+          className: 'vide-highlight-yellow',
+          marginClassName: 'vide-highlight-gutter',
+          overviewRuler: {
+            color: 'rgba(250, 204, 21, 0.8)',
+            position: monaco.editor.OverviewRulerLane.Full,
+          },
+          minimap: {
+            color: 'rgba(250, 204, 21, 0.8)',
+            position: monaco.editor.MinimapPosition.Inline,
+          },
+        },
+      },
+    ]);
+  }
+
+  public clearHighlight(): void {
+    if (this.highlightDecorations) {
+      this.highlightDecorations.clear();
+      this.highlightDecorations = null;
+    }
+  }
+
   private switchToFile(file: WorkspaceFile): void {
     if (!this.editorInstance) return;
     this.isProgrammaticUpdate = true;
     try {
       const model = this.getOrCreateModel(file);
       if (this.editorInstance.getModel() !== model) {
+        this.clearHighlight();
         this.editorInstance.setModel(model);
         this.editorInstance.focus();
       }
@@ -976,6 +1061,14 @@ ${rawContent}
       console.error('Error switching to file in Monaco:', err);
     } finally {
       this.isProgrammaticUpdate = false;
+    }
+
+    const hl = untracked(() => this.workspaceService.pendingHighlight());
+    if (hl && (hl.fileId === file.id || hl.fileId === file.path)) {
+      setTimeout(() => {
+        this.applyHighlight(hl.highlightStart, hl.highlightEnd);
+        this.workspaceService.pendingHighlight.set(null);
+      }, 20);
     }
 
     this.editorInstance.layout();

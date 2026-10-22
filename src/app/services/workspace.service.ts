@@ -13,6 +13,7 @@ import {
   GitBranchItem,
 } from '../models/file.model';
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 export function isTauriApp(): boolean {
   if (typeof window === 'undefined') return false;
@@ -119,6 +120,13 @@ export class WorkspaceService {
   // Line jump request (from Grep search)
   readonly pendingLineJump = signal<{ lineNumber: number; column?: number } | null>(null);
 
+  // Line highlight range request (from Ada / CLI goto)
+  readonly pendingHighlight = signal<{
+    fileId: string;
+    highlightStart: number;
+    highlightEnd: number;
+  } | null>(null);
+
   // Background indexing state for real workspace search & grep
   readonly isIndexing = signal<boolean>(false);
   readonly indexedFileCount = signal<number>(0);
@@ -215,6 +223,89 @@ export class WorkspaceService {
     this.initRecentWorkspace();
     this.setupAutoSync();
     this.setupSessionPersistence();
+    this.setupIpcNavigationListener();
+  }
+
+  private setupIpcNavigationListener(): void {
+    if (!isTauriApp()) return;
+    listen<{ file?: string | null; highlight_start?: number; highlight_end?: number }>(
+      'vide://navigate',
+      async (event) => {
+        const payload = event.payload;
+        if (payload) {
+          if (payload.file) {
+            await this.navigateToFile(payload.file, payload.highlight_start, payload.highlight_end);
+          } else if (payload.highlight_start !== undefined && payload.highlight_start !== null) {
+            const active = this.activeFile();
+            if (active) {
+              const s = payload.highlight_start;
+              const e = payload.highlight_end ?? payload.highlight_start;
+              this.pendingHighlight.set({
+                fileId: active.id,
+                highlightStart: s,
+                highlightEnd: e,
+              });
+            }
+          }
+        }
+      }
+    ).catch((err) => {
+      console.warn('Failed to register vide://navigate listener:', err);
+    });
+  }
+
+  public async navigateToFile(
+    filePath: string,
+    highlightStart?: number | null,
+    highlightEnd?: number | null
+  ): Promise<void> {
+    const rootPath = this.nativeWorkspacePath();
+    const cleanPath = filePath.trim();
+    if (!cleanPath) return;
+
+    let relPath = cleanPath;
+    if (rootPath && cleanPath.startsWith(rootPath)) {
+      relPath = cleanPath.slice(rootPath.length).replace(/^\//, '');
+    } else {
+      relPath = cleanPath.replace(/^\//, '');
+    }
+
+    let fileToOpen = this.files().find(
+      (f) => f.path === relPath || f.id === relPath || f.fsPath === cleanPath || f.name === relPath
+    );
+
+    if (!fileToOpen && rootPath) {
+      const fullFsPath = cleanPath.startsWith('/')
+        ? cleanPath
+        : rootPath.endsWith('/')
+        ? `${rootPath}${relPath}`
+        : `${rootPath}/${relPath}`;
+      const baseName = relPath.split('/').pop() || relPath;
+      fileToOpen = {
+        id: relPath,
+        name: baseName,
+        path: relPath,
+        fsPath: fullFsPath,
+        language: detectLanguageFromFilename(baseName),
+        content: '',
+        isLoaded: false,
+        isModified: false,
+      };
+      this.files.update((prev) => [...prev, fileToOpen!]);
+    }
+
+    if (fileToOpen) {
+      await this.openFile(fileToOpen);
+      if (highlightStart !== undefined && highlightStart !== null) {
+        const s = highlightStart;
+        const e = highlightEnd ?? highlightStart;
+        this.pendingHighlight.set({
+          fileId: fileToOpen.id,
+          highlightStart: s,
+          highlightEnd: e,
+        });
+      }
+    }
   }
 
   public setSidebarView(view: 'explorer' | 'search' | 'git-changes'): void {
@@ -2413,7 +2504,13 @@ export class WorkspaceService {
     }
   }
 
-  public async loadFromNativePath(rootPath: string, cliFiles?: CliFileToOpen[]): Promise<void> {
+  public async loadFromNativePath(
+    rootPath: string,
+    cliFiles?: CliFileToOpen[],
+    targetFile?: string | null,
+    highlightStart?: number | null,
+    highlightEnd?: number | null
+  ): Promise<void> {
     if (isTauriApp()) {
       try {
         rootPath = await invoke<string>('resolve_path', { path: rootPath });
@@ -2423,6 +2520,11 @@ export class WorkspaceService {
         } else if (rootPath === '~') {
           rootPath = '/home/ori';
         }
+      }
+      try {
+        await invoke('register_active_workspace', { workspacePath: rootPath });
+      } catch (err) {
+        console.warn('Failed to register active workspace:', err);
       }
     } else {
       if (rootPath.startsWith('~/')) {
@@ -2514,7 +2616,15 @@ export class WorkspaceService {
         this.files.set(sortedRootFiles);
       });
 
-      if (cliFiles && cliFiles.length > 0) {
+      const fileToNavigate =
+        targetFile ||
+        (highlightStart !== undefined && highlightStart !== null && cliFiles && cliFiles.length > 0
+          ? cliFiles[0].rel_path || cliFiles[0].fs_path
+          : null);
+
+      if (fileToNavigate) {
+        await this.navigateToFile(fileToNavigate, highlightStart, highlightEnd);
+      } else if (cliFiles && cliFiles.length > 0) {
         for (const cf of cliFiles.slice(0, 3)) {
           let fileToOpen = sortedRootFiles.find(
             (f) => f.path === cf.rel_path || f.fsPath === cf.fs_path
@@ -2587,6 +2697,15 @@ export class WorkspaceService {
             );
             if (activeTarget) {
               this.activeFileId.set(activeTarget.id);
+              if (highlightStart !== undefined && highlightStart !== null) {
+                const s = highlightStart;
+                const e = highlightEnd ?? highlightStart;
+                this.pendingHighlight.set({
+                  fileId: activeTarget.id,
+                  highlightStart: s,
+                  highlightEnd: e,
+                });
+              }
             }
           }
         }
@@ -2980,7 +3099,13 @@ export class WorkspaceService {
         try {
           const cli = await invoke<CliLaunchPayload>('get_cli_launch_payload');
           if (cli && cli.workspace_path) {
-            await this.loadFromNativePath(cli.workspace_path, cli.files);
+            await this.loadFromNativePath(
+              cli.workspace_path,
+              cli.files,
+              cli.target_file,
+              cli.highlight_start,
+              cli.highlight_end
+            );
             return;
           }
         } catch (cliErr) {

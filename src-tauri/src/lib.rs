@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CliFileToOpen {
@@ -17,6 +19,9 @@ pub struct CliFileToOpen {
 pub struct CliLaunchPayload {
     pub workspace_path: Option<String>,
     pub files: Vec<CliFileToOpen>,
+    pub target_file: Option<String>,
+    pub highlight_start: Option<u32>,
+    pub highlight_end: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -927,18 +932,218 @@ fn open_system_terminal(dir_path: String) -> Result<(), String> {
     }
 }
 
+pub struct ActiveInstanceListener {
+    pub socket_path: PathBuf,
+    pub info_path: PathBuf,
+}
+
+static ACTIVE_LISTENER: Mutex<Option<ActiveInstanceListener>> = Mutex::new(None);
+
+pub fn normalize_workspace_path(raw: &str) -> Option<String> {
+    let expanded = expand_path(raw);
+    let p = PathBuf::from(&expanded);
+    let abs = if p.is_absolute() {
+        p
+    } else {
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p)
+    };
+    if let Ok(canon) = abs.canonicalize() {
+        Some(canon.to_string_lossy().to_string())
+    } else if abs.exists() {
+        Some(abs.to_string_lossy().to_string())
+    } else {
+        Some(expanded)
+    }
+}
+
+pub fn parse_highlight_range(raw: &str) -> Option<(u32, u32)> {
+    let raw = raw.trim();
+    if let Some((s, e)) = raw.split_once('-').or_else(|| raw.split_once(':')) {
+        if let (Ok(start), Ok(end)) = (s.trim().parse::<u32>(), e.trim().parse::<u32>()) {
+            return Some((start.min(end), start.max(end)));
+        }
+    } else if let Ok(line) = raw.parse::<u32>() {
+        return Some((line, line));
+    }
+    None
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedCliArgs {
+    pub positional: Vec<String>,
+    pub goto_file: Option<String>,
+    pub highlight_start: Option<u32>,
+    pub highlight_end: Option<u32>,
+}
+
+pub fn parse_cli_arguments(raw_args: &[String]) -> ParsedCliArgs {
+    let mut positional = Vec::new();
+    let mut goto_file: Option<String> = None;
+    let mut highlight_str: Option<String> = None;
+
+    let mut i = 0;
+    while i < raw_args.len() {
+        let arg = &raw_args[i];
+        if arg == "--goto" {
+            i += 1;
+            if i < raw_args.len() {
+                goto_file = Some(raw_args[i].clone());
+            }
+        } else if arg.starts_with("--goto=") {
+            goto_file = Some(arg["--goto=".len()..].to_string());
+        } else if arg == "--highlight" {
+            i += 1;
+            if i < raw_args.len() {
+                highlight_str = Some(raw_args[i].clone());
+            }
+        } else if arg.starts_with("--highlight=") {
+            highlight_str = Some(arg["--highlight=".len()..].to_string());
+        } else if arg == "--is-open" || arg == "--list-instances" {
+            // boolean flags without value
+        } else if arg.starts_with('-') {
+            // unknown flag
+        } else {
+            positional.push(arg.clone());
+        }
+        i += 1;
+    }
+
+    let (highlight_start, highlight_end) = highlight_str
+        .as_deref()
+        .and_then(parse_highlight_range)
+        .map(|(s, e)| (Some(s), Some(e)))
+        .unwrap_or((None, None));
+
+    ParsedCliArgs {
+        positional,
+        goto_file,
+        highlight_start,
+        highlight_end,
+    }
+}
+
+pub fn get_workspace_socket_path(canon_ws: &str) -> PathBuf {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut s = DefaultHasher::new();
+    canon_ws.hash(&mut s);
+    let hash = format!("{:016x}", s.finish());
+    let instances_dir = expand_path("~/.vide/instances");
+    let _ = std::fs::create_dir_all(&instances_dir);
+    PathBuf::from(instances_dir).join(format!("{}.sock", hash))
+}
+
+pub fn get_workspace_info_path(canon_ws: &str) -> PathBuf {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut s = DefaultHasher::new();
+    canon_ws.hash(&mut s);
+    let hash = format!("{:016x}", s.finish());
+    let instances_dir = expand_path("~/.vide/instances");
+    let _ = std::fs::create_dir_all(&instances_dir);
+    PathBuf::from(instances_dir).join(format!("{}.json", hash))
+}
+
+#[tauri::command]
+fn register_active_workspace(app: tauri::AppHandle, workspace_path: String) -> Result<(), String> {
+    let canon_ws = normalize_workspace_path(&workspace_path)
+        .unwrap_or_else(|| expand_path(&workspace_path));
+    let sock_path = get_workspace_socket_path(&canon_ws);
+    let info_path = get_workspace_info_path(&canon_ws);
+
+    let mut guard = ACTIVE_LISTENER.lock().map_err(|e| e.to_string())?;
+
+    if let Some(ref active) = *guard {
+        if active.socket_path == sock_path {
+            return Ok(());
+        }
+    }
+
+    if let Some(old) = guard.take() {
+        let _ = std::fs::remove_file(&old.socket_path);
+        let _ = std::fs::remove_file(&old.info_path);
+    }
+
+    if sock_path.exists() {
+        let _ = std::fs::remove_file(&sock_path);
+    }
+
+    let listener = UnixListener::bind(&sock_path)
+        .map_err(|e| format!("Failed to bind unix socket at {:?}: {}", sock_path, e))?;
+
+    let info = serde_json::json!({
+        "pid": std::process::id(),
+        "workspace": canon_ws,
+        "socket": sock_path.to_string_lossy(),
+    });
+    let _ = std::fs::write(&info_path, info.to_string());
+
+    *guard = Some(ActiveInstanceListener {
+        socket_path: sock_path.clone(),
+        info_path: info_path.clone(),
+    });
+
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(mut stream) => {
+                    let mut reader = BufReader::new(&stream);
+                    let mut line = String::new();
+                    if reader.read_line(&mut line).is_ok() {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+                            let action = val.get("action").and_then(|v| v.as_str()).unwrap_or("focus");
+
+                            if let Some(win) = app_handle.get_webview_window("main") {
+                                let _ = win.unminimize();
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+
+                            let file = val.get("file").and_then(|v| v.as_str()).map(|s| s.to_string());
+                            let hl_start = val.get("highlight_start").and_then(|v| v.as_u64()).map(|n| n as u32);
+                            let hl_end = val.get("highlight_end").and_then(|v| v.as_u64()).map(|n| n as u32);
+
+                            if action == "goto" || file.is_some() || hl_start.is_some() {
+                                let payload = serde_json::json!({
+                                    "file": file,
+                                    "highlight_start": hl_start,
+                                    "highlight_end": hl_end,
+                                });
+                                let _ = app_handle.emit("vide://navigate", payload);
+                            }
+                        }
+                    }
+                    let _ = stream.write_all(b"OK\n");
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[tauri::command]
 fn get_cli_launch_payload() -> Result<CliLaunchPayload, String> {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
-    let positional: Vec<String> = raw_args
-        .into_iter()
-        .filter(|a| !a.starts_with('-'))
-        .collect();
+    let parsed = parse_cli_arguments(&raw_args);
+    let positional = parsed.positional;
+    let mut goto_file = parsed.goto_file;
+    let hl_start = parsed.highlight_start;
+    let hl_end = parsed.highlight_end;
+
+    if goto_file.is_none() && positional.len() > 1 {
+        goto_file = Some(positional[1].clone());
+    }
 
     if positional.is_empty() {
         return Ok(CliLaunchPayload {
             workspace_path: None,
             files: Vec::new(),
+            target_file: goto_file,
+            highlight_start: hl_start,
+            highlight_end: hl_end,
         });
     }
 
@@ -1003,6 +1208,9 @@ fn get_cli_launch_payload() -> Result<CliLaunchPayload, String> {
     Ok(CliLaunchPayload {
         workspace_path: Some(workspace_dir.to_string_lossy().to_string()),
         files,
+        target_file: goto_file,
+        highlight_start: hl_start,
+        highlight_end: hl_end,
     })
 }
 
@@ -1482,6 +1690,118 @@ fn get_git_diff_for_commit(repo_path: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+
+    // 1. Handle --list-instances
+    if raw_args.iter().any(|a| a == "--list-instances") {
+        let instances_dir = expand_path("~/.vide/instances");
+        let p = Path::new(&instances_dir);
+        let mut count = 0;
+        if p.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(p) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                                let pid = v.get("pid").and_then(|p| p.as_u64()).unwrap_or(0);
+                                let ws = v.get("workspace").and_then(|w| w.as_str()).unwrap_or("");
+                                let is_alive = pid > 0 && Path::new(&format!("/proc/{}", pid)).exists();
+                                if is_alive {
+                                    if count == 0 {
+                                        println!("{:<10} {:<10} {}", "PID", "STATUS", "WORKSPACE");
+                                        println!("{:-<60}", "");
+                                    }
+                                    println!("{:<10} {:<10} {}", pid, "running", ws);
+                                    count += 1;
+                                } else {
+                                    let _ = std::fs::remove_file(&path);
+                                    let sock = path.with_extension("sock");
+                                    let _ = std::fs::remove_file(&sock);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if count == 0 {
+            println!("No active Vector IDE instances found.");
+        }
+        std::process::exit(0);
+    }
+
+    // 2. Handle --is-open
+    if raw_args.iter().any(|a| a == "--is-open") {
+        let positional: Vec<String> = raw_args
+            .iter()
+            .filter(|a| !a.starts_with('-'))
+            .cloned()
+            .collect();
+        let raw_ws = positional.first().cloned().unwrap_or_else(|| ".".to_string());
+        let ws = normalize_workspace_path(&raw_ws).unwrap_or_else(|| expand_path(&raw_ws));
+        let sock_path = get_workspace_socket_path(&ws);
+        if UnixStream::connect(&sock_path).is_ok() {
+            println!("true");
+            std::process::exit(0);
+        } else {
+            println!("false");
+            std::process::exit(1);
+        }
+    }
+
+    // 3. Handle IPC to existing running instance if workspace is provided
+    let parsed = parse_cli_arguments(&raw_args);
+    let positional = parsed.positional;
+    let mut goto_file = parsed.goto_file;
+    let hl_start = parsed.highlight_start;
+    let hl_end = parsed.highlight_end;
+
+    let mut workspace_opt = positional.first().and_then(|w| normalize_workspace_path(w));
+
+    if workspace_opt.is_none() && !positional.is_empty() {
+        let candidate_file = &positional[0];
+        if Path::new(candidate_file).exists() || !candidate_file.starts_with('-') {
+            workspace_opt = normalize_workspace_path(".");
+            if goto_file.is_none() {
+                goto_file = Some(candidate_file.clone());
+            }
+        }
+    } else if goto_file.is_none() && positional.len() > 1 {
+        goto_file = Some(positional[1].clone());
+    }
+
+    if let Some(ref ws) = workspace_opt {
+        let sock_path = get_workspace_socket_path(ws);
+        if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+            let action = if goto_file.is_some() || hl_start.is_some() { "goto" } else { "focus" };
+            let msg = serde_json::json!({
+                "action": action,
+                "workspace": ws,
+                "file": goto_file,
+                "highlight_start": hl_start,
+                "highlight_end": hl_end,
+            });
+            let mut msg_str = serde_json::to_string(&msg).unwrap_or_default();
+            msg_str.push('\n');
+            if stream.write_all(msg_str.as_bytes()).is_ok() {
+                let mut reader = BufReader::new(stream);
+                let mut response = String::new();
+                let _ = reader.read_line(&mut response);
+                println!("Target navigated in existing Vector IDE instance for workspace: {}", ws);
+                std::process::exit(0);
+            }
+        } else {
+            if sock_path.exists() {
+                let _ = std::fs::remove_file(&sock_path);
+            }
+            let info_path = get_workspace_info_path(ws);
+            if info_path.exists() {
+                let _ = std::fs::remove_file(&info_path);
+            }
+        }
+    }
+
     tauri::Builder::default()
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -1491,10 +1811,17 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
             Ok(())
         })
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
+                if let Ok(mut guard) = ACTIVE_LISTENER.lock() {
+                    if let Some(active) = guard.take() {
+                        let _ = std::fs::remove_file(&active.socket_path);
+                        let _ = std::fs::remove_file(&active.info_path);
+                    }
+                }
                 if let Ok(mut guard) = AI_SIDECAR.lock() {
                     if let Some(mut proc) = guard.take() {
                         let _ = proc.child.kill();
@@ -1504,6 +1831,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             resolve_path,
+            register_active_workspace,
             get_git_branch,
             get_git_status,
             get_git_diff_baseline,

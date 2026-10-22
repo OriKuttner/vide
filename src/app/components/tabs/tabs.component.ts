@@ -54,4 +54,17 @@ export class TabsComponent {
       this.workspaceService.togglePreview();
     }
   }
+
+  public getTabTooltip(tab: WorkspaceFile): string {
+    if (tab.fsPath) {
+      return tab.fsPath;
+    }
+    const nativeRoot = this.workspaceService.nativeWorkspacePath();
+    if (nativeRoot && tab.path && !tab.path.startsWith('/')) {
+      const cleanRoot = nativeRoot.endsWith('/') ? nativeRoot.slice(0, -1) : nativeRoot;
+      const cleanRel = tab.path.startsWith('/') ? tab.path.slice(1) : tab.path;
+      return `${cleanRoot}/${cleanRel}`;
+    }
+    return tab.path || tab.name;
+  }
 }
