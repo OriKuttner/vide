@@ -8,11 +8,10 @@
       <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
         <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm5-1v12h9a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H5zM4 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2V2z"/>
       </svg>
-      <span>Explorer</span>
     </button>
   }
 
-  <div class="tabs-scroll-area">
+  <div class="tabs-scroll-area" #scrollArea (wheel)="onTabsWheel($event)">
     @for (tab of workspaceService.openTabs(); track tab.id) {
       <div
         class="tab"
@@ -78,30 +77,6 @@
   </div>
 
   <div class="tabs-actions">
-    @if (workspaceService.activeFile(); as active) {
-      @if (active.isModified || active.gitStatus || active.originalContent !== undefined) {
-        <button
-          class="action-btn diff-btn"
-          [class.active]="workspaceService.diffModeActive()"
-          (click)="workspaceService.toggleCurrentFileDiff()"
-          [title]="workspaceService.diffModeActive() ? 'Close Meld Diff View (Return to Editor)' : 'Open Meld Side-by-Side Diff for Current File'"
-        >
-          <span class="diff-icon">◫</span>
-        </button>
-      }
-    }
-
-    <button
-      class="action-btn sidebar-btn"
-      [class.active]="workspaceService.sidebarVisible()"
-      (click)="workspaceService.toggleSidebar()"
-      [title]="workspaceService.sidebarVisible() ? 'Hide Primary Side Bar (Ctrl+B)' : 'Show Primary Side Bar (Ctrl+B)'"
-    >
-      <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm5-1v12h9a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H5zM4 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2V2z"/>
-      </svg>
-    </button>
-
     <button
       class="action-btn sticky-btn"
       [class.active]="workspaceService.stickyScrollEnabled()"

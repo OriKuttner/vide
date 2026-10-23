@@ -5,7 +5,7 @@ import type * as MonacoType from 'monaco-editor';
  */
 interface CompletionDefinition {
   label: string;
-  kind: MonacoType.languages.CompletionItemKind;
+  kind?: MonacoType.languages.CompletionItemKind;
   detail: string;
   documentation: string;
   insertText: string;
@@ -830,6 +830,329 @@ function registerLanguageSupport(
   }
 }
 
+const RUST_KEYWORDS = [
+  'fn', 'let', 'mut', 'const', 'pub', 'struct', 'enum', 'trait', 'impl', 'for',
+  'in', 'while', 'loop', 'match', 'if', 'else', 'return', 'async', 'await', 'use',
+  'mod', 'crate', 'self', 'super', 'type', 'where', 'unsafe', 'as', 'break', 'continue',
+];
+
+const RUST_SNIPPETS: CompletionDefinition[] = [
+  {
+    label: 'fn',
+    kind: 27,
+    detail: 'Function definition',
+    documentation: 'Defines a Rust function with parameters and return type.',
+    insertText: 'fn ${1:function_name}(${2:params}) -> ${3:Result<(), Box<dyn std::error::Error>>} {\n    ${0}\n}',
+    isSnippet: true,
+  },
+  {
+    label: 'pub fn',
+    kind: 27,
+    detail: 'Public function definition',
+    documentation: 'Defines a public Rust function.',
+    insertText: 'pub fn ${1:function_name}(${2:params}) {\n    ${0}\n}',
+    isSnippet: true,
+  },
+  {
+    label: 'struct',
+    kind: 27,
+    detail: 'Struct definition',
+    documentation: 'Defines a Rust struct.',
+    insertText: 'pub struct ${1:StructName} {\n    ${0}\n}',
+    isSnippet: true,
+  },
+  {
+    label: 'impl',
+    kind: 27,
+    detail: 'Implementation block',
+    documentation: 'Defines an implementation block for a struct or trait.',
+    insertText: 'impl ${1:StructName} {\n    ${0}\n}',
+    isSnippet: true,
+  },
+];
+
+export interface ExtractedFunction {
+  name: string;
+  signature: string;
+  params: string[];
+  returnType?: string;
+  sourceFile?: string;
+}
+
+const CONTROL_KEYWORDS = new Set([
+  'if', 'else', 'elseif', 'while', 'for', 'foreach', 'switch', 'case', 'break', 'continue',
+  'return', 'catch', 'finally', 'try', 'throw', 'sizeof', 'typeof', 'instanceof',
+  'new', 'delete', 'import', 'export', 'from', 'as', 'match', 'loop', 'with',
+  'yield', 'await', 'echo', 'print', 'include', 'require', 'include_once', 'require_once',
+  'isset', 'empty', 'unset', 'eval', 'die', 'exit',
+]);
+
+const functionsCache = new Map<string, { versionId: number; functions: ExtractedFunction[] }>();
+
+/**
+ * Parses user-defined functions and methods from a Monaco model based on language syntax.
+ */
+export function extractUserDefinedFunctions(
+  model: MonacoType.editor.ITextModel,
+  languageId?: string
+): ExtractedFunction[] {
+  const content = model.getValue();
+  const lang = languageId || model.getLanguageId();
+  const fileName = model.uri.path.split('/').pop() || 'current file';
+  const functions: ExtractedFunction[] = [];
+  const seen = new Set<string>();
+
+  // 1. PHP functions & methods
+  if (lang === 'php') {
+    const phpRegex =
+      /(?:(?:public|private|protected|static|final|abstract)\s+)*function\s+([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)\s*\(([^)]*)\)(?:\s*:\s*([a-zA-Z0-9_\\?|&]+))?/g;
+    let match: RegExpExecArray | null;
+    while ((match = phpRegex.exec(content)) !== null) {
+      const name = match[1];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = match[2]?.trim() || '';
+        const returnType = match[3]?.trim();
+        functions.push({
+          name,
+          signature: `function ${name}(${params})${returnType ? ': ' + returnType : ''}`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          returnType,
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  // 2. TypeScript / JavaScript
+  if (lang === 'typescript' || lang === 'javascript') {
+    const fnRegex =
+      /(?:(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*:\s*([^;{\n]+))?)/g;
+    let match: RegExpExecArray | null;
+    while ((match = fnRegex.exec(content)) !== null) {
+      const name = match[1];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = match[2]?.trim() || '';
+        const returnType = match[3]?.trim();
+        functions.push({
+          name,
+          signature: `function ${name}(${params})${returnType ? ': ' + returnType : ''}`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          returnType,
+          sourceFile: fileName,
+        });
+      }
+    }
+
+    const arrowRegex =
+      /(?:(?:export\s+)?(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?::\s*[^=]+)?=\s*(?:async\s*)?(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*:\s*([^=;{\n]+))?\s*=>)/g;
+    while ((match = arrowRegex.exec(content)) !== null) {
+      const name = match[1];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = match[2]?.trim() || '';
+        const returnType = match[3]?.trim();
+        functions.push({
+          name,
+          signature: `const ${name} = (${params})${returnType ? ': ' + returnType : ''} =>`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          returnType,
+          sourceFile: fileName,
+        });
+      }
+    }
+
+    const methodRegex =
+      /^\s*(?:(?:public|private|protected|static|async|readonly)\s+)+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*:\s*([^;{\n]+))?\s*\{/gm;
+    while ((match = methodRegex.exec(content)) !== null) {
+      const name = match[1];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = match[2]?.trim() || '';
+        const returnType = match[3]?.trim();
+        functions.push({
+          name,
+          signature: `${name}(${params})${returnType ? ': ' + returnType : ''}`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          returnType,
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  // 3. OmniFlux
+  if (lang === 'omniflux') {
+    const ofRegex =
+      /(?:define\s+task\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+with\s+params\s*\(([^)]*)\))?|TASK\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)|FN\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\))/g;
+    let match: RegExpExecArray | null;
+    while ((match = ofRegex.exec(content)) !== null) {
+      const name = match[1] || match[3] || match[5];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = (match[2] || match[4] || match[6] || '').trim();
+        functions.push({
+          name,
+          signature: `${name}(${params})`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  // 4. Rust
+  if (lang === 'rust') {
+    const rustRegex =
+      /(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?(?:unsafe\s+)?(?:extern\s+"[^"]+"\s+)?fn\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*->\s*([^{;]+))?/g;
+    let match: RegExpExecArray | null;
+    while ((match = rustRegex.exec(content)) !== null) {
+      const name = match[1];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = match[2]?.trim() || '';
+        const returnType = match[3]?.trim();
+        functions.push({
+          name,
+          signature: `fn ${name}(${params})${returnType ? ' -> ' + returnType : ''}`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          returnType,
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  // 5. Python
+  if (lang === 'python') {
+    const pyRegex = /(?:async\s+)?def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)(?:\s*->\s*([^:]+))?:/g;
+    let match: RegExpExecArray | null;
+    while ((match = pyRegex.exec(content)) !== null) {
+      const name = match[1];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = match[2]?.trim() || '';
+        const returnType = match[3]?.trim();
+        functions.push({
+          name,
+          signature: `def ${name}(${params})${returnType ? ' -> ' + returnType : ''}`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          returnType,
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  // 6. C / C++
+  if (lang === 'c' || lang === 'cpp') {
+    const cRegex =
+      /^\s*(?:(?:inline|static|virtual|explicit|extern)\s+)*(?:[a-zA-Z_][a-zA-Z0-9_:*&<>\s]*?)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*(?:const)?\s*(?:noexcept)?\s*\{/gm;
+    let match: RegExpExecArray | null;
+    while ((match = cRegex.exec(content)) !== null) {
+      const name = match[1];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = match[2]?.trim() || '';
+        functions.push({
+          name,
+          signature: `${name}(${params})`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  // 7. Shell / Bash
+  if (lang === 'shell') {
+    const shellRegex =
+      /(?:function\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(\))?|([a-zA-Z_][a-zA-Z0-9_]*)\s*\(\))\s*\{/g;
+    let match: RegExpExecArray | null;
+    while ((match = shellRegex.exec(content)) !== null) {
+      const name = match[1] || match[2];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        functions.push({
+          name,
+          signature: `${name}()`,
+          params: [],
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  // 8. Universal generic fallback for all other languages (Go, Ruby, Perl, Kotlin, etc.)
+  if (functions.length === 0) {
+    const genericRegex =
+      /(?:(?:func|function|fn|def|sub|fun|procedure|proc)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(([^)]*)\))?|^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*(?:\{|=>|->|:))/gm;
+    let match: RegExpExecArray | null;
+    while ((match = genericRegex.exec(content)) !== null) {
+      const name = match[1] || match[3];
+      if (name && !CONTROL_KEYWORDS.has(name.toLowerCase()) && !seen.has(name)) {
+        seen.add(name);
+        const params = (match[2] || match[4] || '').trim();
+        functions.push({
+          name,
+          signature: `${name}(${params})`,
+          params: params ? params.split(',').map((p) => p.trim()) : [],
+          sourceFile: fileName,
+        });
+      }
+    }
+  }
+
+  return functions;
+}
+
+export function getModelUserFunctions(model: MonacoType.editor.ITextModel): ExtractedFunction[] {
+  const uri = model.uri.toString();
+  const cached = functionsCache.get(uri);
+  if (cached && cached.versionId === model.getVersionId()) {
+    return cached.functions;
+  }
+
+  const funcs = extractUserDefinedFunctions(model);
+  functionsCache.set(uri, { versionId: model.getVersionId(), functions: funcs });
+  return funcs;
+}
+
+export function getAllWorkspaceUserFunctions(
+  monaco: typeof MonacoType,
+  currentModel: MonacoType.editor.ITextModel
+): ExtractedFunction[] {
+  const allFuncs: ExtractedFunction[] = [];
+  const seen = new Set<string>();
+
+  // 1. Current model functions first
+  const currentFuncs = getModelUserFunctions(currentModel);
+  for (const f of currentFuncs) {
+    if (!seen.has(f.name)) {
+      seen.add(f.name);
+      allFuncs.push(f);
+    }
+  }
+
+  // 2. Open models in Monaco (matching language or all)
+  const currentLang = currentModel.getLanguageId();
+  for (const model of monaco.editor.getModels()) {
+    if (model === currentModel || model.isDisposed()) continue;
+    if (model.getLanguageId() === currentLang || currentLang === 'plaintext') {
+      const otherFuncs = getModelUserFunctions(model);
+      for (const f of otherFuncs) {
+        if (!seen.has(f.name)) {
+          seen.add(f.name);
+          allFuncs.push(f);
+        }
+      }
+    }
+  }
+
+  return allFuncs;
+}
+
 let allSnippetsRegistered = false;
 
 /**
@@ -841,12 +1164,22 @@ export function registerAllLanguageSnippets(monaco: typeof MonacoType): void {
   }
   allSnippetsRegistered = true;
 
+  // Clean cache on model disposal
+  monaco.editor.onDidCreateModel((model) => {
+    model.onWillDispose(() => {
+      functionsCache.delete(model.uri.toString());
+    });
+  });
+
   // C and C++
   registerLanguageSupport(monaco, 'c', C_KEYWORDS, C_STDLIB_FUNCS, C_SNIPPETS);
   registerLanguageSupport(monaco, 'cpp', C_KEYWORDS, C_STDLIB_FUNCS, C_SNIPPETS);
 
   // PHP
   registerLanguageSupport(monaco, 'php', PHP_KEYWORDS, PHP_BUILTIN_FUNCS, PHP_SNIPPETS);
+
+  // Rust
+  registerLanguageSupport(monaco, 'rust', RUST_KEYWORDS, [], RUST_SNIPPETS);
 
   // Bash / Shell
   registerLanguageSupport(monaco, 'shell', [], [], SHELL_SNIPPETS);
@@ -857,4 +1190,94 @@ export function registerAllLanguageSnippets(monaco: typeof MonacoType): void {
   // TypeScript and JavaScript
   registerLanguageSupport(monaco, 'typescript', [], [], TS_JS_SNIPPETS);
   registerLanguageSupport(monaco, 'javascript', [], [], TS_JS_SNIPPETS);
+
+  // Universal User-Defined Functions Completion Provider for ALL languages ('*')
+  monaco.languages.registerCompletionItemProvider('*', {
+    provideCompletionItems: (model, position) => {
+      const word = model.getWordUntilPosition(position);
+      const range: MonacoType.IRange = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      };
+
+      const userFuncs = getAllWorkspaceUserFunctions(monaco, model);
+      if (userFuncs.length === 0) {
+        return { suggestions: [] };
+      }
+
+      const suggestions: MonacoType.languages.CompletionItem[] = userFuncs.map((f) => {
+        const hasParams = f.params.length > 0;
+        return {
+          label: f.name,
+          kind: monaco.languages.CompletionItemKind.Function,
+          detail: f.signature ? `${f.signature} (User Function)` : `${f.name}() (User Function)`,
+          documentation: `User-defined function${f.sourceFile ? ' from ' + f.sourceFile : ''}.`,
+          insertText: hasParams ? `${f.name}(\${1})` : `${f.name}()\${0}`,
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          sortText: `01_${f.name}`,
+          range,
+        };
+      });
+
+      return { suggestions };
+    },
+  });
+
+  // Universal Signature Help Provider for user-defined functions on '(' across ALL languages
+  monaco.languages.registerSignatureHelpProvider('*', {
+    signatureHelpTriggerCharacters: ['(', ','],
+    provideSignatureHelp: (model, position) => {
+      const lineContent = model.getLineContent(position.lineNumber);
+      const textBefore = lineContent.substring(0, position.column - 1);
+      const match = textBefore.match(/([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)\s*\([^()]*$/);
+      if (!match) return null;
+
+      const fnName = match[1];
+      const userFuncs = getAllWorkspaceUserFunctions(monaco, model);
+      const func = userFuncs.find((f) => f.name === fnName);
+      if (!func) return null;
+
+      return {
+        value: {
+          signatures: [
+            {
+              label: func.signature,
+              documentation: `User-defined function${func.sourceFile ? ' in ' + func.sourceFile : ''}`,
+              parameters: func.params.map((p) => ({ label: p })),
+            },
+          ],
+          activeSignature: 0,
+          activeParameter: 0,
+        },
+        dispose: () => {},
+      };
+    },
+  });
+
+  // Universal Hover Provider for user-defined functions
+  monaco.languages.registerHoverProvider('*', {
+    provideHover: (model, position) => {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+
+      const userFuncs = getAllWorkspaceUserFunctions(monaco, model);
+      const func = userFuncs.find((f) => f.name === word.word);
+      if (!func) return null;
+
+      return {
+        range: new monaco.Range(
+          position.lineNumber,
+          word.startColumn,
+          position.lineNumber,
+          word.endColumn
+        ),
+        contents: [
+          { value: `\`\`\`${model.getLanguageId()}\n${func.signature}\n\`\`\`` },
+          { value: `*User-defined function*${func.sourceFile ? ` in \`${func.sourceFile}\`` : ''}` },
+        ],
+      };
+    },
+  });
 }

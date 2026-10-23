@@ -28,7 +28,7 @@ export class AgentChatComponent implements AfterViewChecked {
   @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
   @ViewChild('inputField') private inputField?: ElementRef<HTMLTextAreaElement>;
 
-  readonly isOpen = signal<boolean>(false);
+  readonly isOpen = this.assistantService.isChatOpen;
   readonly isAgentMenuOpen = signal<boolean>(false);
   readonly messageText = signal<string>('');
   readonly expandedThoughts = signal<Record<number, boolean>>({});
@@ -45,6 +45,7 @@ export class AgentChatComponent implements AfterViewChecked {
   private dragStartMouse = { x: 0, y: 0 };
   private dragStartButton = { x: 0, y: 0 };
   private didDragDistance = false;
+  private lastPointerUpToggleTime = 0;
 
   private isResizing = false;
   private resizeHandle: 'top' | 'left' | 'top-left' | null = null;
@@ -169,7 +170,7 @@ export class AgentChatComponent implements AfterViewChecked {
     // Load open state
     const savedOpen = localStorage.getItem('vide_agent_chat_open');
     if (savedOpen === 'true') {
-      this.isOpen.set(true);
+      this.assistantService.isChatOpen.set(true);
       this.shouldScrollBottom = true;
     }
   }
@@ -188,7 +189,7 @@ export class AgentChatComponent implements AfterViewChecked {
   toggleChat(): void {
     if (this.didDragDistance) return; // Prevent toggle if user was dragging
     const nextState = !this.isOpen();
-    this.isOpen.set(nextState);
+    this.assistantService.isChatOpen.set(nextState);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('vide_agent_chat_open', String(nextState));
     }
@@ -201,14 +202,18 @@ export class AgentChatComponent implements AfterViewChecked {
   }
 
   closeChat(): void {
-    this.isOpen.set(false);
+    this.assistantService.isChatOpen.set(false);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('vide_agent_chat_open', 'false');
     }
   }
 
   toggleAgentMenu(): void {
-    this.isAgentMenuOpen.update(v => !v);
+    const next = !this.isAgentMenuOpen();
+    this.isAgentMenuOpen.set(next);
+    if (next) {
+      this.assistantService.loadAssistants();
+    }
   }
 
   selectAgent(agent: AssistantInfo): void {
@@ -276,7 +281,7 @@ export class AgentChatComponent implements AfterViewChecked {
     if (!this.isDraggingButton) return;
     const dx = event.clientX - this.dragStartMouse.x;
     const dy = event.clientY - this.dragStartMouse.y;
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
       this.didDragDistance = true;
     }
     const newX = this.dragStartButton.x + dx;
@@ -293,6 +298,20 @@ export class AgentChatComponent implements AfterViewChecked {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('vide_agent_button_pos', JSON.stringify(this.buttonPos()));
     }
+    // If user clicked without dragging, toggle immediately on pointerup for zero delay
+    if (!this.didDragDistance) {
+      this.lastPointerUpToggleTime = Date.now();
+      this.toggleChat();
+    }
+  }
+
+  onButtonClick(event: MouseEvent): void {
+    // Prevent double toggle if pointerup already handled it within 400ms
+    if (Date.now() - this.lastPointerUpToggleTime < 400) {
+      return;
+    }
+    if (this.didDragDistance) return;
+    this.toggleChat();
   }
 
   // --- Window Resize Handlers ---

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, ElementRef, ViewChild, effect, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ThemeService } from '../../services/theme.service';
@@ -14,6 +14,31 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isPr
 export class TabsComponent {
   public workspaceService = inject(WorkspaceService);
   public themeService = inject(ThemeService);
+
+  @ViewChild('scrollArea', { static: false })
+  public scrollArea?: ElementRef<HTMLElement>;
+
+  constructor() {
+    effect(() => {
+      const activeId = this.workspaceService.activeFileId();
+      if (activeId) {
+        setTimeout(() => {
+          const activeEl = this.scrollArea?.nativeElement?.querySelector('.tab.active');
+          activeEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        }, 50);
+      }
+    });
+  }
+
+  public onTabsWheel(event: WheelEvent): void {
+    if (!this.scrollArea?.nativeElement) {
+      return;
+    }
+    if (event.deltaY !== 0) {
+      this.scrollArea.nativeElement.scrollLeft += event.deltaY;
+      event.preventDefault();
+    }
+  }
 
   public isImage(tab: WorkspaceFile): boolean {
     return !!tab.isImage || isImageFile(tab.name);

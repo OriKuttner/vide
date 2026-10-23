@@ -642,6 +642,25 @@
     font-size: 11px;
     color: var(--text-muted, #717171);
   }
+
+  .ai-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary, #1e1e1e);
+    cursor: pointer;
+    user-select: none;
+    padding: 4px 0;
+
+    input[type='checkbox'] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #007acc;
+    }
+  }
 }
 
 .ai-features-box {

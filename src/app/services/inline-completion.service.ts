@@ -8,12 +8,42 @@ import { AiService } from './ai.service';
 export class InlineCompletionService {
   private readonly aiService = inject(AiService);
   private currentAbortController: AbortController | null = null;
+  private isRegistered = false;
+  private readonly modelEditVersions = new Map<string, number>();
+  private readonly lastHandledVersions = new Map<string, number>();
+
+  private attachModelListeners(model: MonacoType.editor.ITextModel): void {
+    const uriStr = model.uri.toString();
+    const sub = model.onDidChangeContent((e) => {
+      if (!e.isFlush && e.changes.length > 0) {
+        this.modelEditVersions.set(uriStr, model.getVersionId());
+      }
+    });
+    model.onWillDispose(() => {
+      sub.dispose();
+      this.modelEditVersions.delete(uriStr);
+      this.lastHandledVersions.delete(uriStr);
+    });
+  }
 
   /**
    * Registers inline completion providers (Ghost Text) for all supported languages.
    * Powered by local llama-server (FIM) with smart heuristic fallback.
    */
   public registerProviders(monaco: typeof MonacoType): void {
+    if (this.isRegistered) return;
+    this.isRegistered = true;
+
+    // Attach listeners to any existing models
+    for (const model of monaco.editor.getModels()) {
+      this.attachModelListeners(model);
+    }
+
+    // Attach listeners to any newly created models
+    monaco.editor.onDidCreateModel((model) => {
+      this.attachModelListeners(model);
+    });
+
     const supportedLanguages = [
       'omniflux',
       'typescript',
@@ -34,13 +64,45 @@ export class InlineCompletionService {
 
     for (const language of supportedLanguages) {
       monaco.languages.registerInlineCompletionsProvider(language, {
-        provideInlineCompletions: async (model, position, _context, token) => {
+        provideInlineCompletions: async (model, position, context, token) => {
           if (token.isCancellationRequested) {
+            if (this.currentAbortController) {
+              this.currentAbortController.abort();
+              this.currentAbortController = null;
+            }
             this.aiService.isGenerating.set(false);
             return { items: [] };
           }
 
-          // 1. Abort previous in-flight AI request if any and immediately hide widget
+          const isExplicit = context.triggerKind === 1; // InlineCompletionTriggerKind.Explicit
+
+          if (!isExplicit) {
+            // 1. NEVER trigger suggestions or thinking when text is selected (e.g. Shift + Arrow)
+            const editors = monaco.editor.getEditors();
+            const activeEditor = editors.find((ed) => ed.getModel() === model);
+            const selection = activeEditor?.getSelection();
+            if (selection && !selection.isEmpty()) {
+              if (this.currentAbortController) {
+                this.currentAbortController.abort();
+                this.currentAbortController = null;
+              }
+              this.aiService.isGenerating.set(false);
+              return { items: [] };
+            }
+
+            // 2. NEVER trigger suggestions or thinking on cursor movement without actual text edits
+            const uriStr = model.uri.toString();
+            const lastEditVersion = this.modelEditVersions.get(uriStr);
+            const lastHandledVersion = this.lastHandledVersions.get(uriStr);
+
+            if (!lastEditVersion || lastEditVersion === lastHandledVersion) {
+              return { items: [] };
+            }
+
+            this.lastHandledVersions.set(uriStr, lastEditVersion);
+          }
+
+          // 3. Abort previous in-flight AI request if any and immediately hide widget
           if (this.currentAbortController) {
             this.currentAbortController.abort();
             this.currentAbortController = null;

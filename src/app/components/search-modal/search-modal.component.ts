@@ -10,6 +10,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { WorkspaceService, GrepResult } from '../../services/workspace.service';
 import { AiService } from '../../services/ai.service';
+import { AssistantService } from '../../services/assistant.service';
 import { WorkspaceFile, isOmniFluxFile, isPhpFile, isPerlFile, GitBranchItem } from '../../models/file.model';
 
 export interface LanguageItem {
@@ -48,6 +49,7 @@ export class SearchModalComponent {
 
   public workspaceService = inject(WorkspaceService);
   public aiService = inject(AiService);
+  public assistantService = inject(AssistantService);
 
   public inputValue = signal<string>('');
   public grepResults = signal<GrepResult[]>([]);

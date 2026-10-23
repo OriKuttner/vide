@@ -42,31 +42,23 @@ export class AssistantService {
   readonly baseUrl = signal<string>('https://assistant.heliconbooks.com');
   readonly clientId = `vide_${Math.random().toString(36).substring(2, 10)}`;
 
-  readonly assistants = signal<AssistantInfo[]>([
-    {
-      identifier: 'ada',
-      name: 'עדה',
-      title: 'מתכנתת ומפתחת מערכות',
-      image: 'https://assistant.heliconbooks.com/images/ada.jpg',
-      greeting: 'שלום! עדה מוכנה לפיתוח, כתיבת קוד ועריכת קבצים.'
-    },
-    {
-      identifier: 'tara',
-      name: 'טארה',
-      title: 'עוזרת אישית ומנהלת משרד',
-      image: 'https://assistant.heliconbooks.com/images/tara.jpg',
-      greeting: 'שלום! מוכנה לקבל פקודות.'
-    }
-  ]);
+  readonly assistants = signal<AssistantInfo[]>(this.getInitialAssistants());
 
   // Ada is the default active agent
-  readonly currentAgent = signal<AssistantInfo>(this.assistants()[0]);
+  readonly currentAgent = signal<AssistantInfo>(this.getInitialAgent());
   readonly sessionToken = signal<string | null>(null);
-  readonly feed = signal<ChatMessage[]>([]);
+  readonly feed = signal<ChatMessage[]>(this.getInitialFeed());
   readonly isLoading = signal<boolean>(false);
   readonly isRefreshing = signal<boolean>(false);
+  readonly isFeedLoading = signal<boolean>(false);
   readonly isAuthenticated = signal<boolean>(false);
   readonly errorMessage = signal<string | null>(null);
+
+  // Floating agent avatar button visibility (default: false, controlled via AI Settings)
+  readonly showFloatingButton = signal<boolean>(this.getInitialFloatingButtonState());
+
+  // Chat window open state
+  readonly isChatOpen = signal<boolean>(false);
 
   // Live thinking steps and audio state
   readonly isAwaitingResponse = signal<boolean>(false);
@@ -79,6 +71,114 @@ export class AssistantService {
 
   constructor() {
     this.initAuthAndFeed();
+  }
+
+  private getInitialFeed(): ChatMessage[] {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const agent = this.getInitialAgent();
+        const cached = localStorage.getItem(`vide_cached_feed_${agent.identifier}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  }
+
+  private getInitialAssistants(): AssistantInfo[] {
+    const defaultList: AssistantInfo[] = [
+      {
+        identifier: 'ada',
+        name: 'עדה',
+        title: 'מתכנתת ומפתחת מערכות',
+        image: 'https://assistant.heliconbooks.com/images/ada.jpg',
+        greeting: 'שלום! עדה מוכנה לפיתוח, כתיבת קוד ועריכת קבצים.'
+      },
+      {
+        identifier: 'tara',
+        name: 'טארה',
+        title: 'עוזרת אישית ומנהלת משרד',
+        image: 'https://assistant.heliconbooks.com/images/tara.jpg',
+        greeting: 'שלום! מוכנה לקבל פקודות.'
+      }
+    ];
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('vide_cached_assistants');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const filtered = parsed.filter(
+              (a: AssistantInfo) =>
+                a &&
+                a.identifier &&
+                a.identifier !== 'boardroom' &&
+                !a.identifier.startsWith('_') &&
+                !(a.name && (a.name.includes('חדר ישיבות') || a.name.toLowerCase().includes('boardroom')))
+            );
+            if (filtered.length > 0) {
+              return filtered;
+            }
+          }
+        }
+      } catch {}
+    }
+    return defaultList;
+  }
+
+  private getInitialAgent(): AssistantInfo {
+    const list = this.assistants();
+    if (typeof localStorage !== 'undefined') {
+      const savedId = localStorage.getItem('vide_selected_agent');
+      if (savedId && savedId !== 'boardroom') {
+        const found = list.find((a) => a.identifier === savedId);
+        if (found) return found;
+      }
+    }
+    return list.find((a) => a.identifier === 'ada') || list[0];
+  }
+
+  private getInitialFloatingButtonState(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    try {
+      return localStorage.getItem('vide_show_agent_floating_btn') === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  public setShowFloatingButton(val: boolean): void {
+    this.showFloatingButton.set(val);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('vide_show_agent_floating_btn', val ? 'true' : 'false');
+      } catch {}
+    }
+    if (val) {
+      // Fetch assistants in parallel without blocking
+      this.loadAssistants().catch((err) =>
+        console.warn('[AssistantService] Background loadAssistants failed:', err)
+      );
+    }
+  }
+
+  public toggleFloatingButton(): void {
+    this.setShowFloatingButton(!this.showFloatingButton());
+  }
+
+  public openChat(): void {
+    this.isChatOpen.set(true);
+  }
+
+  public closeChat(): void {
+    this.isChatOpen.set(false);
+  }
+
+  public toggleChat(): void {
+    this.isChatOpen.update((v) => !v);
   }
 
   async initAuthAndFeed(): Promise<void> {
@@ -108,6 +208,10 @@ export class AssistantService {
         this.isAuthenticated.set(true);
       }
 
+      // Load assistants in parallel/background so it does not block SSE or feed loading
+      this.loadAssistants().catch((err) =>
+        console.warn('[AssistantService] Initial loadAssistants error:', err)
+      );
       this.initSSE();
       await this.loadFeed();
     } catch (e: any) {
@@ -306,10 +410,100 @@ export class AssistantService {
     return headers;
   }
 
+  async loadAssistants(): Promise<void> {
+    const url = `${this.baseUrl()}/api/assistants`;
+    try {
+      const res = await firstValueFrom(
+        this.http.get<any[]>(url, { headers: this.getHeaders() })
+      );
+      if (Array.isArray(res) && res.length > 0) {
+        const loaded: AssistantInfo[] = [];
+        for (const a of res) {
+          if (a.identifier && (a.identifier.startsWith('_') || a.identifier === 'boardroom')) continue;
+          if (a.name && (a.name.includes('חדר ישיבות') || a.name.toLowerCase().includes('boardroom'))) continue;
+          if (a.full_name && (a.full_name.includes('חדר ישיבות') || a.full_name.toLowerCase().includes('boardroom'))) continue;
+
+          let toolsArr: string[] = [];
+          if (Array.isArray(a.tools)) {
+            toolsArr = a.tools;
+          } else if (typeof a.tools === 'string') {
+            try {
+              toolsArr = JSON.parse(a.tools);
+            } catch (e) {
+              toolsArr = [];
+            }
+          }
+          const desktopTools = [
+            'read_file',
+            'list_directory',
+            'write_file',
+            'patch_file',
+            'run_command',
+            'find_files',
+            'grep_search',
+          ];
+          const hasDesktopAccess =
+            a.hasDesktopAccess ??
+            a.has_desktop_tools ??
+            (Array.isArray(toolsArr) && toolsArr.some((t) => desktopTools.includes(t)));
+
+          const autoTitle = a.title || (a.personality ? a.personality.substring(0, 35) : 'סוכנת');
+          let img = a.image || '';
+          if (img && !img.startsWith('http://') && !img.startsWith('https://')) {
+            img = `${this.baseUrl()}${img.startsWith('/') ? img : '/' + img}`;
+          }
+
+          loaded.push({
+            identifier: a.identifier,
+            name: a.full_name || a.name || a.identifier,
+            title: autoTitle,
+            image:
+              img ||
+              (hasDesktopAccess
+                ? 'https://assistant.heliconbooks.com/images/ada.jpg'
+                : 'https://assistant.heliconbooks.com/images/tara.jpg'),
+            greeting: a.greeting || `שלום! ${a.full_name || a.name || a.identifier} מוכנה לפעולה.`,
+          });
+        }
+
+        if (loaded.length > 0) {
+          this.assistants.set(loaded);
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem('vide_cached_assistants', JSON.stringify(loaded));
+            } catch {}
+          }
+
+          // Restore saved selection or default to 'ada'
+          const savedId =
+            typeof localStorage !== 'undefined'
+              ? localStorage.getItem('vide_selected_agent')
+              : null;
+          const targetId =
+            savedId && savedId !== 'boardroom'
+              ? savedId
+              : this.currentAgent()?.identifier && this.currentAgent()?.identifier !== 'boardroom'
+              ? this.currentAgent().identifier
+              : 'ada';
+          const target =
+            loaded.find((a) => a.identifier === targetId) ||
+            loaded.find((a) => a.identifier === 'ada') ||
+            loaded[0];
+          if (target) {
+            this.currentAgent.set(target);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[AssistantService] Failed to load assistants from API:', err);
+    }
+  }
+
   async loadFeed(showRefreshing = false): Promise<void> {
     const agent = this.currentAgent();
     if (!agent) return;
 
+    this.isFeedLoading.set(true);
     if (showRefreshing) {
       this.isRefreshing.set(true);
     }
@@ -326,6 +520,11 @@ export class AssistantService {
         const feedList: ChatMessage[] = res.feed || [];
         this.feed.set(feedList);
         this.isAuthenticated.set(true);
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem(`vide_cached_feed_${agent.identifier}`, JSON.stringify(feedList));
+          } catch {}
+        }
       } else {
         if (res && res.error) {
           this.errorMessage.set(res.error);
@@ -340,18 +539,35 @@ export class AssistantService {
         this.errorMessage.set(err?.message || 'שגיאת תקשורת בטעינת השיחה');
       }
     } finally {
+      this.isFeedLoading.set(false);
       this.isRefreshing.set(false);
     }
   }
 
   async refresh(): Promise<void> {
+    await this.loadAssistants();
     await this.loadFeed(true);
   }
 
   async selectAgent(agent: AssistantInfo): Promise<void> {
     if (this.currentAgent().identifier === agent.identifier) return;
     this.currentAgent.set(agent);
-    this.feed.set([]);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('vide_selected_agent', agent.identifier);
+      } catch {}
+    }
+    let initialCached: ChatMessage[] = [];
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(`vide_cached_feed_${agent.identifier}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) initialCached = parsed;
+        }
+      } catch {}
+    }
+    this.feed.set(initialCached);
     this.thinkingSteps.set([]);
     await this.loadFeed();
   }
@@ -456,7 +672,7 @@ export class AssistantService {
         }
         this.sessionToken.set(token);
         this.isAuthenticated.set(true);
-        this.loadFeed();
+        this.loadAssistants().then(() => this.loadFeed());
       }
     };
 

@@ -206,6 +206,18 @@
             <span class="ai-hint">Leave blank to search ~/.vide/bin/llama-server or system PATH</span>
           </div>
 
+          <div class="ai-field-group">
+            <label class="ai-checkbox-label">
+              <input
+                type="checkbox"
+                [ngModel]="assistantService.showFloatingButton()"
+                (ngModelChange)="assistantService.setShowFloatingButton($event)"
+              />
+              <span>הצגת כפתור צף של סוכנת (Show Floating Agent Avatar)</span>
+            </label>
+            <span class="ai-hint">קובע האם להציג אייקון צף עם תמונת הסוכנת על המסך (ברירת המחדל: כבוי).</span>
+          </div>
+
           <div class="ai-features-box">
             <div class="feature-item">
               <span class="feature-icon">✨</span>

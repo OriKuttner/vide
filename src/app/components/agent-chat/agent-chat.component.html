@@ -1,12 +1,12 @@
-<!-- Floating Draggable Trigger Button (Only visible when chat is closed to avoid covering the chat) -->
-@if (!isOpen()) {
+<!-- Floating Draggable Trigger Button (Only visible when enabled and chat is closed) -->
+@if (!isOpen() && assistantService.showFloatingButton()) {
   <div class="agent-floating-btn"
        [style.left.px]="buttonPos().x"
        [style.top.px]="buttonPos().y"
        (pointerdown)="onButtonPointerDown($event)"
        (pointermove)="onButtonPointerMove($event)"
        (pointerup)="onButtonPointerUp($event)"
-       (click)="toggleChat()"
+       (click)="onButtonClick($event)"
        [class.thinking]="assistantService.isLoading()"
        [title]="assistantService.currentAgent().name + ' — לחץ לפתיחת שיחה'">
     <div class="avatar-ring">
@@ -18,13 +18,13 @@
   </div>
 }
 
-<!-- Resizable Floating Chat Window -->
-@if (isOpen()) {
-  <div class="agent-chat-window"
-       [style.width.px]="windowSize().width"
-       [style.height.px]="windowSize().height"
-       [style.right.px]="20"
-       [style.bottom.px]="30">
+<!-- Resizable Floating Chat Window (Kept in DOM, toggled via CSS for instant 0ms opening) -->
+<div class="agent-chat-window"
+     [class.hidden]="!isOpen()"
+     [style.width.px]="windowSize().width"
+     [style.height.px]="windowSize().height"
+     [style.right.px]="20"
+     [style.bottom.px]="30">
 
     <!-- Resize Handles -->
     <div class="resize-handle handle-top" (pointerdown)="onResizeStart($event, 'top')"></div>
@@ -111,7 +111,12 @@
 
     <!-- Messages Container -->
     <div class="chat-messages" #messagesContainer (scroll)="onChatScroll()" (wheel)="onChatWheel($event)">
-      @if (assistantService.feed().length === 0 && !assistantService.isLoading()) {
+      @if (assistantService.isFeedLoading() && assistantService.feed().length === 0) {
+        <div class="feed-loading-state">
+          <div class="feed-spinner"></div>
+          <span class="feed-loading-text">טוען היסטוריית שיחה...</span>
+        </div>
+      } @else if (assistantService.feed().length === 0 && !assistantService.isLoading()) {
         <div class="empty-state">
           <img [src]="assistantService.currentAgent().image" [alt]="assistantService.currentAgent().name" class="empty-avatar" />
           <p class="empty-greeting">{{ assistantService.currentAgent().greeting }}</p>
@@ -269,6 +274,4 @@
         </button>
       </div>
     </footer>
-
   </div>
-}

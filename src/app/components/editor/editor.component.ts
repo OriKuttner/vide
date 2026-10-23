@@ -157,6 +157,8 @@ ${rawContent}
   private diffEditorInstance: monaco.editor.IStandaloneDiffEditor | null = null;
   private fileModels = new Map<string, monaco.editor.ITextModel>();
   private originalDiffModels = new Map<string, monaco.editor.ITextModel>();
+  private fileViewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
+  private currentActiveFileId: string | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private static markersListenerRegistered = false;
   private isProgrammaticUpdate = false;
@@ -181,6 +183,13 @@ ${rawContent}
         if (active) {
           untracked(() => {
             if (active.isImage || isImageFile(active.name)) {
+              if (this.currentActiveFileId && this.editorInstance) {
+                const vs = this.editorInstance.saveViewState();
+                if (vs) {
+                  this.fileViewStates.set(this.currentActiveFileId, vs);
+                }
+                this.currentActiveFileId = null;
+              }
               this.imageZoom.set(1.0);
               this.imageDimensions.set(null);
             } else if (this.editorInstance) {
@@ -191,6 +200,13 @@ ${rawContent}
           const editor = this.editorInstance;
           if (editor) {
             untracked(() => {
+              if (this.currentActiveFileId) {
+                const vs = editor.saveViewState();
+                if (vs) {
+                  this.fileViewStates.set(this.currentActiveFileId, vs);
+                }
+                this.currentActiveFileId = null;
+              }
               if (editor.getModel()) {
                 editor.setModel(null);
               }
@@ -217,6 +233,10 @@ ${rawContent}
             model.dispose();
           }
           this.fileModels.delete(fileId);
+          this.fileViewStates.delete(fileId);
+          if (this.currentActiveFileId === fileId) {
+            this.currentActiveFileId = null;
+          }
         }
       }
 
@@ -444,6 +464,9 @@ ${rawContent}
     this.highlightDecorations?.clear();
     this.highlightDecorations = null;
 
+    this.fileViewStates.clear();
+    this.currentActiveFileId = null;
+
     this.editorInstance?.dispose();
     this.diffEditorInstance?.dispose();
   }
@@ -651,6 +674,7 @@ ${rawContent}
   private createEditor(): void {
     const active = this.workspaceService.activeFile();
     const initialModel = active ? this.getOrCreateModel(active) : null;
+    this.currentActiveFileId = active ? active.id : null;
 
     const initialMonacoTheme =
       this.themeService.currentTheme() === 'light' ? 'vector-light' : 'vector-dark';
@@ -1021,13 +1045,32 @@ ${rawContent}
 
   private switchToFile(file: WorkspaceFile): void {
     if (!this.editorInstance) return;
+
+    // Save view state of outgoing file before switching
+    if (this.currentActiveFileId && this.currentActiveFileId !== file.id) {
+      const currentVs = this.editorInstance.saveViewState();
+      if (currentVs) {
+        this.fileViewStates.set(this.currentActiveFileId, currentVs);
+      }
+    }
+
     this.isProgrammaticUpdate = true;
     try {
       const model = this.getOrCreateModel(file);
-      if (this.editorInstance.getModel() !== model) {
+      const isSwitchingModel = this.editorInstance.getModel() !== model;
+      if (isSwitchingModel) {
         this.clearHighlight();
         this.editorInstance.setModel(model);
+        this.currentActiveFileId = file.id;
+
+        // Restore saved view state (cursor position, scroll position, selections)
+        const savedVs = this.fileViewStates.get(file.id);
+        if (savedVs) {
+          this.editorInstance.restoreViewState(savedVs);
+        }
         this.editorInstance.focus();
+      } else {
+        this.currentActiveFileId = file.id;
       }
       const content = file.content ?? '';
       if (model.getValue() !== content) {
