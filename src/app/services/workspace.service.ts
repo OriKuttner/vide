@@ -111,14 +111,17 @@ export class WorkspaceService {
 
 	// Active search/modal mode
 	readonly activeModal = signal<
-		'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | null
+		'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | 'references' | null
 	>(null);
+	readonly pendingReferencesSymbol = signal<string>('');
+	readonly pendingReferences = signal<GrepResult[]>([]);
+	readonly isSearchingReferences = signal<boolean>(false);
 	readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
 	readonly pendingDeleteFile = signal<WorkspaceFile | null>(null);
 	readonly pendingGitUntrackFile = signal<WorkspaceFile | null>(null);
 
-	// Line jump request (from Grep search)
-	readonly pendingLineJump = signal<{ lineNumber: number; column?: number } | null>(null);
+	// Line jump request (from Grep search or Go to Definition)
+	readonly pendingLineJump = signal<{ lineNumber: number; column?: number; fileId?: string } | null>(null);
 
 	// Line highlight range request (from Ada / CLI goto)
 	readonly pendingHighlight = signal<{
@@ -226,8 +229,9 @@ export class WorkspaceService {
 	private recentGitDirHandle: any = null;
 	private autoSyncIntervalId: any = null;
 	private isAutoSyncing = false;
-	private isRestoringSession = false;
+	readonly isRestoringSession = signal<boolean>(false);
 	private saveSessionTimeout: any = null;
+	private beforeCloseCallbacks: Array<() => void | Promise<void>> = [];
 
 	constructor() {
 		this.isDesktop.set(isTauriApp());
@@ -237,6 +241,13 @@ export class WorkspaceService {
 		this.setupSessionPersistence();
 		this.setupAutoReveal();
 		this.setupIpcNavigationListener();
+		if (typeof window !== 'undefined') {
+			window.addEventListener('beforeunload', () => {
+				if (this.isRealWorkspace()) {
+					this.saveWorkspaceSessionState();
+				}
+			});
+		}
 	}
 
 	private setupIpcNavigationListener(): void {
@@ -1735,6 +1746,7 @@ export class WorkspaceService {
 			| 'git-untrack-confirm'
 			| 'git-branches'
 			| 'git-create-tag'
+			| 'references'
 	): void {
 		if (mode === 'grep') {
 			this.setSidebarView('search');
@@ -1872,31 +1884,9 @@ export class WorkspaceService {
 		let scannedFiles = 0;
 
 		for (const file of allFiles) {
-			if (!file.isLoaded && (file.fsPath || file.handle || file.rawFile)) {
-				try {
-					if (isTauriApp() && file.fsPath) {
-						file.content = await invoke<string>('read_file_text', { filePath: file.fsPath });
-						file.isLoaded = true;
-					} else if (file.handle && typeof file.handle.getFile === 'function') {
-						const fileObj = await file.handle.getFile();
-						// Only read text files up to 1.5MB to maintain smooth memory performance
-						if (fileObj.size <= 1.5 * 1024 * 1024) {
-							file.content = await fileObj.text();
-							file.isLoaded = true;
-						}
-					} else if (file.rawFile) {
-						if (file.rawFile.size <= 1.5 * 1024 * 1024) {
-							file.content = await file.rawFile.text();
-							file.isLoaded = true;
-						}
-					}
-				} catch {
-					// Skip inaccessible or locked files gracefully
-				}
-			}
-
-			if (file.content) {
-				const lines = file.content.split('\n');
+			const content = await this.ensureFileContent(file);
+			if (content) {
+				const lines = content.split('\n');
 				for (let i = 0; i < lines.length; i++) {
 					const line = lines[i];
 					const match = regex.exec(line);
@@ -1924,6 +1914,41 @@ export class WorkspaceService {
 		return results;
 	}
 
+	public async ensureFileContent(file: WorkspaceFile): Promise<string> {
+		if (file.isLoaded && file.content !== undefined) {
+			return file.content;
+		}
+		if (isImageFile(file.name)) {
+			return '';
+		}
+		try {
+			if (isTauriApp() && file.fsPath) {
+				const content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+				file.content = content;
+				file.isLoaded = true;
+				return content;
+			} else if (file.handle && typeof file.handle.getFile === 'function') {
+				const fileObj = await file.handle.getFile();
+				if (fileObj.size <= 2 * 1024 * 1024) {
+					const content = await fileObj.text();
+					file.content = content;
+					file.isLoaded = true;
+					return content;
+				}
+			} else if (file.rawFile) {
+				if (file.rawFile.size <= 2 * 1024 * 1024) {
+					const content = await file.rawFile.text();
+					file.content = content;
+					file.isLoaded = true;
+					return content;
+				}
+			}
+		} catch {
+			// Skip inaccessible or locked files gracefully
+		}
+		return file.content ?? '';
+	}
+
 	public findFiles(query: string): WorkspaceFile[] {
 		const term = query.trim().toLowerCase();
 		const all = this.files();
@@ -1933,16 +1958,16 @@ export class WorkspaceService {
 			.slice(0, 60);
 	}
 
-	public jumpToLine(file: WorkspaceFile, lineNumber: number): void {
-		this.openFile(file);
-		this.pendingLineJump.set({ lineNumber, column: 1 });
+	public async jumpToLine(file: WorkspaceFile, lineNumber: number, column = 1): Promise<void> {
+		await this.openFile(file);
+		this.pendingLineJump.set({ lineNumber, column, fileId: file.id });
 		this.closeModal();
 	}
 
 	/**
 	 * Lazily loads file text content and opens in editor.
 	 */
-	public async openFile(file: WorkspaceFile): Promise<void> {
+	public async openFile(file: WorkspaceFile, setActive = true): Promise<void> {
 		if (this.diffModeActive()) {
 			this.closeDiffView();
 		}
@@ -2053,6 +2078,7 @@ export class WorkspaceService {
 										fileSize: file.fileSize,
 										lastDiskMtime: file.lastDiskMtime,
 										lastDiskSize: file.lastDiskSize,
+										cursor: file.cursor ?? f.cursor,
 									}
 								: f
 						);
@@ -2073,26 +2099,22 @@ export class WorkspaceService {
 				file.originalContent = file.content;
 			}
 			// Ensure file exists in files signal
-			this.files.update((files) => {
-				if (!files.some((f) => f.id === file.id)) {
-					return [...files, file];
-				}
-				return files.map((f) => (f.id === file.id ? { ...f, language: file.language } : f));
-			});
+			if (!this.files().some((f) => f.id === file.id)) {
+				this.files.update((files) => [...files, file]);
+			}
+		}
+
+		if (setActive && this.activeFileId() === file.id && file.isLoaded) {
+			return;
 		}
 
 		const currentTabs = this.openTabs();
 		if (!currentTabs.some((tab) => tab.id === file.id)) {
 			this.openTabs.set([...currentTabs, file]);
-		} else {
-			this.openTabs.update((tabs) =>
-				tabs.map((t) => (t.id === file.id ? { ...t, language: file.language } : t))
-			);
 		}
-		this.activeFileId.set(file.id);
-		this.revealActiveFileInTree(file);
-		if (alreadyLoaded) {
-			this.reloadActiveFileIfChangedOnDisk();
+		if (setActive) {
+			this.activeFileId.set(file.id);
+			this.revealActiveFileInTree(file);
 		}
 	}
 
@@ -2494,14 +2516,14 @@ export class WorkspaceService {
 			// Automatically track openTabs and activeFileId changes
 			const tabs = this.openTabs();
 			const activeId = this.activeFileId();
-			if (this.isRealWorkspace() && !this.isRestoringSession) {
+			if (this.isRealWorkspace() && !this.isRestoringSession()) {
 				this.triggerSaveSessionState();
 			}
 		});
 	}
 
 	public triggerSaveSessionState(): void {
-		if (!this.isRealWorkspace() || this.isRestoringSession) return;
+		if (!this.isRealWorkspace() || this.isRestoringSession()) return;
 		if (this.saveSessionTimeout) {
 			clearTimeout(this.saveSessionTimeout);
 		}
@@ -2514,21 +2536,29 @@ export class WorkspaceService {
 		const rootPath = this.nativeWorkspacePath();
 		if (!this.isRealWorkspace()) return;
 
+		const currentActiveId = this.activeFileId();
+		const currentActiveFile = this.activeFile();
+		const activePath = currentActiveFile?.path || currentActiveFile?.id || currentActiveId || null;
+
 		const openFiles = this.openTabs().map((t) => {
-			const item: { path: string; mtime?: number; size?: number } = {
+			const item: { path: string; mtime?: number; size?: number; cursor?: { line: number; column: number } } = {
 				path: t.path || t.id,
 			};
 			if (t.lastDiskMtime !== undefined) item.mtime = t.lastDiskMtime;
 			if (t.lastDiskSize !== undefined || t.fileSize !== undefined) {
 				item.size = t.lastDiskSize ?? t.fileSize;
 			}
+			const matched = this.files().find((f) => f.id === t.id || f.path === t.path);
+			const cur = t.cursor || matched?.cursor;
+			if (cur) {
+				item.cursor = cur;
+			}
 			return item;
 		});
-		const activeFile = this.activeFile()?.path || this.activeFileId() || null;
 
 		const state = {
 			openFiles,
-			activeFile,
+			activeFile: activePath,
 		};
 
 		const jsonStr = JSON.stringify(state, null, 2);
@@ -2558,7 +2588,7 @@ export class WorkspaceService {
 	}
 
 	public async loadWorkspaceSessionState(dirHandle?: any): Promise<{
-		openFiles: Array<{ path: string; mtime?: number; size?: number }>;
+		openFiles: Array<{ path: string; mtime?: number; size?: number; cursor?: { line: number; column: number } }>;
 		activeFile: string | null;
 	} | null> {
 		const rootPath = this.nativeWorkspacePath();
@@ -2568,7 +2598,7 @@ export class WorkspaceService {
 			try {
 				const parsed = JSON.parse(content);
 				if (parsed && Array.isArray(parsed.openFiles)) {
-					const normalizedOpenFiles: Array<{ path: string; mtime?: number; size?: number }> = [];
+					const normalizedOpenFiles: Array<{ path: string; mtime?: number; size?: number; cursor?: { line: number; column: number } }> = [];
 					for (const item of parsed.openFiles) {
 						if (typeof item === 'string' && item.trim()) {
 							normalizedOpenFiles.push({ path: item.trim() });
@@ -2577,6 +2607,7 @@ export class WorkspaceService {
 								path: item.path.trim(),
 								mtime: typeof item.mtime === 'number' ? item.mtime : undefined,
 								size: typeof item.size === 'number' ? item.size : undefined,
+								cursor: item.cursor && typeof item.cursor.line === 'number' ? item.cursor : undefined,
 							});
 						}
 					}
@@ -2676,6 +2707,10 @@ export class WorkspaceService {
 		highlightStart?: number | null,
 		highlightEnd?: number | null
 	): Promise<void> {
+		if (this.isRealWorkspace() && this.nativeWorkspacePath() && this.nativeWorkspacePath() !== rootPath) {
+			await this.flushSessionBeforeClose();
+		}
+
 		if (isTauriApp()) {
 			try {
 				rootPath = await invoke<string>('resolve_path', { path: rootPath });
@@ -2699,7 +2734,7 @@ export class WorkspaceService {
 			}
 		}
 
-		this.isRestoringSession = true;
+		this.isRestoringSession.set(true);
 		const folderName = rootPath.split('/').filter(Boolean).pop() || rootPath;
 
 		this.ngZone.run(() => {
@@ -2807,7 +2842,7 @@ export class WorkspaceService {
 						};
 						this.files.update((files) => [...files, fileToOpen!]);
 					}
-					await this.openFile(fileToOpen);
+					await this.openFile(fileToOpen, false);
 				}
 				if (cliFiles.length > 0) {
 					const firstTarget = cliFiles[0];
@@ -2841,6 +2876,7 @@ export class WorkspaceService {
 								lastDiskMtime: item.mtime,
 								lastDiskSize: item.size,
 								fileSize: item.size,
+								cursor: item.cursor,
 							};
 							this.files.update((files) => [...files, fileToOpen!]);
 						} else {
@@ -2850,8 +2886,11 @@ export class WorkspaceService {
 								fileToOpen.fileSize = item.size;
 							}
 						}
+						if (item.cursor) {
+							fileToOpen.cursor = item.cursor;
+						}
 						try {
-							await this.openFile(fileToOpen);
+							await this.openFile(fileToOpen, false);
 						} catch (err) {
 							console.warn(`Failed to restore file ${relPath}:`, err);
 						}
@@ -2862,6 +2901,13 @@ export class WorkspaceService {
 						);
 						if (activeTarget) {
 							this.activeFileId.set(activeTarget.id);
+							if (activeTarget.cursor) {
+								this.pendingLineJump.set({
+									fileId: activeTarget.id,
+									lineNumber: activeTarget.cursor.line,
+									column: activeTarget.cursor.column || 1,
+								});
+							}
 							if (highlightStart !== undefined && highlightStart !== null) {
 								const s = highlightStart;
 								const e = highlightEnd ?? highlightStart;
@@ -2872,6 +2918,8 @@ export class WorkspaceService {
 								});
 							}
 						}
+					} else if (this.openTabs().length > 0) {
+						this.activeFileId.set(this.openTabs()[0].id);
 					}
 				}
 			}
@@ -2881,7 +2929,7 @@ export class WorkspaceService {
 			console.error('Failed to load native directory:', err);
 			this.showNotification(`Error: ${err.message || err}`);
 		} finally {
-			this.isRestoringSession = false;
+			this.isRestoringSession.set(false);
 			this.ngZone.run(() => {
 				this.isScanning.set(false);
 			});
@@ -3093,6 +3141,10 @@ export class WorkspaceService {
 	}
 
 	public async loadFromDirHandle(dirHandle: any): Promise<void> {
+		if (this.isRealWorkspace() && this.recentWorkspaceName() !== dirHandle.name) {
+			await this.flushSessionBeforeClose();
+		}
+		this.isRestoringSession.set(true);
 		this.isScanning.set(true);
 		this.scanProgress.set(`Opening ${dirHandle.name}...`);
 		await new Promise((r) => setTimeout(r, 0));
@@ -3190,6 +3242,7 @@ export class WorkspaceService {
 							lastDiskMtime: item.mtime,
 							lastDiskSize: item.size,
 							fileSize: item.size,
+							cursor: item.cursor,
 						};
 						this.files.update((files) => [...files, fileToOpen!]);
 					} else {
@@ -3199,8 +3252,11 @@ export class WorkspaceService {
 							fileToOpen.fileSize = item.size;
 						}
 					}
+					if (item.cursor) {
+						fileToOpen.cursor = item.cursor;
+					}
 					try {
-						await this.openFile(fileToOpen);
+						await this.openFile(fileToOpen, false);
 					} catch (err) {
 						console.warn(`Failed to restore file ${relPath}:`, err);
 					}
@@ -3211,7 +3267,16 @@ export class WorkspaceService {
 					);
 					if (activeTarget) {
 						this.activeFileId.set(activeTarget.id);
+						if (activeTarget.cursor) {
+							this.pendingLineJump.set({
+								fileId: activeTarget.id,
+								lineNumber: activeTarget.cursor.line,
+								column: activeTarget.cursor.column || 1,
+							});
+						}
 					}
+				} else if (this.openTabs().length > 0) {
+					this.activeFileId.set(this.openTabs()[0].id);
 				}
 			}
 
@@ -3220,9 +3285,12 @@ export class WorkspaceService {
 			console.error('Failed to load directory handle:', err);
 			this.showNotification(`Error: ${err.message || err}`);
 		} finally {
+			this.isRestoringSession.set(false);
 			this.isScanning.set(false);
 			this.revealActiveFileInTree();
 		}
+
+		this.saveWorkspaceSessionState();
 
 		// Read real git branch and initial status asynchronously
 		this.refreshGitStatus(dirHandle).catch((err) => console.warn('Git refresh error:', err));
@@ -3382,7 +3450,39 @@ export class WorkspaceService {
 		}
 	}
 
-	public closeWorkspace(): void {
+	public registerBeforeCloseCallback(cb: () => void | Promise<void>): () => void {
+		this.beforeCloseCallbacks.push(cb);
+		return () => {
+			this.beforeCloseCallbacks = this.beforeCloseCallbacks.filter((c) => c !== cb);
+		};
+	}
+
+	public async flushSessionBeforeClose(): Promise<void> {
+		for (const cb of this.beforeCloseCallbacks) {
+			try {
+				await cb();
+			} catch (e) {
+				console.warn('Error in beforeClose callback:', e);
+			}
+		}
+		if (this.isRealWorkspace()) {
+			await this.saveWorkspaceSessionState();
+		}
+	}
+
+	public updateFileCursor(fileId: string, cursor: { line: number; column: number }): void {
+		const f = this.files().find((file) => file.id === fileId || file.path === fileId);
+		if (f) {
+			f.cursor = cursor;
+		}
+		const t = this.openTabs().find((tab) => tab.id === fileId || tab.path === fileId);
+		if (t) {
+			t.cursor = cursor;
+		}
+	}
+
+	public async closeWorkspace(): Promise<void> {
+		await this.flushSessionBeforeClose();
 		this.nativeWorkspacePath.set(null);
 		this.workspaceName.set('NO FOLDER OPENED');
 		this.isRealWorkspace.set(false);

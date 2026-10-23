@@ -2,6 +2,7 @@ import {
   Component,
   ElementRef,
   ViewChild,
+  HostListener,
   inject,
   signal,
   effect,
@@ -150,6 +151,8 @@ export class SearchModalComponent {
         return 'Save Changes?';
       case 'ai-settings':
         return 'AI Assistant Configuration (Google Gemini)';
+      case 'references':
+        return `References: ${this.workspaceService.pendingReferencesSymbol()}`;
       default:
         return '';
     }
@@ -159,6 +162,7 @@ export class SearchModalComponent {
     switch (this.workspaceService.activeModal()) {
       case 'unsaved-changes':
       case 'ai-settings':
+      case 'references':
         return '';
       case 'new-file':
         return 'Enter new file name and extension (e.g. app.of, service.ts):';
@@ -356,6 +360,13 @@ export class SearchModalComponent {
     this.close();
   }
 
+  @HostListener('window:keydown.escape')
+  public onEscapeKey(): void {
+    if (this.workspaceService.activeModal()) {
+      this.close();
+    }
+  }
+
   public close(): void {
     this.workspaceService.closeModal();
   }
@@ -424,5 +435,10 @@ export class SearchModalComponent {
   public getUniqueFileCount(results: GrepResult[]): number {
     const ids = new Set(results.map((r) => r.file.id));
     return ids.size;
+  }
+
+  public jumpToReference(result: GrepResult): void {
+    this.workspaceService.jumpToLine(result.file, result.lineNumber);
+    this.close();
   }
 }

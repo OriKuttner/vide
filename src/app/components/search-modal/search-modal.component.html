@@ -6,7 +6,7 @@
         <button class="close-x" (click)="close()">×</button>
       </div>
 
-      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm') {
+      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm' && workspaceService.activeModal() !== 'references') {
         <div class="input-container">
           <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
           <input
@@ -399,6 +399,32 @@
             }
           } @else if (inputValue().trim().length >= 2) {
             <div class="no-results">No matching text found</div>
+          }
+        </div>
+      }
+
+      @if (workspaceService.activeModal() === 'references') {
+        <div class="results-list references-list">
+          @if (workspaceService.isSearchingReferences()) {
+            <div class="searching-indicator">
+              <div class="mini-spinner"></div>
+              <span>Searching references across workspace...</span>
+            </div>
+          } @else if (workspaceService.pendingReferences().length > 0) {
+            <div class="results-meta">
+              <span>{{ workspaceService.pendingReferences().length }} reference(s) found in {{ getUniqueFileCount(workspaceService.pendingReferences()) }} file(s)</span>
+            </div>
+            @for (result of workspaceService.pendingReferences(); track result.file.id + ':' + result.lineNumber + ':' + result.matchStart) {
+              <div
+                class="result-item"
+                (click)="jumpToReference(result)"
+              >
+                <span class="file-path">{{ result.file.path }}:{{ result.lineNumber }}</span>
+                <span class="line-snippet">{{ result.lineText }}</span>
+              </div>
+            }
+          } @else {
+            <div class="no-results">No references found for "{{ workspaceService.pendingReferencesSymbol() }}"</div>
           }
         </div>
       }

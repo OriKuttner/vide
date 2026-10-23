@@ -20,6 +20,7 @@ export interface WorkspaceFile {
   indentType?: 'tabs' | 'spaces';
   tabSize?: number;
   isIndentationCustom?: boolean;
+  cursor?: { line: number; column: number };
 }
 
 export interface FileTreeNode {

@@ -373,3 +373,13 @@ body.theme-dark .monaco-editor .vide-highlight-yellow {
     }
   }
 }
+
+/* Hide "Go to Definition" and "Peek Definition" in Monaco context menu when cursor is on a definition */
+body.vide-hide-goto-def {
+  .monaco-menu .action-item:has([aria-label*="Definition" i]),
+  .context-view .action-item:has([aria-label*="Definition" i]),
+  .monaco-menu .action-item:has([title*="Definition" i]),
+  .context-view .action-item:has([title*="Definition" i]) {
+    display: none !important;
+  }
+}

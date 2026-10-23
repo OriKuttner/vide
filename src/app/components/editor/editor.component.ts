@@ -18,6 +18,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { WorkspaceService } from '../../services/workspace.service';
 import { InlineCompletionService } from '../../services/inline-completion.service';
+import { SymbolNavigationService } from '../../services/symbol-navigation.service';
 import { AiService } from '../../services/ai.service';
 import { ThemeService } from '../../services/theme.service';
 import { ZoomService } from '../../services/zoom.service';
@@ -48,6 +49,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   public workspaceService = inject(WorkspaceService);
   public zoomService = inject(ZoomService);
   private inlineCompletionService = inject(InlineCompletionService);
+  private symbolNavigationService = inject(SymbolNavigationService);
   public aiService = inject(AiService);
   private themeService = inject(ThemeService);
   private sanitizer = inject(DomSanitizer);
@@ -158,6 +160,7 @@ ${rawContent}
   private fileModels = new Map<string, monaco.editor.ITextModel>();
   private originalDiffModels = new Map<string, monaco.editor.ITextModel>();
   private fileViewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
+  private saveViewStateDebounceTimer: any = null;
   private currentActiveFileId: string | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private static markersListenerRegistered = false;
@@ -184,10 +187,7 @@ ${rawContent}
           untracked(() => {
             if (active.isImage || isImageFile(active.name)) {
               if (this.currentActiveFileId && this.editorInstance) {
-                const vs = this.editorInstance.saveViewState();
-                if (vs) {
-                  this.fileViewStates.set(this.currentActiveFileId, vs);
-                }
+                this.saveCurrentFileViewState(this.currentActiveFileId);
                 this.currentActiveFileId = null;
               }
               this.imageZoom.set(1.0);
@@ -201,10 +201,7 @@ ${rawContent}
           if (editor) {
             untracked(() => {
               if (this.currentActiveFileId) {
-                const vs = editor.saveViewState();
-                if (vs) {
-                  this.fileViewStates.set(this.currentActiveFileId, vs);
-                }
+                this.saveCurrentFileViewState(this.currentActiveFileId);
                 this.currentActiveFileId = null;
               }
               if (editor.getModel()) {
@@ -312,14 +309,21 @@ ${rawContent}
       }
     });
 
-    // Effect to jump to line (e.g. from Grep search)
+    // Effect to jump to line (e.g. from Grep search or Go to Definition)
     effect(() => {
       const jump = this.workspaceService.pendingLineJump();
       if (jump && this.editorInstance) {
-        this.editorInstance.revealLineInCenter(jump.lineNumber);
-        this.editorInstance.setPosition({ lineNumber: jump.lineNumber, column: jump.column || 1 });
-        this.editorInstance.focus();
-        this.workspaceService.pendingLineJump.set(null);
+        const active = this.workspaceService.activeFile();
+        if (!jump.fileId || (active && (active.id === jump.fileId || active.path === jump.fileId))) {
+          const model = this.editorInstance.getModel();
+          if (model && model.getLineCount() < jump.lineNumber && active && !active.isLoaded) {
+            return;
+          }
+          this.editorInstance.revealLineInCenter(jump.lineNumber);
+          this.editorInstance.setPosition({ lineNumber: jump.lineNumber, column: jump.column || 1 });
+          this.editorInstance.focus();
+          this.workspaceService.pendingLineJump.set(null);
+        }
       }
     });
 
@@ -452,20 +456,37 @@ ${rawContent}
     registerOmniFlux(monaco);
     registerAllLanguageSnippets(monaco);
     this.inlineCompletionService.registerProviders(monaco);
+    this.symbolNavigationService.registerProviders(monaco);
     this.registerAiCodeActions();
     this.setupThemes();
     this.createEditor();
     this.createDiffEditor();
+    this.workspaceService.registerBeforeCloseCallback(() => {
+      this.saveCurrentFileViewState();
+    });
+  }
+
+  @HostListener('window:beforeunload')
+  onBeforeUnload(): void {
+    this.saveCurrentFileViewState();
   }
 
   ngAfterViewInit(): void {
     requestAnimationFrame(() => {
       this.editorInstance?.layout();
       this.diffEditorInstance?.layout();
+      const active = this.workspaceService.activeFile();
+      if (active && !active.isImage) {
+        this.restoreFileViewState(active);
+      }
     });
   }
 
   ngOnDestroy(): void {
+    if (this.saveViewStateDebounceTimer) {
+      clearTimeout(this.saveViewStateDebounceTimer);
+    }
+    this.saveCurrentFileViewState();
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
@@ -492,6 +513,7 @@ ${rawContent}
 
     this.editorInstance?.dispose();
     this.diffEditorInstance?.dispose();
+    document.body.classList.remove('vide-hide-goto-def');
   }
 
   private initMonacoEnvironment(): void {
@@ -758,13 +780,27 @@ ${rawContent}
 
     // Listen to cursor position changes
     this.editorInstance.onDidChangeCursorPosition((e) => {
+      if (this.isProgrammaticUpdate) return;
       this.cursorChange.emit({
         line: e.position.lineNumber,
         column: e.position.column,
       });
+      const active = this.workspaceService.activeFile();
+      if (active) {
+        active.cursor = { line: e.position.lineNumber, column: e.position.column };
+        this.workspaceService.updateFileCursor(active.id, { line: e.position.lineNumber, column: e.position.column });
+      }
       if (this.aiThinkingWidget && this.aiService.isGenerating()) {
         this.editorInstance?.layoutContentWidget(this.aiThinkingWidget);
       }
+      this.updateDefinitionContext(e.position);
+      this.queueSaveCurrentViewState();
+    });
+
+    // Listen to scroll changes to persist scroll position
+    this.editorInstance.onDidScrollChange(() => {
+      if (this.isProgrammaticUpdate) return;
+      this.queueSaveCurrentViewState();
     });
 
     // Listen to content changes
@@ -845,6 +881,30 @@ ${rawContent}
       },
     });
 
+    // Action & Shortcut: Shift+F12 to Find All References in clean modal window
+    this.editorInstance.addAction({
+      id: 'vide.findReferences',
+      label: 'Find All References',
+      keybindings: [
+        monaco.KeyMod.Shift | monaco.KeyCode.F12,
+      ],
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.3,
+      run: async (ed) => {
+        const pos = ed.getPosition();
+        const model = ed.getModel();
+        if (pos && model) {
+          await this.symbolNavigationService.triggerFindReferences(model, pos);
+        }
+      },
+    });
+
+    // Hide "Go to Definition" and "Peek Definition" from context menu when cursor is on a function definition
+    this.editorInstance.onContextMenu((e) => {
+      const pos = e.target?.position || this.editorInstance?.getPosition();
+      this.updateDefinitionContext(pos);
+    });
+
     // Precision resize handling for both standard and diff editor
     this.resizeObserver = new ResizeObserver(() => {
       this.editorInstance?.layout();
@@ -852,6 +912,191 @@ ${rawContent}
     });
     this.resizeObserver.observe(this.editorContainer.nativeElement);
     this.resizeObserver.observe(this.diffContainer.nativeElement);
+
+    if (active && !active.isImage) {
+      this.switchToFile(active);
+    }
+  }
+
+  private updateDefinitionContext(targetPos?: monaco.IPosition | null): void {
+    if (!this.editorInstance) return;
+    const model = this.editorInstance.getModel();
+    const pos = targetPos || this.editorInstance.getPosition();
+    if (!model || !pos) return;
+
+    const atDef = this.symbolNavigationService.isCursorOnDefinition(model, pos);
+
+    // 1. Update Monaco internal context key so Monaco natively omits Go to Definition and Peek Definition
+    try {
+      const contextKeyService = (this.editorInstance as any)._contextKeyService;
+      if (contextKeyService?.setContext) {
+        contextKeyService.setContext('editorHasDefinitionProvider', !atDef);
+      }
+    } catch {
+      // Fallback if Monaco internals change
+    }
+
+    // 2. Toggle body class for instant CSS rule
+    document.body.classList.toggle('vide-hide-goto-def', atDef);
+
+    // 3. Proactively cleanse context menu DOM when on definition
+    if (atDef) {
+      this.purgeDefinitionMenuItems();
+    }
+  }
+
+  private purgeDefinitionMenuItems(): void {
+    const purge = () => {
+      document.querySelectorAll('.monaco-menu .action-item, .context-view .action-item').forEach((item) => {
+        const text = (item.textContent || '').trim();
+        const aria = item.querySelector('[aria-label]')?.getAttribute('aria-label') || '';
+        if (
+          text.includes('Go to Definition') ||
+          text.includes('Peek Definition') ||
+          aria.includes('Go to Definition') ||
+          aria.includes('Peek Definition')
+        ) {
+          (item as HTMLElement).style.display = 'none';
+        }
+      });
+    };
+
+    purge();
+    requestAnimationFrame(purge);
+    setTimeout(purge, 20);
+    setTimeout(purge, 60);
+    setTimeout(purge, 150);
+  }
+
+  private getViewStateStorageKey(): string {
+    let ws =
+      this.workspaceService.nativeWorkspacePath() ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('vector_last_native_path') : null) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('vector_last_workspace_name') : null) ||
+      'default';
+    ws = ws.replace(/\/+$/, '');
+    return `vide_file_view_states_${ws}`;
+  }
+
+  private getSavedViewState(file: WorkspaceFile): monaco.editor.ICodeEditorViewState | null {
+    const memVs = this.fileViewStates.get(file.id) || (file.path ? this.fileViewStates.get(file.path) : null);
+    if (memVs) return memVs;
+
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const storageKey = this.getViewStateStorageKey();
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const allStates = JSON.parse(raw);
+        const stored = (file.path && allStates[file.path]) || allStates[file.id];
+        if (stored) {
+          const vs = stored.viewState || stored;
+          this.fileViewStates.set(file.id, vs);
+          if (file.path) this.fileViewStates.set(file.path, vs);
+          return vs;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load view state from localStorage:', e);
+    }
+    return null;
+  }
+
+  private restoreFileViewState(file: WorkspaceFile): void {
+    if (!this.editorInstance) return;
+    const vs = this.getSavedViewState(file);
+    if (vs) {
+      this.editorInstance.restoreViewState(vs);
+      const vsPos = vs.cursorState?.[0]?.position;
+      const targetPos =
+        file.cursor && (file.cursor.line > 1 || file.cursor.column > 1) && (!vsPos || vsPos.lineNumber <= 1)
+          ? { lineNumber: file.cursor.line, column: file.cursor.column || 1 }
+          : vsPos || (file.cursor ? { lineNumber: file.cursor.line, column: file.cursor.column || 1 } : null);
+
+      if (targetPos) {
+        if (targetPos.lineNumber > 1 || targetPos.column > 1) {
+          this.editorInstance.setPosition(targetPos);
+          requestAnimationFrame(() => {
+            if (this.currentActiveFileId === file.id && this.editorInstance) {
+              this.editorInstance.revealPositionInCenterIfOutsideViewport(targetPos);
+            }
+          });
+        }
+      }
+    } else if (file.cursor && (file.cursor.line > 1 || file.cursor.column > 1)) {
+      const pos = { lineNumber: file.cursor.line, column: file.cursor.column || 1 };
+      this.editorInstance.setPosition(pos);
+      requestAnimationFrame(() => {
+        if (this.currentActiveFileId === file.id && this.editorInstance && file.cursor) {
+          this.editorInstance.revealPositionInCenterIfOutsideViewport(pos);
+        }
+      });
+    }
+  }
+
+  private saveCurrentFileViewState(targetFileId?: string): void {
+    if (!this.editorInstance) return;
+    if (this.workspaceService.isRestoringSession()) return;
+    const fileId = targetFileId || this.currentActiveFileId;
+    if (!fileId) return;
+
+    const file = this.workspaceService.files().find((f) => f.id === fileId || f.path === fileId);
+    if (!file || file.isImage) return;
+
+    const vs = this.editorInstance.saveViewState();
+    if (!vs) return;
+
+    this.fileViewStates.set(file.id, vs);
+    if (file.path) {
+      this.fileViewStates.set(file.path, vs);
+    }
+
+    const pos = this.editorInstance.getPosition();
+    if (pos) {
+      file.cursor = { line: pos.lineNumber, column: pos.column };
+      this.workspaceService.updateFileCursor(file.id, { line: pos.lineNumber, column: pos.column });
+    }
+
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const storageKey = this.getViewStateStorageKey();
+      const raw = localStorage.getItem(storageKey);
+      const allStates: Record<string, any> = raw ? JSON.parse(raw) : {};
+
+      const fileKey = file.path || file.id;
+      allStates[fileKey] = {
+        viewState: vs,
+        cursor: pos ? { lineNumber: pos.lineNumber, column: pos.column } : undefined,
+        updatedAt: Date.now(),
+      };
+      if (file.id && file.id !== fileKey) {
+        allStates[file.id] = allStates[fileKey];
+      }
+
+      // Limit stored view states to 150 most recent files
+      const keys = Object.keys(allStates);
+      if (keys.length > 200) {
+        const sorted = keys.sort((a, b) => (allStates[b]?.updatedAt || 0) - (allStates[a]?.updatedAt || 0));
+        const pruned: Record<string, any> = {};
+        for (let i = 0; i < 150; i++) {
+          pruned[sorted[i]] = allStates[sorted[i]];
+        }
+        localStorage.setItem(storageKey, JSON.stringify(pruned));
+      } else {
+        localStorage.setItem(storageKey, JSON.stringify(allStates));
+      }
+    } catch (e) {
+      console.warn('Failed to save view state to localStorage:', e);
+    }
+  }
+
+  private queueSaveCurrentViewState(): void {
+    if (this.saveViewStateDebounceTimer) {
+      clearTimeout(this.saveViewStateDebounceTimer);
+    }
+    this.saveViewStateDebounceTimer = setTimeout(() => {
+      this.saveCurrentFileViewState();
+    }, 250);
   }
 
   private createDiffEditor(): void {
@@ -1071,10 +1316,7 @@ ${rawContent}
 
     // Save view state of outgoing file before switching
     if (this.currentActiveFileId && this.currentActiveFileId !== file.id) {
-      const currentVs = this.editorInstance.saveViewState();
-      if (currentVs) {
-        this.fileViewStates.set(this.currentActiveFileId, currentVs);
-      }
+      this.saveCurrentFileViewState(this.currentActiveFileId);
     }
 
     this.isProgrammaticUpdate = true;
@@ -1087,20 +1329,20 @@ ${rawContent}
         this.currentActiveFileId = file.id;
 
         // Restore saved view state (cursor position, scroll position, selections)
-        const savedVs = this.fileViewStates.get(file.id);
-        if (savedVs) {
-          this.editorInstance.restoreViewState(savedVs);
-        }
+        this.restoreFileViewState(file);
         this.editorInstance.focus();
       } else {
         this.currentActiveFileId = file.id;
       }
       const content = file.content ?? '';
       if (model.getValue() !== content) {
-        const viewState = this.editorInstance.saveViewState();
+        const wasEmpty = model.getValue().length === 0;
+        const currentVs = wasEmpty ? null : this.editorInstance.saveViewState();
         model.setValue(content);
-        if (viewState) {
-          this.editorInstance.restoreViewState(viewState);
+        if (wasEmpty) {
+          this.restoreFileViewState(file);
+        } else if (currentVs) {
+          this.editorInstance.restoreViewState(currentVs);
         }
         if (!file.isIndentationCustom) {
           const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
@@ -1135,6 +1377,18 @@ ${rawContent}
         this.applyHighlight(hl.highlightStart, hl.highlightEnd);
         this.workspaceService.pendingHighlight.set(null);
       }, 20);
+    }
+
+    const jump = untracked(() => this.workspaceService.pendingLineJump());
+    if (jump && (!jump.fileId || jump.fileId === file.id || jump.fileId === file.path)) {
+      setTimeout(() => {
+        if (this.editorInstance && this.currentActiveFileId === file.id) {
+          this.editorInstance.revealLineInCenter(jump.lineNumber);
+          this.editorInstance.setPosition({ lineNumber: jump.lineNumber, column: jump.column || 1 });
+          this.editorInstance.focus();
+          this.workspaceService.pendingLineJump.set(null);
+        }
+      }, 30);
     }
 
     this.editorInstance.layout();
