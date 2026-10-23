@@ -6,7 +6,7 @@
         <button class="close-x" (click)="close()">×</button>
       </div>
 
-      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'ai-download' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm') {
+      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm') {
         <div class="input-container">
           <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
           <input
@@ -135,14 +135,24 @@
           </div>
 
           <div class="action-footer has-left-action">
-            <button
-              type="button"
-              class="btn btn-secondary detect-btn"
-              (click)="autoDetectIndentation()"
-              title="Auto-detect indentation from active file content"
-            >
-              ⟳ Auto-Detect from File
-            </button>
+            <div class="left-actions">
+              <button
+                type="button"
+                class="btn btn-secondary detect-btn"
+                (click)="autoDetectIndentation()"
+                title="Auto-detect indentation from active file content"
+              >
+                ⟳ Auto-Detect from File
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary convert-btn"
+                (click)="convertIndentation()"
+                title="Convert all lines in the active file to the selected indentation style"
+              >
+                ⇄ Convert File Indentation
+              </button>
+            </div>
             <div class="footer-buttons">
               <button type="button" class="btn btn-secondary" (click)="close()">Cancel</button>
               <button type="button" class="btn btn-primary" (click)="applyIndentation()">Apply</button>
@@ -194,12 +204,9 @@
               [ngModel]="aiService.geminiModel()"
               (ngModelChange)="aiService.setGeminiModel($event)"
             >
-              <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Recommended - Fast & Free Tier)</option>
-              <option value="gemini-3.8-flash">Gemini 3.8 Flash (High Intelligence - Code & Software Engineering)</option>
-              <option value="gemini-3.6-flash">Gemini 3.6 Flash (Fast & General Multimodal)</option>
-              <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (Lightweight & High-Volume)</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+              @for (m of aiService.availableModels; track m.id) {
+                <option [value]="m.id">{{ m.name }}</option>
+              }
             </select>
             <span class="ai-hint">Ultra-low latency models optimized for coding completions and refactoring.</span>
           </div>
@@ -258,69 +265,7 @@
         </div>
       }
 
-      @if (workspaceService.activeModal() === 'ai-download') {
-        <div class="ai-download-card">
-          <div class="ai-download-header-box">
-            <div class="ai-download-icon-box">
-              <span class="ai-large-icon">🤖</span>
-            </div>
-            <div class="ai-download-texts">
-              <h3 class="ai-download-title">Preparing Local AI Engine (Qwen 2.5 Coder)</h3>
-              <p class="ai-download-subtitle">
-                Downloading model weights (~986 MB) for full offline local intelligence.
-              </p>
-            </div>
-          </div>
 
-          <div class="ai-download-progress-container">
-            <div class="progress-bar-track">
-              <div
-                class="progress-bar-fill"
-                [style.width.%]="aiService.downloadProgress()?.percent || 0"
-              ></div>
-            </div>
-
-            <div class="progress-status-row">
-              <span class="progress-percent">
-                {{ (aiService.downloadProgress()?.percent || 0).toFixed(1) }}%
-              </span>
-              <span class="progress-bytes">
-                {{ formatBytes(aiService.downloadProgress()?.downloaded_bytes) }} / {{ formatBytes(aiService.downloadProgress()?.total_bytes || 986500000) }}
-              </span>
-            </div>
-          </div>
-
-          @if (aiService.downloadProgress()?.error) {
-            <div class="ai-download-error">
-              ⚠ {{ aiService.downloadProgress()?.error }}
-            </div>
-          }
-
-          <div class="ai-download-info-note">
-            <span class="info-bulb">ℹ</span>
-            <span>
-              This download happens only once. Once downloaded, all AI features (Ghost text completions,
-              syntax repairs, and Git commit notes) execute 100% locally and privately on your machine
-              without sending code to external servers.
-            </span>
-          </div>
-
-          <div class="action-footer ai-modal-footer">
-            @if (aiService.isDownloadingModel()) {
-              <button type="button" class="btn btn-secondary" (click)="cancelModelDownload()">
-                Cancel Download
-              </button>
-            } @else {
-              <button type="button" class="btn btn-primary" (click)="startModelDownload()">
-                Start Download
-              </button>
-              <button type="button" class="btn btn-secondary" (click)="close()">
-                Close
-              </button>
-            }
-          </div>
-        </div>
-      }
 
       @if (workspaceService.activeModal() === 'change-language') {
         <div class="results-list">

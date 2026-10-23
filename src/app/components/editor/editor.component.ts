@@ -380,6 +380,29 @@ ${rawContent}
       { allowSignalWrites: true }
     );
 
+    // Effect to convert indentation in active file buffer
+    effect(
+      () => {
+        const req = this.workspaceService.pendingConvertIndentation();
+        if (req && this.editorInstance) {
+          const model =
+            (req.fileId ? this.fileModels.get(req.fileId) : null) ||
+            this.editorInstance.getModel();
+          if (model) {
+            this.convertModelIndentation(
+              model,
+              req.type,
+              req.size,
+              req.fromType,
+              req.fromSize
+            );
+          }
+          this.workspaceService.pendingConvertIndentation.set(null);
+        }
+      },
+      { allowSignalWrites: true }
+    );
+
     // Effect to update indentation options
     effect(() => {
       const isTabs = this.workspaceService.indentType() === 'tabs';
@@ -1177,6 +1200,169 @@ ${rawContent}
     queueMicrotask(() => {
       this.workspaceService.syncActiveIndentation(type, size);
     });
+  }
+
+  private detectSourceIndent(
+    model: monaco.editor.ITextModel,
+    fallbackSize = 4
+  ): { isTabs: boolean; indentSize: number; tabLines: number; spaceLines: number } {
+    let tabLines = 0;
+    let spaceLines = 0;
+    const indentCounts = new Map<number, number>();
+
+    const lineCount = Math.min(model.getLineCount(), 1000);
+    for (let i = 1; i <= lineCount; i++) {
+      const line = model.getLineContent(i);
+      const match = line.match(/^([ \t]+)/);
+      if (!match) continue;
+      const leading = match[1];
+      if (leading.startsWith('\t')) {
+        tabLines++;
+      } else if (leading.startsWith(' ')) {
+        spaceLines++;
+        const count = leading.match(/^ +/)?.[0].length || 0;
+        if (count > 0) {
+          indentCounts.set(count, (indentCounts.get(count) || 0) + 1);
+        }
+      }
+    }
+
+    if (tabLines > spaceLines) {
+      return { isTabs: true, indentSize: 1, tabLines, spaceLines };
+    }
+
+    let modulo2Only = 0;
+    let modulo4Count = 0;
+    for (const [spaces, count] of indentCounts.entries()) {
+      if (spaces % 2 === 0 && spaces % 4 !== 0) {
+        modulo2Only += count;
+      } else if (spaces % 4 === 0) {
+        modulo4Count += count;
+      }
+    }
+
+    let indentSize = fallbackSize;
+    if (modulo2Only > 0) {
+      indentSize = 2;
+    } else if (fallbackSize === 2) {
+      indentSize = 2;
+    } else if (modulo4Count > 0) {
+      indentSize = 4;
+    }
+
+    return { isTabs: false, indentSize, tabLines, spaceLines };
+  }
+
+  private convertModelIndentation(
+    model: monaco.editor.ITextModel,
+    targetType: 'tabs' | 'spaces',
+    targetTabSize: number,
+    fromType?: 'tabs' | 'spaces',
+    fromSize?: number
+  ): void {
+    const detected = this.detectSourceIndent(model, fromSize || 4);
+    let sourceIsTabs = detected.isTabs;
+    if (fromType) {
+      if (detected.tabLines > 0 && detected.spaceLines === 0) {
+        sourceIsTabs = true;
+      } else if (detected.spaceLines > 0 && detected.tabLines === 0) {
+        sourceIsTabs = false;
+      } else {
+        sourceIsTabs = fromType === 'tabs';
+      }
+    }
+
+    const sourceIndentSize = (fromSize && fromSize === 2) ? 2 : detected.indentSize || 2;
+
+    const lineCount = model.getLineCount();
+    const edits: monaco.editor.ISingleEditOperation[] = [];
+
+    for (let i = 1; i <= lineCount; i++) {
+      const line = model.getLineContent(i);
+      const match = line.match(/^([ \t]+)/);
+      if (!match) continue;
+
+      const currentLeading = match[1];
+      let newLeading = '';
+
+      if (targetType === 'tabs') {
+        if (sourceIsTabs) {
+          // File was already tabs; keep leading tabs and alignment spaces
+          newLeading = currentLeading;
+        } else {
+          // File was spaces (or mixed); convert space levels into tabs
+          let tabCount = 0;
+          let spaceCount = 0;
+          for (const ch of currentLeading) {
+            if (ch === '\t') tabCount++;
+            else if (ch === ' ') spaceCount++;
+          }
+          const totalLevels = tabCount + Math.floor(spaceCount / sourceIndentSize);
+          const leftoverSpaces = spaceCount % sourceIndentSize;
+          newLeading = '\t'.repeat(totalLevels) + ' '.repeat(leftoverSpaces);
+        }
+      } else {
+        // targetType === 'spaces'
+        if (sourceIsTabs) {
+          // Convert leading tabs to targetTabSize spaces
+          let tabCount = 0;
+          let idx = 0;
+          while (idx < currentLeading.length && currentLeading[idx] === '\t') {
+            tabCount++;
+            idx++;
+          }
+          const trailing = currentLeading.substring(idx);
+          newLeading = ' '.repeat(tabCount * targetTabSize) + trailing;
+        } else {
+          // Re-indent from sourceIndentSize to targetTabSize
+          let tabCount = 0;
+          let spaceCount = 0;
+          for (const ch of currentLeading) {
+            if (ch === '\t') tabCount++;
+            else if (ch === ' ') spaceCount++;
+          }
+          const totalLevels = tabCount + Math.floor(spaceCount / sourceIndentSize);
+          const leftoverSpaces = spaceCount % sourceIndentSize;
+          newLeading = ' '.repeat(totalLevels * targetTabSize + leftoverSpaces);
+        }
+      }
+
+      if (newLeading !== currentLeading) {
+        edits.push({
+          range: new monaco.Range(i, 1, i, currentLeading.length + 1),
+          text: newLeading,
+        });
+      }
+    }
+
+    if (edits.length > 0) {
+      model.pushEditOperations([], edits, () => null);
+      const fromLabel = sourceIsTabs ? 'Tabs' : `${sourceIndentSize} Spaces`;
+      const toLabel = targetType === 'tabs' ? 'Tabs' : `${targetTabSize} Spaces`;
+      this.workspaceService.showNotification(
+        `✓ Converted ${edits.length} line(s) from ${fromLabel} to ${toLabel}`
+      );
+    } else {
+      const toLabel = targetType === 'tabs' ? `Tabs (size ${targetTabSize})` : `${targetTabSize} Spaces`;
+      this.workspaceService.showNotification(
+        `Indentation already matches ${toLabel}`
+      );
+    }
+
+    model.updateOptions({
+      insertSpaces: targetType === 'spaces',
+      tabSize: targetTabSize,
+    });
+
+    const active = this.workspaceService.activeFile();
+    if (active) {
+      active.indentType = targetType;
+      active.tabSize = targetTabSize;
+      active.isIndentationCustom = true;
+      if (edits.length > 0) {
+        this.workspaceService.updateContent(active.id, model.getValue());
+      }
+    }
   }
 
   public zoomImgIn(): void {

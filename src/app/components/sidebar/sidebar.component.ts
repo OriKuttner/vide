@@ -50,6 +50,19 @@ export class SidebarComponent {
         }, 60);
       }
     });
+
+    effect(() => {
+      const activeId = this.workspaceService.activeFileId();
+      this.workspaceService.fileTree();
+      if (activeId) {
+        setTimeout(() => {
+          const activeEl = document.querySelector('.tree-row.file.active');
+          if (activeEl) {
+            activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }, 120);
+      }
+    });
   }
 
   public onSearchInput(event: Event): void {

@@ -460,6 +460,21 @@
   &.has-left-action {
     justify-content: space-between;
 
+    .left-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .convert-btn {
+        color: var(--accent-color, #0284c7);
+        border-color: var(--accent-color, #0284c7);
+
+        &:hover {
+          background-color: rgba(2, 132, 199, 0.1);
+        }
+      }
+    }
+
     .footer-buttons {
       display: flex;
       align-items: center;

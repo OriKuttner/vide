@@ -59,6 +59,8 @@ export class SearchModalComponent {
   // Indentation configuration state
   public selectedIndentType = signal<'tabs' | 'spaces'>('tabs');
   public selectedTabSize = signal<number>(4);
+  public initialIndentType = signal<'tabs' | 'spaces'>('tabs');
+  public initialTabSize = signal<number>(4);
 
   // Language selection state
   public languageResults = signal<LanguageItem[]>(SUPPORTED_LANGUAGES);
@@ -88,6 +90,8 @@ export class SearchModalComponent {
         } else if (mode === 'indentation') {
           this.selectedIndentType.set(this.workspaceService.indentType());
           this.selectedTabSize.set(this.workspaceService.tabSize());
+          this.initialIndentType.set(this.workspaceService.indentType());
+          this.initialTabSize.set(this.workspaceService.tabSize());
         } else if (mode === 'open-folder-path') {
           this.inputValue.set(this.workspaceService.nativeWorkspacePath() || '/home/ori/work/vide');
         } else if (mode === 'ai-settings') {
@@ -122,33 +126,6 @@ export class SearchModalComponent {
     }
   }
 
-  public formatBytes(bytes?: number): string {
-    if (!bytes || bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
-  }
-
-  public async startModelDownload(): Promise<void> {
-    try {
-      this.workspaceService.showNotification('Starting Qwen2.5-Coder model download...');
-      await this.aiService.downloadModel();
-      this.workspaceService.showNotification('✓ Model downloaded successfully!');
-      this.workspaceService.openModal('ai-settings');
-    } catch (err: any) {
-      this.workspaceService.showNotification(`Download error: ${err.message || err}`);
-    }
-  }
-
-  public async cancelModelDownload(): Promise<void> {
-    try {
-      await this.aiService.cancelDownload();
-      this.workspaceService.showNotification('Model download cancelled');
-    } catch (err: any) {
-      this.workspaceService.showNotification(`Cancel error: ${err.message || err}`);
-    }
-  }
-
   public getTitle(): string {
     switch (this.workspaceService.activeModal()) {
       case 'new-file':
@@ -172,9 +149,7 @@ export class SearchModalComponent {
       case 'unsaved-changes':
         return 'Save Changes?';
       case 'ai-settings':
-        return 'AI Assistant Configuration (llama-server)';
-      case 'ai-download':
-        return 'Preparing Local AI Assistant (Qwen 2.5 Coder)';
+        return 'AI Assistant Configuration (Google Gemini)';
       default:
         return '';
     }
@@ -184,7 +159,6 @@ export class SearchModalComponent {
     switch (this.workspaceService.activeModal()) {
       case 'unsaved-changes':
       case 'ai-settings':
-      case 'ai-download':
         return '';
       case 'new-file':
         return 'Enter new file name and extension (e.g. app.of, service.ts):';
@@ -354,6 +328,16 @@ export class SearchModalComponent {
 
   public applyIndentation(): void {
     this.workspaceService.setIndentation(this.selectedIndentType(), this.selectedTabSize());
+  }
+
+  public convertIndentation(): void {
+    this.workspaceService.convertActiveFileIndentation(
+      this.selectedIndentType(),
+      this.selectedTabSize(),
+      this.initialIndentType(),
+      this.initialTabSize()
+    );
+    this.close();
   }
 
   public autoDetectIndentation(): void {
