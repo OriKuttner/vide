@@ -1,3 +1,9 @@
+/**
+ * theme.service.ts - Theme switcher and syntax highlighting palette service
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Injectable, signal, effect } from '@angular/core';
 
 export type AppTheme = 'light' | 'dark';

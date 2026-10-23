@@ -1,3 +1,9 @@
+/**
+ * header.component.ts - Top application header with menu actions and window controls
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';

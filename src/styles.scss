@@ -1,3 +1,9 @@
+/**
+ * styles.scss - Global typography, reset, and theme variable styles
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 *,
 *::before,
 *::after {
@@ -33,6 +39,13 @@ body.theme-light {
   --scrollbar-bg: #f8f8f8;
   --scrollbar-thumb: #c8c8c8;
   --scrollbar-thumb-hover: #a8a8a8;
+
+  /* Chat & Markdown Variables (Light) */
+  --bg-chat-card: #ffffff;
+  --border-chat-card: #e2e8f0;
+  --color-inline-code: #be123c;
+  --bg-inline-code: #f1f5f9;
+  --border-inline-code: #cbd5e1;
 
   /* Action Buttons Colors (Light) */
   --color-icon-save: #16a34a;
@@ -72,6 +85,13 @@ body.theme-dark {
   --scrollbar-bg: #1e1e1e;
   --scrollbar-thumb: #424242;
   --scrollbar-thumb-hover: #4f4f4f;
+
+  /* Chat & Markdown Variables (Dark) */
+  --bg-chat-card: #252526;
+  --border-chat-card: #383838;
+  --color-inline-code: #fb7185;
+  --bg-inline-code: rgba(148, 163, 184, 0.16);
+  --border-inline-code: rgba(148, 163, 184, 0.28);
 
   /* Action Buttons Colors (Dark) */
   --color-icon-save: #4ade80;
@@ -383,3 +403,46 @@ body.vide-hide-goto-def {
     display: none !important;
   }
 }
+
+/* Vector AI Assistant Markdown innerHTML Global Rules */
+.message-body {
+  ul, ol {
+    margin: 10px 0 !important;
+    padding-inline-start: 32px !important;
+    padding-inline-end: 8px !important;
+    list-style-position: outside !important;
+
+    ul, ol {
+      margin: 4px 0 !important;
+      padding-inline-start: 24px !important;
+    }
+  }
+
+  ul {
+    list-style-type: disc !important;
+    ul {
+      list-style-type: circle !important;
+      ul {
+        list-style-type: square !important;
+      }
+    }
+  }
+
+  ol {
+    list-style-type: decimal !important;
+    ol {
+      list-style-type: lower-alpha !important;
+    }
+  }
+
+  li {
+    margin-bottom: 6px !important;
+    font-size: 24px !important;
+    line-height: 1.6 !important;
+
+    p {
+      margin-bottom: 4px !important;
+    }
+  }
+}
+

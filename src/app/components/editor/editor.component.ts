@@ -1,3 +1,9 @@
+/**
+ * editor.component.ts - Monaco code editor, tabs view, syntax highlighting, and live previews
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import {
   Component,
   ElementRef,
@@ -324,6 +330,20 @@ ${rawContent}
           this.editorInstance.focus();
           this.workspaceService.pendingLineJump.set(null);
         }
+      }
+    });
+
+    // Effect to update content programmatically (from AI tools / external changes)
+    effect(() => {
+      const rep = this.workspaceService.pendingContentReplacement();
+      if (rep && this.editorInstance) {
+        const model = this.fileModels.get(rep.fileId) || (this.currentActiveFileId === rep.fileId ? this.editorInstance.getModel() : null);
+        if (model) {
+          this.isProgrammaticUpdate = true;
+          model.setValue(rep.newContent);
+          this.isProgrammaticUpdate = false;
+        }
+        this.workspaceService.pendingContentReplacement.set(null);
       }
     });
 

@@ -1,3 +1,9 @@
+/**
+ * omniflux.language.ts - OmniFlux syntax definition and Monarch tokens for Monaco editor
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import type * as MonacoType from 'monaco-editor';
 
 /**

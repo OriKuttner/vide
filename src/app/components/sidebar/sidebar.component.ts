@@ -1,3 +1,9 @@
+/**
+ * sidebar.component.ts - Sidebar component managing file tree, search, and git status
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Component, inject, signal, computed, ViewChild, ElementRef, effect, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';

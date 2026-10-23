@@ -1,3 +1,9 @@
+/**
+ * search-modal.component.ts - Command palette, quick open, search & AI settings modal dialog
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import {
   Component,
   ElementRef,
@@ -124,6 +130,16 @@ export class SearchModalComponent {
     } else {
       const err = this.aiService.lastApiError() || 'Connection failed';
       this.workspaceService.showNotification(`Gemini API Error: ${err}`);
+    }
+  }
+
+  public async testChatKey(): Promise<void> {
+    const success = await this.aiService.testChatGeminiConnection();
+    if (success) {
+      this.workspaceService.showNotification('✓ Chat Gemini API connection successful!');
+    } else {
+      const err = this.aiService.lastChatApiError() || 'Connection failed';
+      this.workspaceService.showNotification(`Chat Gemini API Error: ${err}`);
     }
   }
 

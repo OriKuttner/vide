@@ -1,3 +1,9 @@
+/**
+ * inline-completion.service.ts - Inline AI code completion and ghost text provider
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Injectable, inject } from '@angular/core';
 import type * as MonacoType from 'monaco-editor';
 import { AiService } from './ai.service';

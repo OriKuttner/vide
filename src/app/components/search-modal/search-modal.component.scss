@@ -1,3 +1,9 @@
+/**
+ * search-modal.component.scss - Styles for search modal, command palette, and AI configuration
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 .modal-backdrop {
   position: fixed;
   top: 0;
@@ -675,6 +681,44 @@
       cursor: pointer;
       accent-color: #007acc;
     }
+  }
+
+  .ai-field-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .btn-reset-link {
+    background: none;
+    border: none;
+    color: #007acc;
+    font-size: 11.5px;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+
+    &:hover {
+      color: #005999;
+    }
+  }
+
+  .ai-textarea {
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.45;
+  }
+}
+
+.ai-section-divider {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+
+  .ai-section-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-primary, #1e1e1e);
   }
 }
 

@@ -1,3 +1,9 @@
+/**
+ * status-bar.component.ts - Status bar component displaying cursor position, language, and git branch
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Component, input, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';

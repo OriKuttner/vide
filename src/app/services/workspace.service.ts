@@ -1,3 +1,9 @@
+/**
+ * workspace.service.ts - Workspace directory state, file trees, and buffer management
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Injectable, signal, computed, inject, NgZone, effect, untracked, ApplicationRef } from '@angular/core';
 import {
 	WorkspaceFile,
@@ -18,6 +24,15 @@ import { listen } from '@tauri-apps/api/event';
 export function isTauriApp(): boolean {
 	if (typeof window === 'undefined') return false;
 	return isTauri() || typeof (window as any).__TAURI_INTERNALS__ !== 'undefined';
+}
+
+export function terminalLog(level: string, message: string): void {
+	if (typeof window !== 'undefined') {
+		console.log(`[${level}] ${message}`);
+		if (isTauriApp()) {
+			invoke('log_to_terminal', { level, message }).catch(() => {});
+		}
+	}
 }
 
 export interface GrepResult {
@@ -122,6 +137,9 @@ export class WorkspaceService {
 
 	// Line jump request (from Grep search or Go to Definition)
 	readonly pendingLineJump = signal<{ lineNumber: number; column?: number; fileId?: string } | null>(null);
+
+	// Programmatic content replacement request (from AI tools / external)
+	readonly pendingContentReplacement = signal<{ fileId: string; newContent: string } | null>(null);
 
 	// Line highlight range request (from Ada / CLI goto)
 	readonly pendingHighlight = signal<{
@@ -1962,6 +1980,98 @@ export class WorkspaceService {
 		await this.openFile(file);
 		this.pendingLineJump.set({ lineNumber, column, fileId: file.id });
 		this.closeModal();
+	}
+
+	public async openFileByPath(relPath: string): Promise<WorkspaceFile | null> {
+		const cleanPath = relPath.trim().replace(/^[/\\]+/, '');
+		let file = this.files().find(
+			(f) => f.path === cleanPath || f.path.endsWith(cleanPath) || (f.fsPath && f.fsPath.endsWith(cleanPath))
+		);
+
+		if (!file && this.nativeWorkspacePath()) {
+			const ws = this.nativeWorkspacePath()!;
+			const fullPath = `${ws}/${cleanPath}`;
+			if (isTauriApp()) {
+				try {
+					const content = await invoke<string>('read_file_text', { filePath: fullPath });
+					const name = cleanPath.split('/').pop() || cleanPath;
+					file = {
+						id: cleanPath,
+						name,
+						path: cleanPath,
+						fsPath: fullPath,
+						language: detectLanguage(name, content),
+						content,
+						savedContent: content,
+						originalContent: content,
+						isLoaded: true,
+					};
+					this.files.update((files) => [...files, file!]);
+				} catch {}
+			}
+		}
+
+		if (file) {
+			await this.openFile(file, true);
+			return file;
+		}
+		return null;
+	}
+
+	public async replaceTextInFile(
+		target: string,
+		replacement: string,
+		relPath?: string,
+		replaceAll = false
+	): Promise<{ success: boolean; message: string }> {
+		let file: WorkspaceFile | null = null;
+		if (relPath) {
+			file = await this.openFileByPath(relPath);
+		} else {
+			file = this.activeFile();
+		}
+
+		if (!file) {
+			return { success: false, message: 'No active or specified file to edit.' };
+		}
+
+		if (!file.isLoaded && file.fsPath && isTauriApp()) {
+			try {
+				file.content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+				file.isLoaded = true;
+			} catch (err: any) {
+				return { success: false, message: `Could not read file: ${err?.message || err}` };
+			}
+		}
+
+		const currentContent = file.content || '';
+		if (!currentContent.includes(target)) {
+			return { success: false, message: `Target text was not found in ${file.path}.` };
+		}
+
+		const newContent = replaceAll
+			? currentContent.split(target).join(replacement)
+			: currentContent.replace(target, replacement);
+
+		// Update in-memory file & tabs
+		this.updateContent(file.id, newContent);
+
+		// Broadcast to Monaco editor
+		this.pendingContentReplacement.set({ fileId: file.id, newContent });
+
+		// In desktop mode, write to disk
+		if (file.fsPath && isTauriApp()) {
+			try {
+				await invoke('write_file_text', { filePath: file.fsPath, content: newContent });
+				file.savedContent = newContent;
+				file.isModified = false;
+				this.updateContent(file.id, newContent);
+			} catch (err: any) {
+				console.warn('Failed to save to disk immediately:', err);
+			}
+		}
+
+		return { success: true, message: `Successfully replaced text in ${file.path}.` };
 	}
 
 	/**

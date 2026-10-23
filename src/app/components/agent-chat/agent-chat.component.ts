@@ -1,3 +1,9 @@
+/**
+ * agent-chat.component.ts - Floating, draggable and resizable chat interface for Vector AI Assistant
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import {
   Component,
   inject,
@@ -12,6 +18,8 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AssistantService, AssistantInfo, ChatMessage } from '../../services/assistant.service';
+import { AiService } from '../../services/ai.service';
+import { WorkspaceService } from '../../services/workspace.service';
 import { MarkdownPipe } from '../../pipes/markdown.pipe';
 
 @Component({
@@ -24,6 +32,8 @@ import { MarkdownPipe } from '../../pipes/markdown.pipe';
 })
 export class AgentChatComponent implements AfterViewChecked {
   assistantService = inject(AssistantService);
+  aiService = inject(AiService);
+  workspaceService = inject(WorkspaceService);
 
   @ViewChild('messagesContainer') private messagesContainer!: ElementRef;
   @ViewChild('inputField') private inputField?: ElementRef<HTMLTextAreaElement>;
@@ -225,6 +235,18 @@ export class AgentChatComponent implements AfterViewChecked {
     this.assistantService.refresh();
   }
 
+  toggleChatDirection(): void {
+    this.aiService.toggleChatDirection();
+  }
+
+  clearChat(): void {
+    this.assistantService.clearFeed();
+  }
+
+  openAiSettings(): void {
+    this.workspaceService.activeModal.set('ai-settings');
+  }
+
   toggleThoughts(msgId: number | undefined): void {
     if (msgId === undefined) return;
     this.expandedThoughts.update(curr => ({
@@ -256,6 +278,10 @@ export class AgentChatComponent implements AfterViewChecked {
     if (!this.isUserScrolledUp()) {
       this.shouldScrollBottom = true;
     }
+  }
+
+  stopGeneration(): void {
+    this.assistantService.cancelCurrentRequest();
   }
 
   private scrollToBottom(): void {

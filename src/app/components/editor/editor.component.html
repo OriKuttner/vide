@@ -1,3 +1,9 @@
+<!--
+  editor.component.html - Template for Monaco code editor and diff viewer
+  Part of Vector IDE
+  Written by: Ori Kuttner and Shira (Antigravity agent)
+-->
+
 <div class="editor-wrapper">
   @if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as diffFile) {
     <div class="meld-diff-toolbar">

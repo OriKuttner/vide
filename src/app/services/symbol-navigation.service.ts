@@ -1,3 +1,9 @@
+/**
+ * symbol-navigation.service.ts - Symbol navigation and outline indexing service
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Injectable, inject } from '@angular/core';
 import type * as MonacoType from 'monaco-editor';
 import { WorkspaceService, GrepResult } from './workspace.service';

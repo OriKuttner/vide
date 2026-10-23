@@ -1,11 +1,17 @@
+/**
+ * lib.rs - Tauri backend logic, native filesystem, process management, and Git commands
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -169,7 +175,14 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
         .unwrap_or_default();
 
     let output = Command::new("git")
-        .args(["-C", &clean_repo, "status", "--porcelain=v1", "-unormal", "."])
+        .args([
+            "-C",
+            &clean_repo,
+            "status",
+            "--porcelain=v1",
+            "-unormal",
+            ".",
+        ])
         .output()
         .map_err(|e| format!("Failed to execute git status: {}", e))?;
 
@@ -190,7 +203,11 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
 
         // Handle possible rename syntax: "R  old -> new"
         let target_raw = if raw_file_path.contains(" -> ") {
-            raw_file_path.split(" -> ").last().unwrap_or(raw_file_path).trim()
+            raw_file_path
+                .split(" -> ")
+                .last()
+                .unwrap_or(raw_file_path)
+                .trim()
         } else {
             raw_file_path
         };
@@ -371,15 +388,19 @@ fn create_git_commit(repo_path: String, message: String) -> Result<String, Strin
         return Err(String::from_utf8_lossy(&commit_output.stderr).to_string());
     }
 
-    Ok(String::from_utf8_lossy(&commit_output.stdout).trim().to_string())
+    Ok(String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string())
 }
 
 #[tauri::command]
-fn git_untrack_file(repo_path: String, file_path: String, add_to_gitignore: bool) -> Result<(), String> {
+fn git_untrack_file(
+    repo_path: String,
+    file_path: String,
+    add_to_gitignore: bool,
+) -> Result<(), String> {
     let clean_repo = expand_path(&repo_path);
-    let clean_file = file_path
-        .trim_start_matches('/')
-        .trim_start_matches("./");
+    let clean_file = file_path.trim_start_matches('/').trim_start_matches("./");
 
     // 1. If tracked in Git index, remove it from cache
     let _ = Command::new("git")
@@ -401,7 +422,9 @@ fn git_untrack_file(repo_path: String, file_path: String, add_to_gitignore: bool
             format!("/{}", clean_file)
         };
 
-        let already_present = content.lines().any(|l| l.trim() == entry || l.trim() == clean_file);
+        let already_present = content
+            .lines()
+            .any(|l| l.trim() == entry || l.trim() == clean_file);
         if !already_present {
             let mut new_content = content;
             if !new_content.is_empty() && !new_content.ends_with('\n') {
@@ -437,7 +460,11 @@ fn get_git_sync_status(repo_path: String) -> Result<GitSyncStatus, String> {
     }
 
     let remotes_str = String::from_utf8_lossy(&remotes_output.stdout);
-    let remotes: Vec<&str> = remotes_str.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let remotes: Vec<&str> = remotes_str
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
 
     if remotes.is_empty() {
         return Ok(GitSyncStatus {
@@ -452,7 +479,14 @@ fn get_git_sync_status(repo_path: String) -> Result<GitSyncStatus, String> {
     let remote_name = remotes[0].to_string();
 
     let upstream_output = Command::new("git")
-        .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+        .args([
+            "-C",
+            &clean_repo,
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{u}",
+        ])
         .output();
 
     let mut upstream: Option<String> = None;
@@ -465,7 +499,14 @@ fn get_git_sync_status(repo_path: String) -> Result<GitSyncStatus, String> {
             if !up.is_empty() {
                 upstream = Some(up.clone());
                 let rev_list = Command::new("git")
-                    .args(["-C", &clean_repo, "rev-list", "--left-right", "--count", "@{u}...HEAD"])
+                    .args([
+                        "-C",
+                        &clean_repo,
+                        "rev-list",
+                        "--left-right",
+                        "--count",
+                        "@{u}...HEAD",
+                    ])
                     .output();
                 if let Ok(rl_out) = rev_list {
                     if rl_out.status.success() {
@@ -496,7 +537,14 @@ fn get_git_sync_status(repo_path: String) -> Result<GitSyncStatus, String> {
                     if v_out.status.success() {
                         let rev_range = format!("{}...HEAD", remote_ref);
                         let rev_list = Command::new("git")
-                            .args(["-C", &clean_repo, "rev-list", "--left-right", "--count", &rev_range])
+                            .args([
+                                "-C",
+                                &clean_repo,
+                                "rev-list",
+                                "--left-right",
+                                "--count",
+                                &rev_range,
+                            ])
                             .output();
                         if let Ok(rl_out) = rev_list {
                             if rl_out.status.success() {
@@ -515,7 +563,10 @@ fn get_git_sync_status(repo_path: String) -> Result<GitSyncStatus, String> {
                             .output();
                         if let Ok(c_out) = count_output {
                             if c_out.status.success() {
-                                ahead = String::from_utf8_lossy(&c_out.stdout).trim().parse::<u32>().unwrap_or(0);
+                                ahead = String::from_utf8_lossy(&c_out.stdout)
+                                    .trim()
+                                    .parse::<u32>()
+                                    .unwrap_or(0);
                             }
                         }
                     }
@@ -538,7 +589,14 @@ fn git_push(repo_path: String) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
 
     let upstream_output = Command::new("git")
-        .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+        .args([
+            "-C",
+            &clean_repo,
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{u}",
+        ])
         .output();
 
     let has_upstream = match upstream_output {
@@ -556,7 +614,9 @@ fn git_push(repo_path: String) -> Result<String, String> {
             .args(["-C", &clean_repo, "rev-parse", "--abbrev-ref", "HEAD"])
             .output()
             .map_err(|e| format!("Failed to get current branch: {}", e))?;
-        let branch = String::from_utf8_lossy(&branch_out.stdout).trim().to_string();
+        let branch = String::from_utf8_lossy(&branch_out.stdout)
+            .trim()
+            .to_string();
 
         let remotes_out = Command::new("git")
             .args(["-C", &clean_repo, "remote"])
@@ -604,7 +664,13 @@ pub struct GitBranchItem {
 fn get_git_branches(repo_path: String) -> Result<Vec<GitBranchItem>, String> {
     let clean_repo = expand_path(&repo_path);
     let output = Command::new("git")
-        .args(["-C", &clean_repo, "branch", "-a", "--format=%(refname:short)|%(HEAD)"])
+        .args([
+            "-C",
+            &clean_repo,
+            "branch",
+            "-a",
+            "--format=%(refname:short)|%(HEAD)",
+        ])
         .output()
         .map_err(|e| format!("Failed to list git branches: {}", e))?;
 
@@ -660,7 +726,11 @@ fn switch_git_branch(repo_path: String, branch_name: String) -> Result<String, S
     if !output.status.success() {
         let err_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let out_msg = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        return Err(if !err_msg.is_empty() { err_msg } else { out_msg });
+        return Err(if !err_msg.is_empty() {
+            err_msg
+        } else {
+            out_msg
+        });
     }
 
     let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -669,7 +739,11 @@ fn switch_git_branch(repo_path: String, branch_name: String) -> Result<String, S
 }
 
 #[tauri::command]
-fn create_git_branch(repo_path: String, new_branch_name: String, switch_to: bool) -> Result<String, String> {
+fn create_git_branch(
+    repo_path: String,
+    new_branch_name: String,
+    switch_to: bool,
+) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
     let trimmed = new_branch_name.trim();
     if trimmed.is_empty() {
@@ -689,7 +763,11 @@ fn create_git_branch(repo_path: String, new_branch_name: String, switch_to: bool
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if !err.is_empty() { err } else { "Failed to create branch".to_string() });
+        return Err(if !err.is_empty() {
+            err
+        } else {
+            "Failed to create branch".to_string()
+        });
     }
 
     Ok(format!("Branch '{}' created successfully", trimmed))
@@ -717,7 +795,11 @@ fn get_git_tags(repo_path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn create_git_tag(repo_path: String, tag_name: String, message: Option<String>) -> Result<String, String> {
+fn create_git_tag(
+    repo_path: String,
+    tag_name: String,
+    message: Option<String>,
+) -> Result<String, String> {
     let clean_repo = expand_path(&repo_path);
     let trimmed_tag = tag_name.trim();
     if trimmed_tag.is_empty() {
@@ -742,7 +824,11 @@ fn create_git_tag(repo_path: String, tag_name: String, message: Option<String>) 
 
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if !err.is_empty() { err } else { "Failed to create tag".to_string() });
+        return Err(if !err.is_empty() {
+            err
+        } else {
+            "Failed to create tag".to_string()
+        });
     }
 
     Ok(format!("Tag '{}' created successfully", trimmed_tag))
@@ -751,7 +837,11 @@ fn create_git_tag(repo_path: String, tag_name: String, message: Option<String>) 
 #[tauri::command]
 fn select_directory(current_path: Option<String>) -> Result<Option<String>, String> {
     let mut cmd = Command::new("zenity");
-    cmd.args(["--file-selection", "--directory", "--title=Select Project Folder"]);
+    cmd.args([
+        "--file-selection",
+        "--directory",
+        "--title=Select Project Folder",
+    ]);
 
     let init_path = if let Some(ref p) = current_path {
         let expanded = expand_path(p);
@@ -789,7 +879,10 @@ fn resolve_path(path: String) -> String {
 }
 
 #[tauri::command]
-fn read_dir_entries(dir_path: String, show_hidden: Option<bool>) -> Result<Vec<FsEntryItem>, String> {
+fn read_dir_entries(
+    dir_path: String,
+    show_hidden: Option<bool>,
+) -> Result<Vec<FsEntryItem>, String> {
     let clean_dir = expand_path(&dir_path);
     let path = Path::new(&clean_dir);
     if !path.is_dir() {
@@ -843,7 +936,8 @@ fn read_dir_entries(dir_path: String, show_hidden: Option<bool>) -> Result<Vec<F
 #[tauri::command]
 fn read_file_text(file_path: String) -> Result<String, String> {
     let clean_path = expand_path(&file_path);
-    let bytes = fs::read(&clean_path).map_err(|e| format!("Failed to read file '{}': {}", clean_path, e))?;
+    let bytes = fs::read(&clean_path)
+        .map_err(|e| format!("Failed to read file '{}': {}", clean_path, e))?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -851,7 +945,8 @@ fn read_file_text(file_path: String) -> Result<String, String> {
 fn read_file_base64(file_path: String) -> Result<String, String> {
     use base64::Engine;
     let clean_path = expand_path(&file_path);
-    let bytes = fs::read(&clean_path).map_err(|e| format!("Failed to read binary file '{}': {}", clean_path, e))?;
+    let bytes = fs::read(&clean_path)
+        .map_err(|e| format!("Failed to read binary file '{}': {}", clean_path, e))?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(b64)
 }
@@ -862,7 +957,8 @@ fn write_file_text(file_path: String, content: String) -> Result<(), String> {
     if let Some(parent) = std::path::Path::new(&clean_path).parent() {
         let _ = fs::create_dir_all(parent);
     }
-    fs::write(&clean_path, content).map_err(|e| format!("Failed to write file '{}': {}", clean_path, e))
+    fs::write(&clean_path, content)
+        .map_err(|e| format!("Failed to write file '{}': {}", clean_path, e))
 }
 
 #[tauri::command]
@@ -885,7 +981,8 @@ fn get_file_metadata(file_path: String) -> Result<FileMetadataResult, String> {
 #[tauri::command]
 fn create_directory(dir_path: String) -> Result<(), String> {
     let clean_path = expand_path(&dir_path);
-    fs::create_dir_all(&clean_path).map_err(|e| format!("Failed to create directory '{}': {}", clean_path, e))
+    fs::create_dir_all(&clean_path)
+        .map_err(|e| format!("Failed to create directory '{}': {}", clean_path, e))
 }
 
 #[tauri::command]
@@ -897,7 +994,10 @@ fn delete_workspace_file(repo_path: Option<String>, file_path: String) -> Result
             expand_path(&file_path)
         } else {
             let relative = file_path.trim_start_matches('/').trim_start_matches("./");
-            Path::new(&repo_clean).join(relative).to_string_lossy().to_string()
+            Path::new(&repo_clean)
+                .join(relative)
+                .to_string_lossy()
+                .to_string()
         }
     } else {
         expand_path(&file_path)
@@ -909,9 +1009,11 @@ fn delete_workspace_file(repo_path: Option<String>, file_path: String) -> Result
     }
 
     if target.is_dir() {
-        fs::remove_dir_all(target).map_err(|e| format!("Failed to delete directory '{}': {}", clean_path, e))?;
+        fs::remove_dir_all(target)
+            .map_err(|e| format!("Failed to delete directory '{}': {}", clean_path, e))?;
     } else {
-        fs::remove_file(target).map_err(|e| format!("Failed to delete file '{}': {}", clean_path, e))?;
+        fs::remove_file(target)
+            .map_err(|e| format!("Failed to delete file '{}': {}", clean_path, e))?;
     }
 
     Ok(())
@@ -988,7 +1090,9 @@ pub fn normalize_workspace_path(raw: &str) -> Option<String> {
     let abs = if p.is_absolute() {
         p
     } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p)
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(p)
     };
     if let Ok(canon) = abs.canonicalize() {
         Some(canon.to_string_lossy().to_string())
@@ -1089,8 +1193,8 @@ pub fn get_workspace_info_path(canon_ws: &str) -> PathBuf {
 
 #[tauri::command]
 fn register_active_workspace(app: tauri::AppHandle, workspace_path: String) -> Result<(), String> {
-    let canon_ws = normalize_workspace_path(&workspace_path)
-        .unwrap_or_else(|| expand_path(&workspace_path));
+    let canon_ws =
+        normalize_workspace_path(&workspace_path).unwrap_or_else(|| expand_path(&workspace_path));
     let sock_path = get_workspace_socket_path(&canon_ws);
     let info_path = get_workspace_info_path(&canon_ws);
 
@@ -1111,58 +1215,82 @@ fn register_active_workspace(app: tauri::AppHandle, workspace_path: String) -> R
         let _ = std::fs::remove_file(&sock_path);
     }
 
-    let listener = UnixListener::bind(&sock_path)
-        .map_err(|e| format!("Failed to bind unix socket at {:?}: {}", sock_path, e))?;
+    #[cfg(unix)]
+    {
+        let listener = UnixListener::bind(&sock_path)
+            .map_err(|e| format!("Failed to bind unix socket at {:?}: {}", sock_path, e))?;
 
-    let info = serde_json::json!({
-        "pid": std::process::id(),
-        "workspace": canon_ws,
-        "socket": sock_path.to_string_lossy(),
-    });
-    let _ = std::fs::write(&info_path, info.to_string());
+        let info = serde_json::json!({
+            "pid": std::process::id(),
+            "workspace": canon_ws,
+            "socket": sock_path.to_string_lossy(),
+        });
+        let _ = std::fs::write(&info_path, info.to_string());
 
-    *guard = Some(ActiveInstanceListener {
-        socket_path: sock_path.clone(),
-        info_path: info_path.clone(),
-    });
+        *guard = Some(ActiveInstanceListener {
+            socket_path: sock_path.clone(),
+            info_path: info_path.clone(),
+        });
 
-    let app_handle = app.clone();
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            match stream {
-                Ok(mut stream) => {
-                    let mut reader = BufReader::new(&stream);
-                    let mut line = String::new();
-                    if reader.read_line(&mut line).is_ok() {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
-                            let action = val.get("action").and_then(|v| v.as_str()).unwrap_or("focus");
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(mut stream) => {
+                        let mut reader = BufReader::new(&stream);
+                        let mut line = String::new();
+                        if reader.read_line(&mut line).is_ok() {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+                                let action = val
+                                    .get("action")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("focus");
 
-                            if let Some(win) = app_handle.get_webview_window("main") {
-                                let _ = win.unminimize();
-                                let _ = win.show();
-                                let _ = win.set_focus();
-                            }
+                                if let Some(win) = app_handle.get_webview_window("main") {
+                                    let _ = win.unminimize();
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
 
-                            let file = val.get("file").and_then(|v| v.as_str()).map(|s| s.to_string());
-                            let hl_start = val.get("highlight_start").and_then(|v| v.as_u64()).map(|n| n as u32);
-                            let hl_end = val.get("highlight_end").and_then(|v| v.as_u64()).map(|n| n as u32);
+                                let file = val
+                                    .get("file")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                let hl_start = val
+                                    .get("highlight_start")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|n| n as u32);
+                                let hl_end = val
+                                    .get("highlight_end")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|n| n as u32);
 
-                            if action == "goto" || file.is_some() || hl_start.is_some() {
-                                let payload = serde_json::json!({
-                                    "file": file,
-                                    "highlight_start": hl_start,
-                                    "highlight_end": hl_end,
-                                });
-                                let _ = app_handle.emit("vide://navigate", payload);
+                                if action == "goto" || file.is_some() || hl_start.is_some() {
+                                    let payload = serde_json::json!({
+                                        "file": file,
+                                        "highlight_start": hl_start,
+                                        "highlight_end": hl_end,
+                                    });
+                                    let _ = app_handle.emit("vide://navigate", payload);
+                                }
                             }
                         }
+                        let _ = stream.write_all(b"OK\n");
                     }
-                    let _ = stream.write_all(b"OK\n");
+                    Err(_) => break,
                 }
-                Err(_) => break,
             }
-        }
-    });
+        });
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = app;
+        let _ = canon_ws;
+        let _ = sock_path;
+        let _ = info_path;
+        let _ = guard;
+    }
 
     Ok(())
 }
@@ -1268,8 +1396,7 @@ static AI_SIDECAR: Mutex<Option<AiSidecarProcess>> = Mutex::new(None);
 static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 static DOWNLOAD_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
 
-const DEFAULT_MODEL_URL: &str =
-    "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf";
+const DEFAULT_MODEL_URL: &str = "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf";
 const DEFAULT_MODEL_SIZE: u64 = 986_500_000;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1528,7 +1655,9 @@ async fn download_ai_model(
                     fs::rename(&tmp_copy, &clean_copy)
                         .map_err(|e| format!("Failed to finalize model file: {}", e))?;
 
-                    let final_size = fs::metadata(&clean_copy).map(|m| m.len()).unwrap_or(current_bytes);
+                    let final_size = fs::metadata(&clean_copy)
+                        .map(|m| m.len())
+                        .unwrap_or(current_bytes);
                     let _ = app_handle.emit(
                         "ai-download-progress",
                         AiDownloadProgress {
@@ -1587,7 +1716,10 @@ fn start_ai_sidecar(
         .unwrap_or_else(get_default_model_path);
     let clean_model = expand_path(&model_str);
     if !Path::new(&clean_model).is_file() {
-        return Err(format!("Model file '{}' does not exist. Please download it first.", clean_model));
+        return Err(format!(
+            "Model file '{}' does not exist. Please download it first.",
+            clean_model
+        ));
     }
 
     let bin = find_llama_server_binary(binary_path)?;
@@ -1625,7 +1757,9 @@ fn start_ai_sidecar(
         cmd.env("LD_LIBRARY_PATH", new_ld);
     }
 
-    let child = cmd.spawn().map_err(|e| format!("Failed to spawn llama-server: {}", e))?;
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn llama-server: {}", e))?;
 
     let pid = child.id();
     *guard = Some(AiSidecarProcess {
@@ -1671,14 +1805,12 @@ fn get_ai_sidecar_status() -> Result<AiSidecarStatus, String> {
                     model_path: None,
                 })
             }
-            Ok(None) => {
-                Ok(AiSidecarStatus {
-                    running: true,
-                    pid: Some(proc.child.id()),
-                    port: proc.port,
-                    model_path: Some(proc.model_path.clone()),
-                })
-            }
+            Ok(None) => Ok(AiSidecarStatus {
+                running: true,
+                pid: Some(proc.child.id()),
+                port: proc.port,
+                model_path: Some(proc.model_path.clone()),
+            }),
             Err(_) => {
                 *guard = None;
                 Ok(AiSidecarStatus {
@@ -1737,34 +1869,9 @@ fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn get_vector_session_token() -> Result<Option<String>, String> {
-    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    let path = PathBuf::from(home)
-        .join(".local/share/com.heliconbooks.vector/localstorage/https_assistant.heliconbooks.com_0.localstorage");
-    if !path.exists() {
-        return Ok(None);
-    }
-    let data = fs::read(&path).map_err(|e| e.to_string())?;
-    let key = b"session_token";
-    if let Some(pos) = data.windows(key.len()).position(|w| w == key) {
-        let val_start = pos + key.len();
-        let rest = &data[val_start..];
-        for offset in 0..16.min(rest.len()) {
-            if val_start + offset + 128 <= data.len() {
-                let slice = &rest[offset..offset + 128];
-                let is_hex_utf16 = slice.chunks_exact(2).all(|c| {
-                    c[1] == 0 && c[0].is_ascii_hexdigit()
-                });
-                if is_hex_utf16 {
-                    let chars: Vec<u8> = slice.chunks_exact(2).map(|c| c[0]).collect();
-                    if let Ok(token) = String::from_utf8(chars) {
-                        return Ok(Some(token));
-                    }
-                }
-            }
-        }
-    }
-    Ok(None)
+fn log_to_terminal(level: String, message: String) {
+    println!("[{}] {}", level.to_uppercase(), message);
+    let _ = std::io::stdout().flush();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1785,7 +1892,8 @@ pub fn run() {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
                                 let pid = v.get("pid").and_then(|p| p.as_u64()).unwrap_or(0);
                                 let ws = v.get("workspace").and_then(|w| w.as_str()).unwrap_or("");
-                                let is_alive = pid > 0 && Path::new(&format!("/proc/{}", pid)).exists();
+                                let is_alive =
+                                    pid > 0 && Path::new(&format!("/proc/{}", pid)).exists();
                                 if is_alive {
                                     if count == 0 {
                                         println!("{:<10} {:<10} {}", "PID", "STATUS", "WORKSPACE");
@@ -1817,13 +1925,25 @@ pub fn run() {
             .filter(|a| !a.starts_with('-'))
             .cloned()
             .collect();
-        let raw_ws = positional.first().cloned().unwrap_or_else(|| ".".to_string());
+        let raw_ws = positional
+            .first()
+            .cloned()
+            .unwrap_or_else(|| ".".to_string());
         let ws = normalize_workspace_path(&raw_ws).unwrap_or_else(|| expand_path(&raw_ws));
         let sock_path = get_workspace_socket_path(&ws);
-        if UnixStream::connect(&sock_path).is_ok() {
-            println!("true");
-            std::process::exit(0);
-        } else {
+        #[cfg(unix)]
+        {
+            if UnixStream::connect(&sock_path).is_ok() {
+                println!("true");
+                std::process::exit(0);
+            } else {
+                println!("false");
+                std::process::exit(1);
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = sock_path;
             println!("false");
             std::process::exit(1);
         }
@@ -1852,32 +1972,46 @@ pub fn run() {
 
     if let Some(ref ws) = workspace_opt {
         let sock_path = get_workspace_socket_path(ws);
-        if let Ok(mut stream) = UnixStream::connect(&sock_path) {
-            let action = if goto_file.is_some() || hl_start.is_some() { "goto" } else { "focus" };
-            let msg = serde_json::json!({
-                "action": action,
-                "workspace": ws,
-                "file": goto_file,
-                "highlight_start": hl_start,
-                "highlight_end": hl_end,
-            });
-            let mut msg_str = serde_json::to_string(&msg).unwrap_or_default();
-            msg_str.push('\n');
-            if stream.write_all(msg_str.as_bytes()).is_ok() {
-                let mut reader = BufReader::new(stream);
-                let mut response = String::new();
-                let _ = reader.read_line(&mut response);
-                println!("Target navigated in existing Vector IDE instance for workspace: {}", ws);
-                std::process::exit(0);
+        #[cfg(unix)]
+        {
+            if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+                let action = if goto_file.is_some() || hl_start.is_some() {
+                    "goto"
+                } else {
+                    "focus"
+                };
+                let msg = serde_json::json!({
+                    "action": action,
+                    "workspace": ws,
+                    "file": goto_file,
+                    "highlight_start": hl_start,
+                    "highlight_end": hl_end,
+                });
+                let mut msg_str = serde_json::to_string(&msg).unwrap_or_default();
+                msg_str.push('\n');
+                if stream.write_all(msg_str.as_bytes()).is_ok() {
+                    let mut reader = BufReader::new(stream);
+                    let mut response = String::new();
+                    let _ = reader.read_line(&mut response);
+                    println!(
+                        "Target navigated in existing Vector IDE instance for workspace: {}",
+                        ws
+                    );
+                    std::process::exit(0);
+                }
+            } else {
+                if sock_path.exists() {
+                    let _ = std::fs::remove_file(&sock_path);
+                }
+                let info_path = get_workspace_info_path(ws);
+                if info_path.exists() {
+                    let _ = std::fs::remove_file(&info_path);
+                }
             }
-        } else {
-            if sock_path.exists() {
-                let _ = std::fs::remove_file(&sock_path);
-            }
-            let info_path = get_workspace_info_path(ws);
-            if info_path.exists() {
-                let _ = std::fs::remove_file(&info_path);
-            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = sock_path;
         }
     }
 
@@ -1942,10 +2076,9 @@ pub fn run() {
             create_git_branch,
             get_git_tags,
             create_git_tag,
-            get_vector_session_token,
             set_window_title,
+            log_to_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }
-

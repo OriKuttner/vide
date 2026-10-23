@@ -1,3 +1,9 @@
+<!--
+  search-modal.component.html - Template for Command Palette, quick switcher, and AI configuration modal
+  Part of Vector IDE
+  Written by: Ori Kuttner and Shira (Antigravity agent)
+-->
+
 @if (workspaceService.activeModal()) {
   <div class="modal-backdrop" (click)="close()">
     <div class="modal-card" (click)="$event.stopPropagation()">
@@ -218,9 +224,79 @@
                 [ngModel]="assistantService.showFloatingButton()"
                 (ngModelChange)="assistantService.setShowFloatingButton($event)"
               />
-              <span>הצגת כפתור צף של סוכנת (Show Floating Agent Avatar)</span>
+              <span>Show Floating Agent Button</span>
             </label>
-            <span class="ai-hint">קובע האם להציג אייקון צף עם תמונת הסוכנת על המסך (ברירת המחדל: כבוי).</span>
+            <span class="ai-hint">Display a floating avatar button on screen to quickly open the AI chat window.</span>
+          </div>
+
+          <div class="ai-section-divider">
+            <span class="ai-section-title">🤖 AI Assistant Chat</span>
+          </div>
+
+          <div class="ai-field-group">
+            <div class="ai-field-header">
+              <label class="ai-label">Chat Agent API Key (Dedicated)</label>
+              @if (aiService.isChatConfigured()) {
+                <button
+                  type="button"
+                  class="btn-check-health"
+                  [disabled]="aiService.isChatCheckingHealth()"
+                  (click)="testChatKey()"
+                >
+                  {{ aiService.isChatCheckingHealth() ? 'Testing...' : '🔄 Test Chat Key' }}
+                </button>
+              }
+            </div>
+            <input
+              type="password"
+              class="ai-input"
+              [ngModel]="aiService.chatApiKey()"
+              (ngModelChange)="aiService.setChatApiKey($event)"
+            />
+            <span class="ai-hint">Dedicated API key for chat assistant. If left empty, uses the primary key above.</span>
+          </div>
+
+          <div class="ai-field-group">
+            <label class="ai-label">Chat Model</label>
+            <select
+              class="ai-input"
+              [ngModel]="aiService.chatModel()"
+              (ngModelChange)="aiService.setChatModel($event)"
+            >
+              @for (m of aiService.availableModels; track m.id) {
+                <option [value]="m.id">{{ m.name }}</option>
+              }
+            </select>
+            <span class="ai-hint">High-intelligence model recommended for conversational coding assistance (e.g. Gemini 3.8 Flash).</span>
+          </div>
+
+          <div class="ai-field-group">
+            <label class="ai-label">Chat Window Direction</label>
+            <select
+              class="ai-input"
+              [ngModel]="aiService.chatDirection()"
+              (ngModelChange)="aiService.setChatDirection($event)"
+            >
+              <option value="ltr">Left-to-Right (LTR - Default)</option>
+              <option value="rtl">Right-to-Left (RTL)</option>
+            </select>
+            <span class="ai-hint">Input textarea automatically detects language and text direction.</span>
+          </div>
+
+          <div class="ai-field-group">
+            <div class="ai-field-header">
+              <label class="ai-label">System Prompt</label>
+              <button type="button" class="btn-reset-link" (click)="aiService.resetChatSystemPrompt()">
+                Reset to default
+              </button>
+            </div>
+            <textarea
+              class="ai-input ai-textarea"
+              rows="3"
+              [ngModel]="aiService.chatSystemPrompt()"
+              (ngModelChange)="aiService.setChatSystemPrompt($event)"
+            ></textarea>
+            <span class="ai-hint">The assistant receives active editor file context, cursor position, and project tools.</span>
           </div>
 
           <div class="ai-features-box">

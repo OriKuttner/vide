@@ -1,3 +1,9 @@
+/**
+ * file.model.ts - Data models and interfaces for files, folders, and tabs
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 export interface WorkspaceFile {
   id: string;
   name: string;

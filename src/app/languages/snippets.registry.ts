@@ -1,3 +1,9 @@
+/**
+ * snippets.registry.ts - Code snippets and autocomplete templates registry
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import type * as MonacoType from 'monaco-editor';
 
 /**

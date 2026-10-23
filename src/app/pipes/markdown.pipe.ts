@@ -1,3 +1,9 @@
+/**
+ * markdown.pipe.ts - Markdown renderer pipe for chat messages with syntax highlighting and copy button
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Pipe, PipeTransform, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
@@ -20,9 +26,9 @@ marked.use({
         .replace(/'/g, '&#39;');
 
       return `<div class="code-block-wrapper my-2 ${dir}" dir="${dir}" style="direction: ${dir} !important; text-align: ${textAlign} !important; position: relative;">` +
-        `<button type="button" class="copy-code-btn" onclick="copyChatCodeToClipboard(this)" title="העתק קוד">` +
+        `<button type="button" class="copy-code-btn" onclick="copyChatCodeToClipboard(this)" title="Copy Code">` +
         `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>` +
-        `<span>העתק</span></button>` +
+        `<span>Copy</span></button>` +
         `<pre class="code-pre" style="direction: ${dir} !important; text-align: ${textAlign} !important;"><code class="language-${codeLang || 'text'}">${escapedCode}</code></pre></div>`;
     },
     link(token: any, href?: string, title?: string, text?: string) {
@@ -44,9 +50,9 @@ if (typeof window !== 'undefined') {
     const textToCopy = codeEl.innerText.trim();
     navigator.clipboard.writeText(textToCopy).then(() => {
       const span = btn.querySelector('span');
-      if (span) span.innerText = 'הועתק!';
+      if (span) span.innerText = 'Copied!';
       setTimeout(() => {
-        if (span) span.innerText = 'העתק';
+        if (span) span.innerText = 'Copy';
       }, 2000);
     }).catch(err => console.error('Failed to copy code:', err));
   };

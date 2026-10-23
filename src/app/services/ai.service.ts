@@ -1,6 +1,12 @@
+/**
+ * ai.service.ts - AI configuration, Gemini API integration, and model management
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Injectable, signal, computed } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
-import { isTauriApp } from './workspace.service';
+import { isTauriApp, terminalLog } from './workspace.service';
 
 export interface GeminiModelOption {
 	id: string;
@@ -41,13 +47,17 @@ export const GEMINI_MODELS: GeminiModelOption[] = [
 	},
 ];
 
+export const DEFAULT_CHAT_SYSTEM_PROMPT = `You are an expert AI software engineer and coding assistant embedded inside Vector IDE.
+You have access to the user's active file, current cursor position, and project tools to inspect and read files.
+Always be accurate, concise, and helpful. When writing code, provide clean, idiomatic solutions.`;
+
 @Injectable({
 	providedIn: 'root',
 })
 export class AiService {
 	readonly availableModels = GEMINI_MODELS;
 
-	// Gemini Configuration signals
+	// Gemini Configuration signals (Primary / Inline Completions)
 	readonly geminiApiKey = signal<string>(
 		typeof window !== 'undefined'
 			? localStorage.getItem('vide_gemini_api_key') || ''
@@ -73,11 +83,53 @@ export class AiService {
 			: true
 	);
 
+	// Chat Agent Configuration signals (Dedicated Key with fallback, separate model, system prompt & direction)
+	readonly chatApiKey = signal<string>(
+		typeof window !== 'undefined'
+			? localStorage.getItem('vide_chat_gemini_api_key') || ''
+			: ''
+	);
+
+	readonly effectiveChatApiKey = computed(() => {
+		const dedicated = this.chatApiKey().trim();
+		return dedicated.length > 0 ? dedicated : this.geminiApiKey().trim();
+	});
+
+	readonly isChatConfigured = computed(() => this.effectiveChatApiKey().length > 0);
+
+	readonly chatModel = signal<string>(
+		(() => {
+			if (typeof window === 'undefined') return 'gemini-3.8-flash';
+			const saved = localStorage.getItem('vide_chat_gemini_model');
+			if (saved && GEMINI_MODELS.some((m) => m.id === saved)) {
+				return saved;
+			}
+			return 'gemini-3.8-flash';
+		})()
+	);
+
+	readonly chatSystemPrompt = signal<string>(
+		typeof window !== 'undefined'
+			? localStorage.getItem('vide_chat_system_prompt') || DEFAULT_CHAT_SYSTEM_PROMPT
+			: DEFAULT_CHAT_SYSTEM_PROMPT
+	);
+
+	readonly chatDirection = signal<'ltr' | 'rtl'>(
+		(() => {
+			if (typeof window === 'undefined') return 'ltr';
+			const saved = localStorage.getItem('vide_chat_direction');
+			return saved === 'rtl' ? 'rtl' : 'ltr';
+		})()
+	);
+
 	// Status signals (isServerOnline reflects whether Gemini is configured and enabled)
 	readonly isServerOnline = computed(() => this.isConfigured() && this.isEnabled());
 	readonly isCheckingHealth = signal<boolean>(false);
 	readonly isGenerating = signal<boolean>(false);
 	readonly lastApiError = signal<string | null>(null);
+
+	readonly isChatCheckingHealth = signal<boolean>(false);
+	readonly lastChatApiError = signal<string | null>(null);
 
 	constructor() {}
 
@@ -98,13 +150,53 @@ export class AiService {
 		}
 	}
 
+	public setChatApiKey(key: string): void {
+		const cleaned = key.trim();
+		this.chatApiKey.set(cleaned);
+		if (typeof window !== 'undefined') {
+			localStorage.setItem('vide_chat_gemini_api_key', cleaned);
+		}
+		this.lastChatApiError.set(null);
+	}
+
+	public setChatModel(model: string): void {
+		const cleaned = model.trim();
+		this.chatModel.set(cleaned);
+		if (typeof window !== 'undefined') {
+			localStorage.setItem('vide_chat_gemini_model', cleaned);
+		}
+	}
+
+	public setChatSystemPrompt(prompt: string): void {
+		this.chatSystemPrompt.set(prompt);
+		if (typeof window !== 'undefined') {
+			localStorage.setItem('vide_chat_system_prompt', prompt);
+		}
+	}
+
+	public resetChatSystemPrompt(): void {
+		this.setChatSystemPrompt(DEFAULT_CHAT_SYSTEM_PROMPT);
+	}
+
+	public setChatDirection(dir: 'ltr' | 'rtl'): void {
+		this.chatDirection.set(dir);
+		if (typeof window !== 'undefined') {
+			localStorage.setItem('vide_chat_direction', dir);
+		}
+	}
+
+	public toggleChatDirection(): void {
+		this.setChatDirection(this.chatDirection() === 'ltr' ? 'rtl' : 'ltr');
+	}
+
 	public async testGeminiConnection(): Promise<boolean> {
 		if (!this.isConfigured()) return false;
 		this.isCheckingHealth.set(true);
 		this.lastApiError.set(null);
+		const apiKey = this.geminiApiKey().trim();
+		const model = this.geminiModel();
+		terminalLog('AI_TEST', `Testing inline Gemini connection with model: ${model}...`);
 		try {
-			const apiKey = this.geminiApiKey().trim();
-			const model = this.geminiModel();
 			const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
 			const resp = await fetch(url, {
@@ -119,17 +211,61 @@ export class AiService {
 			if (!resp.ok) {
 				const errJson = await resp.json().catch(() => null);
 				const msg = errJson?.error?.message || `HTTP ${resp.status} ${resp.statusText}`;
+				terminalLog('AI_TEST_ERROR', `Inline Gemini connection test FAILED (${resp.status}): ${msg}`);
 				this.lastApiError.set(msg);
 				return false;
 			}
 
+			terminalLog('AI_TEST', `Inline Gemini connection test SUCCEEDED (${model})`);
 			this.lastApiError.set(null);
 			return true;
 		} catch (err: any) {
-			this.lastApiError.set(err?.message || 'Network connection failed');
+			const msg = err?.message || 'Network connection failed';
+			terminalLog('AI_TEST_ERROR', `Inline Gemini connection test exception: ${msg}`);
+			this.lastApiError.set(msg);
 			return false;
 		} finally {
 			this.isCheckingHealth.set(false);
+		}
+	}
+
+	public async testChatGeminiConnection(): Promise<boolean> {
+		const apiKey = this.effectiveChatApiKey().trim();
+		if (!apiKey) return false;
+		this.isChatCheckingHealth.set(true);
+		this.lastChatApiError.set(null);
+		const model = this.chatModel();
+		terminalLog('AI_TEST', `Testing chat Gemini connection with model: ${model}...`);
+		try {
+			const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+			const resp = await fetch(url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
+					generationConfig: { maxOutputTokens: 5 },
+				}),
+			});
+
+			if (!resp.ok) {
+				const errJson = await resp.json().catch(() => null);
+				const msg = errJson?.error?.message || `HTTP ${resp.status} ${resp.statusText}`;
+				terminalLog('AI_TEST_ERROR', `Chat Gemini connection test FAILED (${resp.status}): ${msg}`);
+				this.lastChatApiError.set(msg);
+				return false;
+			}
+
+			terminalLog('AI_TEST', `Chat Gemini connection test SUCCEEDED (${model})`);
+			this.lastChatApiError.set(null);
+			return true;
+		} catch (err: any) {
+			const msg = err?.message || 'Network connection failed';
+			terminalLog('AI_TEST_ERROR', `Chat Gemini connection test exception: ${msg}`);
+			this.lastChatApiError.set(msg);
+			return false;
+		} finally {
+			this.isChatCheckingHealth.set(false);
 		}
 	}
 
@@ -187,6 +323,7 @@ export class AiService {
 			});
 
 			if (!resp.ok) {
+				terminalLog('AI_FIM_WARN', `Inline completion returned HTTP ${resp.status}`);
 				return null;
 			}
 
@@ -195,7 +332,7 @@ export class AiService {
 			return this.cleanCompletion(text);
 		} catch (err: any) {
 			if (err.name !== 'AbortError') {
-				// Silently ignore non-fatal completion network errors
+				terminalLog('AI_FIM_ERROR', `Inline completion network error: ${err?.message || err}`);
 			}
 		} finally {
 			this.isGenerating.set(false);

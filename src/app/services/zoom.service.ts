@@ -1,3 +1,9 @@
+/**
+ * zoom.service.ts - Editor and UI zoom level management service
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Injectable, signal, computed } from '@angular/core';
 
 export const DEFAULT_ZOOM = 1.0;

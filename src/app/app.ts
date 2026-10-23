@@ -1,3 +1,9 @@
+/**
+ * app.ts - Root component orchestrating IDE layout, shortcuts, and dialogs
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
 import { Component, HostListener, inject, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Title } from '@angular/platform-browser';
