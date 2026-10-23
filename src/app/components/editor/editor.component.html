@@ -124,6 +124,64 @@
       </div>
     }
 
+    @if (activeFileIsBinary(); as binFile) {
+      <div class="binary-viewer-container">
+        <div class="binary-toolbar">
+          <div class="bin-left-meta">
+            <span class="bin-badge">
+              <svg class="bin-badge-svg" viewBox="0 0 16 16" fill="currentColor">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11zM4 4.5h8v1H4v-1zm0 3h8v1H4v-1zm0 3h5v1H4v-1z"/>
+              </svg>
+              BINARY
+            </span>
+            <span class="bin-filename">{{ binFile.name }}</span>
+            @if (binFile.fileSize) {
+              <span class="bin-size">{{ formatFileSize(binFile.fileSize) }}</span>
+            }
+            <span class="bin-readonly-badge">Read-only</span>
+
+            <div class="bin-type-desc" [title]="binFile.fileTypeDescription || 'Binary file'">
+              <span class="bin-type-label">Detected Type:</span>
+              <span class="bin-type-val">{{ binFile.fileTypeDescription || 'Binary file' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hex-viewer-stage">
+          @if (binFile.hexData; as hex) {
+            <div class="hex-table-container">
+              <div class="hex-header-row">
+                <span class="hex-col-offset">OFFSET</span>
+                <span class="hex-col-bytes">{{ '00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F' }}</span>
+                <span class="hex-col-ascii">DECODED TEXT</span>
+              </div>
+              <div class="hex-lines">
+                @for (line of (hex.lines || []); track $index) {
+                  <div class="hex-row">
+                    <span class="hex-col-offset">{{ line.offset }}</span>
+                    <span class="hex-col-bytes">{{ line.hex_part1 + '  ' + line.hex_part2 }}</span>
+                    <span class="hex-col-ascii">{{ line.ascii }}</span>
+                  </div>
+                }
+              </div>
+              @if (hex.has_more) {
+                <div class="hex-load-more">
+                  <button type="button" class="load-more-btn" (click)="loadMoreHex(binFile)">
+                    Load More (showing {{ formatFileSize(hex.bytes_shown) }} of {{ formatFileSize(hex.total_size) }})
+                  </button>
+                </div>
+              }
+            </div>
+          } @else {
+            <div class="bin-loading">
+              <div class="mini-spinner"></div>
+              <span>Reading binary file data...</span>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
     @if (!workspaceService.activeFile() && !workspaceService.diffModeActive()) {
       @if (!workspaceService.isRealWorkspace()) {
         <div class="welcome-stage">
@@ -230,7 +288,7 @@
       #editorContainer
       class="monaco-host"
       [style.width.%]="isSplitPreview() ? previewSplitPercent() : 100"
-      [class.hidden-pane]="workspaceService.diffModeActive() || activeFileIsImage() || isFullPreview()"
+      [class.hidden-pane]="workspaceService.diffModeActive() || activeFileIsImage() || activeFileIsBinary() || isFullPreview()"
     ></div>
 
     @if (isSplitPreview()) {

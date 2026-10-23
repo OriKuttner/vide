@@ -250,7 +250,7 @@
                     <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
                   </span>
                 } @else {
-                  <span class="file-badge" [attr.data-lang]="node.language">{{
+                  <span class="file-badge" [attr.data-lang]="isBinaryNode(node.file || node) ? 'binary' : ((node.file && node.file.language) || node.language)">{{
                     getFileIcon(node.file || node)
                   }}</span>
                 }
@@ -466,7 +466,7 @@
                   <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
                 </span>
               } @else {
-                <span class="file-badge" [attr.data-lang]="group.file.language">{{
+                <span class="file-badge" [attr.data-lang]="isBinaryNode(group.file) ? 'binary' : group.file.language">{{
                   getFileIcon(group.file)
                 }}</span>
               }
@@ -688,7 +688,7 @@
                     <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
                   </span>
                 } @else {
-                  <span class="file-icon-badge" [attr.data-lang]="file.language">{{ getFileIcon(file) }}</span>
+                  <span class="file-icon-badge" [attr.data-lang]="isBinaryNode(file) ? 'binary' : file.language">{{ getFileIcon(file) }}</span>
                 }
                 <div class="git-file-meta">
                   <span class="git-file-name">{{ file.name }}</span>

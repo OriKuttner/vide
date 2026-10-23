@@ -20,6 +20,9 @@ export interface WorkspaceFile {
   fsPath?: string; // Absolute filesystem path in Tauri desktop mode
   isImage?: boolean; // True if file is an image (PNG, JPG, SVG, etc.)
   imageUrl?: string; // Blob URL or base64 data URL for preview
+  isBinary?: boolean; // True if file is a non-text, non-image binary file
+  fileTypeDescription?: string; // Description from `file -b` or magic byte detection
+  hexData?: HexViewResult; // Loaded hex view data
   fileSize?: number; // Size in bytes
   lastDiskMtime?: number; // Last known modification time in ms (for disk change signature)
   lastDiskSize?: number; // Last known size in bytes (for disk change signature)
@@ -27,6 +30,28 @@ export interface WorkspaceFile {
   tabSize?: number;
   isIndentationCustom?: boolean;
   cursor?: { line: number; column: number };
+}
+
+export interface HexLine {
+  offset: string;
+  hex_part1: string;
+  hex_part2: string;
+  ascii: string;
+}
+
+export interface HexViewResult {
+  total_size: number;
+  file_type: string;
+  lines: HexLine[];
+  bytes_shown: number;
+  has_more: boolean;
+}
+
+export interface FileInspectionResult {
+  is_binary: boolean;
+  file_type: string;
+  mime_type: string;
+  size: number;
 }
 
 export interface FileTreeNode {
@@ -95,6 +120,7 @@ export function detectLanguageFromFilename(filename: string): string {
   if (lower.endsWith('.xml')) return 'xml';
   if (lower.endsWith('.rs')) return 'rust';
   if (isImageFile(filename)) return 'image';
+  if (isBinaryFile(filename)) return 'binary';
 
   return 'plaintext';
 }
@@ -190,6 +216,17 @@ export function isImageFile(filename: string): boolean {
     lower.endsWith('.bmp') ||
     lower.endsWith('.avif')
   );
+}
+
+export function isBinaryFile(filename?: string): boolean {
+  if (!filename) return false;
+  const lower = filename.toLowerCase();
+  const binaryExts = [
+    '.bin', '.exe', '.so', '.dll', '.dylib', '.o', '.a', '.pdf', '.zip', '.tar', '.gz',
+    '.tgz', '.bz2', '.xz', '.7z', '.iso', '.deb', '.wasm', '.db', '.sqlite', '.sqlite3',
+    '.pyc', '.class', '.jar', '.apk', '.dmg', '.pkg', '.rpm', '.msi'
+  ];
+  return binaryExts.some((ext) => lower.endsWith(ext));
 }
 
 export function getImageMimeType(filename: string): string {

@@ -8,7 +8,7 @@ import { Component, inject, signal, computed, ViewChild, ElementRef, effect, Cha
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';
 import { AiService } from '../../services/ai.service';
-import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile } from '../../models/file.model';
+import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isBinaryFile } from '../../models/file.model';
 
 @Component({
   selector: 'app-sidebar',
@@ -215,12 +215,25 @@ export class SidebarComponent {
     return isPerlFile(name, lang);
   }
 
+  public isBinaryNode(item: WorkspaceFile | FileTreeNode | undefined | null): boolean {
+    if (!item) return false;
+    if ('isBinary' in item && item.isBinary) return true;
+    const lang = ('language' in item ? item.language : '') || '';
+    if (lang === 'binary') return true;
+    const name = item.name || '';
+    return isBinaryFile(name);
+  }
 
   public getFileIcon(file: WorkspaceFile | FileTreeNode): string {
+    if (this.isBinaryNode(file)) {
+      return 'BIN';
+    }
     if (file.language === 'image' || isImageFile(file.name)) {
       return 'IMG';
     }
     switch (file.language) {
+      case 'binary':
+        return 'BIN';
       case 'image':
         return 'IMG';
       case 'omniflux':

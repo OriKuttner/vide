@@ -37,6 +37,7 @@ import {
   isMarkdownFile,
   isHtmlFile,
   isPreviewableFile,
+  isBinaryFile,
 } from '../../models/file.model';
 
 @Component({
@@ -161,6 +162,13 @@ ${rawContent}
     return null;
   });
 
+  readonly activeFileIsBinary = computed(() => {
+    const f = this.workspaceService.activeFile();
+    if (!f) return null;
+    if (f.isBinary || f.language === 'binary' || isBinaryFile(f.name)) return f;
+    return null;
+  });
+
   private editorInstance: monaco.editor.IStandaloneCodeEditor | null = null;
   private diffEditorInstance: monaco.editor.IStandaloneDiffEditor | null = null;
   private fileModels = new Map<string, monaco.editor.ITextModel>();
@@ -185,19 +193,26 @@ ${rawContent}
       }
     });
 
-    // Effect to switch active file in Monaco or reset image viewer
+    // Effect to switch active file in Monaco or reset image/binary viewer
     effect(
       () => {
         const active = this.workspaceService.activeFile();
         if (active) {
           untracked(() => {
-            if (active.isImage || isImageFile(active.name)) {
+            const isImg = active.isImage || isImageFile(active.name);
+            const isBin = active.isBinary || active.language === 'binary' || isBinaryFile(active.name);
+            if (isImg || isBin) {
               if (this.currentActiveFileId && this.editorInstance) {
                 this.saveCurrentFileViewState(this.currentActiveFileId);
                 this.currentActiveFileId = null;
               }
-              this.imageZoom.set(1.0);
-              this.imageDimensions.set(null);
+              if (this.editorInstance && this.editorInstance.getModel()) {
+                this.editorInstance.setModel(null);
+              }
+              if (isImg) {
+                this.imageZoom.set(1.0);
+                this.imageDimensions.set(null);
+              }
             } else if (this.editorInstance) {
               this.switchToFile(active);
             }
@@ -320,14 +335,20 @@ ${rawContent}
       const jump = this.workspaceService.pendingLineJump();
       if (jump && this.editorInstance) {
         const active = this.workspaceService.activeFile();
+        if (active && (active.isBinary || active.language === 'binary' || isBinaryFile(active.name))) {
+          this.workspaceService.pendingLineJump.set(null);
+          return;
+        }
         if (!jump.fileId || (active && (active.id === jump.fileId || active.path === jump.fileId))) {
           const model = this.editorInstance.getModel();
           if (model && model.getLineCount() < jump.lineNumber && active && !active.isLoaded) {
             return;
           }
-          this.editorInstance.revealLineInCenter(jump.lineNumber);
-          this.editorInstance.setPosition({ lineNumber: jump.lineNumber, column: jump.column || 1 });
-          this.editorInstance.focus();
+          if (model) {
+            this.editorInstance.revealLineInCenter(jump.lineNumber);
+            this.editorInstance.setPosition({ lineNumber: jump.lineNumber, column: jump.column || 1 });
+            this.editorInstance.focus();
+          }
           this.workspaceService.pendingLineJump.set(null);
         }
       }
@@ -352,6 +373,10 @@ ${rawContent}
       const hl = this.workspaceService.pendingHighlight();
       if (hl && this.editorInstance) {
         const active = this.workspaceService.activeFile();
+        if (active && (active.isBinary || active.language === 'binary' || isBinaryFile(active.name))) {
+          this.workspaceService.pendingHighlight.set(null);
+          return;
+        }
         if (active && (active.id === hl.fileId || active.path === hl.fileId)) {
           this.applyHighlight(hl.highlightStart, hl.highlightEnd);
           this.workspaceService.pendingHighlight.set(null);
@@ -933,7 +958,8 @@ ${rawContent}
     this.resizeObserver.observe(this.editorContainer.nativeElement);
     this.resizeObserver.observe(this.diffContainer.nativeElement);
 
-    if (active && !active.isImage) {
+    const isBin = active && (active.isBinary || active.language === 'binary' || isBinaryFile(active.name));
+    if (active && !active.isImage && !isBin) {
       this.switchToFile(active);
     }
   }
@@ -1061,7 +1087,7 @@ ${rawContent}
     if (!fileId) return;
 
     const file = this.workspaceService.files().find((f) => f.id === fileId || f.path === fileId);
-    if (!file || file.isImage) return;
+    if (!file || file.isImage || file.isBinary || file.language === 'binary' || isBinaryFile(file.name)) return;
 
     const vs = this.editorInstance.saveViewState();
     if (!vs) return;
@@ -1333,6 +1359,13 @@ ${rawContent}
 
   private switchToFile(file: WorkspaceFile): void {
     if (!this.editorInstance) return;
+    if (file.isBinary || file.language === 'binary' || isBinaryFile(file.name)) {
+      if (this.editorInstance.getModel()) {
+        this.editorInstance.setModel(null);
+      }
+      this.currentActiveFileId = null;
+      return;
+    }
 
     // Save view state of outgoing file before switching
     if (this.currentActiveFileId && this.currentActiveFileId !== file.id) {
@@ -1681,6 +1714,10 @@ ${rawContent}
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  public loadMoreHex(file: WorkspaceFile): void {
+    this.workspaceService.loadMoreHex(file);
   }
 
   public onStartResizePreview(event: MouseEvent): void {

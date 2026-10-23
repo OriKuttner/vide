@@ -613,6 +613,10 @@
       color: #fff;
       font-size: 15px;
     }
+    &[data-lang='binary'] {
+      background-color: #6366f1;
+      color: #fff;
+    }
   }
 
   .node-name {
@@ -1367,6 +1371,10 @@
         &[data-lang='image'] {
           color: #107c41;
           font-size: 16px;
+        }
+
+        &[data-lang='binary'] {
+          color: #6366f1;
         }
       }
 

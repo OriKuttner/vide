@@ -9,6 +9,7 @@ import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ZoomService } from '../../services/zoom.service';
 import { AiService } from '../../services/ai.service';
+import { isBinaryFile } from '../../models/file.model';
 
 @Component({
   selector: 'app-status-bar',
@@ -46,8 +47,13 @@ export class StatusBarComponent {
   public activeLanguageLabel(): string {
     const file = this.workspaceService.activeFile();
     if (!file) return 'Plain Text';
-    const lang = file.language;
+    if (file.isBinary || file.language === 'binary' || isBinaryFile(file.name)) {
+      return 'Binary';
+    }
+    const lang = file.language || 'plaintext';
     switch (lang.toLowerCase()) {
+      case 'binary':
+        return 'Binary';
       case 'omniflux':
         return 'OmniFlux';
       case 'typescript':

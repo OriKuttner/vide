@@ -8,7 +8,7 @@ import { Component, ElementRef, ViewChild, effect, inject } from '@angular/core'
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ThemeService } from '../../services/theme.service';
-import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isPreviewableFile } from '../../models/file.model';
+import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isPreviewableFile, isBinaryFile } from '../../models/file.model';
 
 @Component({
   selector: 'app-tabs',
@@ -48,6 +48,10 @@ export class TabsComponent {
 
   public isImage(tab: WorkspaceFile): boolean {
     return !!tab.isImage || isImageFile(tab.name);
+  }
+
+  public isBinary(tab: WorkspaceFile): boolean {
+    return !!tab.isBinary || tab.language === 'binary' || isBinaryFile(tab.name);
   }
 
   public isOmniFlux(tab: WorkspaceFile): boolean {

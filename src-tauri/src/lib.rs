@@ -70,6 +70,31 @@ pub struct FileMetadataResult {
     pub size: u64,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FileInspectionResult {
+    pub is_binary: bool,
+    pub file_type: String,
+    pub mime_type: String,
+    pub size: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HexLine {
+    pub offset: String,
+    pub hex_part1: String,
+    pub hex_part2: String,
+    pub ascii: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HexViewResult {
+    pub total_size: u64,
+    pub file_type: String,
+    pub lines: Vec<HexLine>,
+    pub bytes_shown: usize,
+    pub has_more: bool,
+}
+
 fn expand_path(p: &str) -> String {
     if p.starts_with("~/") {
         if let Ok(home) = std::env::var("HOME") {
@@ -949,6 +974,197 @@ fn read_file_base64(file_path: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to read binary file '{}': {}", clean_path, e))?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(b64)
+}
+
+#[tauri::command]
+fn inspect_file(file_path: String) -> Result<FileInspectionResult, String> {
+    use std::io::Read;
+    let clean_path = expand_path(&file_path);
+    let metadata = fs::metadata(&clean_path)
+        .map_err(|e| format!("Failed to read metadata for '{}': {}", clean_path, e))?;
+    let size = metadata.len();
+
+    let mut file_type = String::new();
+    let mut mime_type = String::from("application/octet-stream");
+
+    // 1. Try running system `file` command (with -L to follow symlinks and -b for brief output)
+    #[cfg(unix)]
+    {
+        if let Ok(output) = Command::new("file").args(["-b", "-L", &clean_path]).output() {
+            if output.status.success() {
+                let desc = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !desc.is_empty() {
+                    file_type = desc;
+                }
+            }
+        }
+        if let Ok(output) = Command::new("file").args(["-b", "-L", "--mime-type", &clean_path]).output() {
+            if output.status.success() {
+                let mime = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !mime.is_empty() {
+                    mime_type = mime;
+                }
+            }
+        }
+    }
+
+    // 2. Read first chunk up to 8192 bytes for binary inspection and fallback detection
+    let mut file = fs::File::open(&clean_path)
+        .map_err(|e| format!("Failed to open '{}': {}", clean_path, e))?;
+    let mut buffer = vec![0u8; 8192];
+    let bytes_read = file.read(&mut buffer).unwrap_or(0);
+    let sample = &buffer[..bytes_read];
+
+    let contains_null = sample.contains(&0u8);
+    let is_utf8 = std::str::from_utf8(sample).is_ok();
+
+    if file_type.is_empty() {
+        if sample.starts_with(b"\x7fELF") {
+            file_type = "ELF 64-bit/32-bit executable or shared library".to_string();
+            mime_type = "application/x-executable".to_string();
+        } else if sample.starts_with(b"MZ") {
+            file_type = "DOS/Windows executable (PE format)".to_string();
+            mime_type = "application/x-dosexec".to_string();
+        } else if sample.starts_with(b"PK\x03\x04") {
+            file_type = "Zip archive data".to_string();
+            mime_type = "application/zip".to_string();
+        } else if sample.starts_with(b"%PDF-") {
+            file_type = "PDF document".to_string();
+            mime_type = "application/pdf".to_string();
+        } else if sample.starts_with(b"\x1f\x8b") {
+            file_type = "gzip compressed data".to_string();
+            mime_type = "application/gzip".to_string();
+        } else if sample.starts_with(b"7z\xbc\xaf\x27\x1c") {
+            file_type = "7-zip archive data".to_string();
+            mime_type = "application/x-7z-compressed".to_string();
+        } else if sample.starts_with(b"SQLite format 3\0") {
+            file_type = "SQLite 3.x database".to_string();
+            mime_type = "application/x-sqlite3".to_string();
+        } else if contains_null || !is_utf8 {
+            file_type = "Binary data".to_string();
+        } else {
+            file_type = "Text document".to_string();
+            mime_type = "text/plain".to_string();
+        }
+    }
+
+    let is_binary = contains_null
+        || (!is_utf8 && !mime_type.starts_with("text/"))
+        || mime_type.starts_with("application/x-")
+        || mime_type == "application/octet-stream"
+        || mime_type == "application/pdf"
+        || mime_type == "application/zip"
+        || (!mime_type.starts_with("text/")
+            && !mime_type.starts_with("image/")
+            && !mime_type.ends_with("+xml")
+            && !mime_type.ends_with("+json")
+            && mime_type != "application/json"
+            && mime_type != "application/javascript"
+            && mime_type != "application/xml");
+
+    Ok(FileInspectionResult {
+        is_binary,
+        file_type,
+        mime_type,
+        size,
+    })
+}
+
+#[tauri::command]
+fn read_file_hex(file_path: String, offset: u64, max_bytes: Option<usize>) -> Result<HexViewResult, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let clean_path = expand_path(&file_path);
+    let metadata = fs::metadata(&clean_path)
+        .map_err(|e| format!("Failed to read metadata for '{}': {}", clean_path, e))?;
+    let total_size = metadata.len();
+
+    let mut file = fs::File::open(&clean_path)
+        .map_err(|e| format!("Failed to open '{}': {}", clean_path, e))?;
+
+    if offset < total_size {
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| format!("Failed to seek to offset {}: {}", offset, e))?;
+    }
+
+    let limit = max_bytes.unwrap_or(4096); // Default 4KB chunk (256 lines)
+    let mut buffer = vec![0u8; limit];
+    let bytes_read = file.read(&mut buffer).unwrap_or(0);
+    let slice = &buffer[..bytes_read];
+
+    let mut lines = Vec::new();
+    for (chunk_idx, chunk) in slice.chunks(16).enumerate() {
+        let line_offset = offset + (chunk_idx * 16) as u64;
+        let offset_str = format!("{:08X}", line_offset);
+
+        let mut hex_part1 = String::new();
+        let mut hex_part2 = String::new();
+        let mut ascii_part = String::new();
+
+        for (i, &b) in chunk.iter().enumerate() {
+            let byte_str = format!("{:02X}", b);
+            if i < 8 {
+                if !hex_part1.is_empty() { hex_part1.push(' '); }
+                hex_part1.push_str(&byte_str);
+            } else {
+                if !hex_part2.is_empty() { hex_part2.push(' '); }
+                hex_part2.push_str(&byte_str);
+            }
+
+            if (32..=126).contains(&b) {
+                ascii_part.push(b as char);
+            } else {
+                ascii_part.push('.');
+            }
+        }
+
+        // Pad hex parts if chunk has fewer than 16 bytes
+        if chunk.len() < 8 {
+            let missing = 8 - chunk.len();
+            for _ in 0..missing {
+                if !hex_part1.is_empty() { hex_part1.push(' '); }
+                hex_part1.push_str("  ");
+            }
+        }
+        if chunk.len() < 16 {
+            let present_in_p2 = if chunk.len() > 8 { chunk.len() - 8 } else { 0 };
+            let missing = 8 - present_in_p2;
+            for _ in 0..missing {
+                if !hex_part2.is_empty() { hex_part2.push(' '); }
+                hex_part2.push_str("  ");
+            }
+        }
+
+        lines.push(HexLine {
+            offset: offset_str,
+            hex_part1,
+            hex_part2,
+            ascii: ascii_part,
+        });
+    }
+
+    let has_more = (offset + bytes_read as u64) < total_size;
+
+    // Get file type description
+    let mut file_type = String::from("Binary data");
+    #[cfg(unix)]
+    {
+        if let Ok(output) = Command::new("file").args(["-b", "-L", &clean_path]).output() {
+            if output.status.success() {
+                let desc = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !desc.is_empty() {
+                    file_type = desc;
+                }
+            }
+        }
+    }
+
+    Ok(HexViewResult {
+        total_size,
+        file_type,
+        lines,
+        bytes_shown: (offset + bytes_read as u64) as usize,
+        has_more,
+    })
 }
 
 #[tauri::command]
@@ -2078,6 +2294,8 @@ pub fn run() {
             create_git_tag,
             set_window_title,
             log_to_terminal,
+            inspect_file,
+            read_file_hex,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

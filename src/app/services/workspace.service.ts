@@ -17,6 +17,10 @@ import {
 	GitCommit,
 	GitSyncStatus,
 	GitBranchItem,
+	HexViewResult,
+	HexLine,
+	FileInspectionResult,
+	isBinaryFile,
 } from '../models/file.model';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -1447,7 +1451,7 @@ export class WorkspaceService {
 	 */
 	public async reloadActiveFileIfChangedOnDisk(): Promise<void> {
 		const active = this.activeFile();
-		if (!active || active.isImage || (!active.fsPath && !active.handle && !active.rawFile)) {
+		if (!active || active.isImage || active.isBinary || (!active.fsPath && !active.handle && !active.rawFile)) {
 			return;
 		}
 
@@ -1936,7 +1940,7 @@ export class WorkspaceService {
 		if (file.isLoaded && file.content !== undefined) {
 			return file.content;
 		}
-		if (isImageFile(file.name)) {
+		if (isImageFile(file.name) || file.isBinary) {
 			return '';
 		}
 		try {
@@ -2090,7 +2094,7 @@ export class WorkspaceService {
 
 		const alreadyLoaded = file.isLoaded;
 
-		if ((!file.isLoaded || (isImg && !file.imageUrl)) && (file.fsPath || file.handle || file.rawFile)) {
+		if ((!file.isLoaded || (isImg && !file.imageUrl) || (file.isBinary && !file.hexData)) && (file.fsPath || file.handle || file.rawFile)) {
 			try {
 				if (isImg) {
 					const mime = getImageMimeType(file.name);
@@ -2126,48 +2130,140 @@ export class WorkspaceService {
 					file.content = '';
 					file.isLoaded = true;
 				} else {
+					let isBinary = file.isBinary ?? false;
+					let fileTypeDesc = file.fileTypeDescription ?? '';
+					let hexResult: HexViewResult | null = file.hexData ?? null;
 					let content = '';
 					let mtime: number | undefined;
 					let size: number | undefined;
 
 					if (isTauriApp() && file.fsPath) {
-						content = await invoke<string>('read_file_text', { filePath: file.fsPath });
 						try {
-							const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
-								filePath: file.fsPath,
-							});
-							mtime = meta.mtime_ms;
-							size = meta.size;
-						} catch (err) {
-							console.warn('Failed to get metadata in openFile:', err);
+							const inspection = await invoke<FileInspectionResult>('inspect_file', { filePath: file.fsPath });
+							if (inspection && inspection.is_binary) {
+								isBinary = true;
+								fileTypeDesc = inspection.file_type;
+								size = inspection.size;
+								try {
+									hexResult = await invoke<HexViewResult>('read_file_hex', {
+										filePath: file.fsPath,
+										offset: 0,
+										maxBytes: 4096,
+									});
+								} catch (hexErr) {
+									console.warn('read_file_hex failed:', hexErr);
+								}
+							}
+						} catch (inspErr) {
+							console.warn('inspect_file failed:', inspErr);
+						}
+
+						if (!isBinary) {
+							content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+							try {
+								const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
+									filePath: file.fsPath,
+								});
+								mtime = meta.mtime_ms;
+								size = meta.size;
+							} catch (err) {
+								console.warn('Failed to get metadata in openFile:', err);
+							}
 						}
 					} else if (file.handle && typeof file.handle.getFile === 'function') {
 						const fileObj = await file.handle.getFile();
-						content = await fileObj.text();
 						mtime = fileObj.lastModified;
 						size = fileObj.size;
+						const slice = await fileObj.slice(0, Math.min(8192, fileObj.size)).arrayBuffer();
+						const u8 = new Uint8Array(slice);
+						let hasNull = false;
+						for (let i = 0; i < u8.length; i++) {
+							if (u8[i] === 0) {
+								hasNull = true;
+								break;
+							}
+						}
+						if (hasNull) {
+							isBinary = true;
+							fileTypeDesc = fileObj.type ? `Binary file (${fileObj.type})` : 'Binary data';
+							const hexSlice = await fileObj.slice(0, Math.min(4096, fileObj.size)).arrayBuffer();
+							hexResult = this.formatHexFromBuffer(new Uint8Array(hexSlice), fileObj.size, fileTypeDesc, 0);
+						} else {
+							content = await fileObj.text();
+						}
 					} else if (file.rawFile) {
-						content = await file.rawFile.text();
-						mtime = file.rawFile.lastModified;
-						size = file.rawFile.size;
+						const fileObj = file.rawFile;
+						mtime = fileObj.lastModified;
+						size = fileObj.size;
+						const slice = await fileObj.slice(0, Math.min(8192, fileObj.size)).arrayBuffer();
+						const u8 = new Uint8Array(slice);
+						let hasNull = false;
+						for (let i = 0; i < u8.length; i++) {
+							if (u8[i] === 0) {
+								hasNull = true;
+								break;
+							}
+						}
+						if (hasNull) {
+							isBinary = true;
+							fileTypeDesc = fileObj.type ? `Binary file (${fileObj.type})` : 'Binary data';
+							const hexSlice = await fileObj.slice(0, Math.min(4096, fileObj.size)).arrayBuffer();
+							hexResult = this.formatHexFromBuffer(new Uint8Array(hexSlice), fileObj.size, fileTypeDesc, 0);
+						} else {
+							content = await fileObj.text();
+						}
 					}
-					file.content = content;
-					if (mtime !== undefined) file.lastDiskMtime = mtime;
-					if (size !== undefined) {
-						file.lastDiskSize = size;
-						file.fileSize = size;
+
+					if (isBinary) {
+						file.isBinary = true;
+						file.fileTypeDescription = fileTypeDesc;
+						file.hexData = hexResult ?? undefined;
+						file.language = 'binary';
+						file.content = '';
+						if (size !== undefined) {
+							file.lastDiskSize = size;
+							file.fileSize = size;
+						}
+						if (mtime !== undefined) {
+							file.lastDiskMtime = mtime;
+						}
+						file.isLoaded = true;
+						file.isModified = false;
+
+						// Update matching node in file tree so it reflects BIN badge immediately
+						this.fileTree.update((nodes) => {
+							const updateNodes = (list: FileTreeNode[]): FileTreeNode[] => {
+								return list.map((n) => {
+									if (n.path === file.path || n.fsPath === file.fsPath || n.id === file.id) {
+										return { ...n, language: 'binary', file };
+									}
+									if (n.children && n.children.length > 0) {
+										return { ...n, children: updateNodes(n.children) };
+									}
+									return n;
+								});
+							};
+							return updateNodes(nodes);
+						});
+					} else {
+						file.content = content;
+						if (mtime !== undefined) file.lastDiskMtime = mtime;
+						if (size !== undefined) {
+							file.lastDiskSize = size;
+							file.fileSize = size;
+						}
+						if (file.language === 'plaintext' || !file.language) {
+							file.language = detectLanguage(file.name, content);
+						}
+						if (file.savedContent === undefined) {
+							file.savedContent = content;
+						}
+						if (file.originalContent === undefined && !file.isModified && !file.gitStatus) {
+							file.originalContent = content;
+						}
+						file.isLoaded = true;
+						file.isModified = false;
 					}
-					if (file.language === 'plaintext' || !file.language) {
-						file.language = detectLanguage(file.name, content);
-					}
-					if (file.savedContent === undefined) {
-						file.savedContent = content;
-					}
-					if (file.originalContent === undefined && !file.isModified && !file.gitStatus) {
-						file.originalContent = content;
-					}
-					file.isLoaded = true;
-					file.isModified = false;
 				}
 
 				this.files.update((files) => {
@@ -2185,6 +2281,9 @@ export class WorkspaceService {
 										isModified: f.isModified ?? false,
 										isImage: file.isImage,
 										imageUrl: file.imageUrl,
+										isBinary: file.isBinary,
+										fileTypeDescription: file.fileTypeDescription,
+										hexData: file.hexData,
 										fileSize: file.fileSize,
 										lastDiskMtime: file.lastDiskMtime,
 										lastDiskSize: file.lastDiskSize,
@@ -2221,10 +2320,112 @@ export class WorkspaceService {
 		const currentTabs = this.openTabs();
 		if (!currentTabs.some((tab) => tab.id === file.id)) {
 			this.openTabs.set([...currentTabs, file]);
+		} else {
+			this.openTabs.update((tabs) =>
+				tabs.map((tab) =>
+					tab.id === file.id
+						? {
+								...tab,
+								isLoaded: true,
+								isBinary: file.isBinary,
+								fileTypeDescription: file.fileTypeDescription,
+								hexData: file.hexData,
+								fileSize: file.fileSize,
+						  }
+						: tab
+				)
+			);
 		}
 		if (setActive) {
 			this.activeFileId.set(file.id);
 			this.revealActiveFileInTree(file);
+		}
+	}
+
+	public formatHexFromBuffer(u8: Uint8Array, totalSize: number, fileType: string, startOffset: number = 0): HexViewResult {
+		const lines: HexLine[] = [];
+		for (let i = 0; i < u8.length; i += 16) {
+			const lineOffset = (startOffset + i).toString(16).padStart(8, '0').toUpperCase();
+			const chunk = u8.slice(i, Math.min(i + 16, u8.length));
+			let hexPart1 = '';
+			let hexPart2 = '';
+			let ascii = '';
+			for (let j = 0; j < 16; j++) {
+				if (j < chunk.length) {
+					const b = chunk[j];
+					const hexStr = b.toString(16).padStart(2, '0').toUpperCase();
+					if (j < 8) {
+						hexPart1 += (hexPart1 ? ' ' : '') + hexStr;
+					} else {
+						hexPart2 += (hexPart2 ? ' ' : '') + hexStr;
+					}
+					ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+				} else {
+					if (j < 8) {
+						hexPart1 += (hexPart1 ? '   ' : '  ');
+					} else {
+						hexPart2 += (hexPart2 ? '   ' : '  ');
+					}
+					ascii += ' ';
+				}
+			}
+			lines.push({ offset: lineOffset, hex_part1: hexPart1, hex_part2: hexPart2, ascii });
+		}
+		return {
+			total_size: totalSize,
+			file_type: fileType,
+			lines,
+			bytes_shown: startOffset + u8.length,
+			has_more: (startOffset + u8.length) < totalSize
+		};
+	}
+
+	public async loadMoreHex(file: WorkspaceFile): Promise<void> {
+		if (!file.isBinary || !file.hexData || !file.hexData.has_more) return;
+		const currentOffset = file.hexData.bytes_shown;
+		if (isTauriApp() && file.fsPath) {
+			try {
+				const nextChunk = await invoke<HexViewResult>('read_file_hex', {
+					filePath: file.fsPath,
+					offset: currentOffset,
+					maxBytes: 4096,
+				});
+				file.hexData.lines = [...file.hexData.lines, ...nextChunk.lines];
+				file.hexData.bytes_shown = nextChunk.bytes_shown;
+				file.hexData.has_more = nextChunk.has_more;
+				this.files.update((files) =>
+					files.map((f) => (f.id === file.id ? { ...f, hexData: { ...file.hexData! } } : f))
+				);
+				this.openTabs.update((tabs) =>
+					tabs.map((t) => (t.id === file.id ? { ...t, hexData: { ...file.hexData! } } : t))
+				);
+			} catch (err) {
+				console.error('Failed to load more hex:', err);
+			}
+		} else if (file.handle || file.rawFile) {
+			try {
+				const fileObj: File = file.handle ? await file.handle.getFile() : file.rawFile!;
+				const nextSlice = await fileObj
+					.slice(currentOffset, Math.min(currentOffset + 4096, fileObj.size))
+					.arrayBuffer();
+				const nextChunk = this.formatHexFromBuffer(
+					new Uint8Array(nextSlice),
+					fileObj.size,
+					file.fileTypeDescription || '',
+					currentOffset
+				);
+				file.hexData.lines = [...file.hexData.lines, ...nextChunk.lines];
+				file.hexData.bytes_shown = nextChunk.bytes_shown;
+				file.hexData.has_more = nextChunk.has_more;
+				this.files.update((files) =>
+					files.map((f) => (f.id === file.id ? { ...f, hexData: { ...file.hexData! } } : f))
+				);
+				this.openTabs.update((tabs) =>
+					tabs.map((t) => (t.id === file.id ? { ...t, hexData: { ...file.hexData! } } : t))
+				);
+			} catch (err) {
+				console.error('Failed to load more hex from web handle:', err);
+			}
 		}
 	}
 
@@ -2332,14 +2533,16 @@ export class WorkspaceService {
 							level: node.level + 1,
 						});
 					} else if (this.isReadableTextFile(entry.name)) {
+						const isBin = isBinaryFile(entry.name);
 						const file: WorkspaceFile = {
 							id: relPath,
 							name: entry.name,
 							path: relPath,
 							fsPath: entry.path,
-							language: detectLanguageFromFilename(entry.name),
+							language: isBin ? 'binary' : detectLanguageFromFilename(entry.name),
 							content: '',
 							isLoaded: false,
+							isBinary: isBin || undefined,
 							isModified: false,
 						};
 						children.push({
@@ -2889,14 +3092,16 @@ export class WorkspaceService {
 						level: 0,
 					});
 				} else if (this.isReadableTextFile(entry.name)) {
+					const isBin = isBinaryFile(entry.name);
 					const file: WorkspaceFile = {
 						id: entry.name,
 						name: entry.name,
 						path: entry.name,
 						fsPath: entry.path,
-						language: detectLanguageFromFilename(entry.name),
+						language: isBin ? 'binary' : detectLanguageFromFilename(entry.name),
 						content: '',
 						isLoaded: false,
+						isBinary: isBin || undefined,
 						isModified: false,
 					};
 					rootFiles.push(file);
@@ -3123,6 +3328,7 @@ export class WorkspaceService {
 						}
 						nodes.push(dirNode);
 					} else if (this.isReadableTextFile(entry.name)) {
+						const isBin = isBinaryFile(entry.name);
 						const existingFile = this.files().find(
 							(f) => f.fsPath === entry.path || f.path === relPath
 						);
@@ -3131,9 +3337,10 @@ export class WorkspaceService {
 							name: entry.name,
 							path: relPath,
 							fsPath: entry.path,
-							language: detectLanguageFromFilename(entry.name),
+							language: isBin ? 'binary' : detectLanguageFromFilename(entry.name),
 							content: '',
 							isLoaded: false,
+							isBinary: isBin || undefined,
 							isModified: false,
 						};
 						nodes.push({
@@ -3195,14 +3402,16 @@ export class WorkspaceService {
 							}
 							queue.push({ fullPath: entry.path, relPath });
 						} else if (this.isReadableTextFile(entry.name)) {
+							const isBin = isBinaryFile(entry.name);
 							discoveredFiles.push({
 								id: relPath,
 								name: entry.name,
 								path: relPath,
 								fsPath: entry.path,
-								language: detectLanguageFromFilename(entry.name),
+								language: isBin ? 'binary' : detectLanguageFromFilename(entry.name),
 								content: '',
 								isLoaded: false,
+								isBinary: isBin || undefined,
 								isModified: false,
 							});
 						}
@@ -3229,15 +3438,17 @@ export class WorkspaceService {
 				if (existing) {
 					return {
 						...df,
-						content: existing.content,
-						originalContent: existing.originalContent,
-						isLoaded: existing.isLoaded,
-						isModified: existing.isModified,
-						gitStatus: existing.gitStatus,
+						...existing,
 					};
 				}
 				return df;
 			});
+
+			for (const existing of existingMap.values()) {
+				if (!mergedFiles.some((f) => f.path === existing.path || f.id === existing.id)) {
+					mergedFiles.push(existing);
+				}
+			}
 
 			this.files.set(mergedFiles);
 			this.indexedFileCount.set(mergedFiles.length);
@@ -3745,13 +3956,15 @@ export class WorkspaceService {
 							queue.push({ handle: entry, path: relPath });
 						} else if (entry.kind === 'file') {
 							if (this.isReadableTextFile(entry.name)) {
+								const isBin = isBinaryFile(entry.name);
 								discoveredFiles.push({
 									id: relPath,
 									name: entry.name,
 									path: relPath,
-									language: detectLanguageFromFilename(entry.name),
+									language: isBin ? 'binary' : detectLanguageFromFilename(entry.name),
 									content: '',
 									isLoaded: false,
+									isBinary: isBin || undefined,
 									handle: entry,
 									isModified: false,
 								});
@@ -3780,15 +3993,17 @@ export class WorkspaceService {
 				if (existing) {
 					return {
 						...df,
-						content: existing.content,
-						originalContent: existing.originalContent,
-						isLoaded: existing.isLoaded,
-						isModified: existing.isModified,
-						gitStatus: existing.gitStatus,
+						...existing,
 					};
 				}
 				return df;
 			});
+
+			for (const existing of existingMap.values()) {
+				if (!mergedFiles.some((f) => f.path === existing.path || f.id === existing.id)) {
+					mergedFiles.push(existing);
+				}
+			}
 
 			this.files.set(mergedFiles);
 			this.indexedFileCount.set(mergedFiles.length);
@@ -3866,6 +4081,9 @@ export class WorkspaceService {
 	 * Saves a specific file back to disk and updates savedContent & isModified.
 	 */
 	public async saveFile(file: WorkspaceFile): Promise<boolean> {
+		if (file.isBinary || file.isImage) {
+			return true;
+		}
 		if (isTauriApp() && file.fsPath) {
 			try {
 				await invoke('write_file_text', {
@@ -4034,49 +4252,7 @@ export class WorkspaceService {
 	}
 
 	private isReadableTextFile(filename: string): boolean {
-		const ext = filename.split('.').pop()?.toLowerCase();
-		if (!ext) return true;
-		if (isImageFile(filename)) return true;
-		const binaryExts = new Set([
-			'pdf',
-			'zip',
-			'tar',
-			'gz',
-			'tgz',
-			'bz2',
-			'xz',
-			'exe',
-			'dll',
-			'so',
-			'dylib',
-			'bin',
-			'o',
-			'a',
-			'woff',
-			'woff2',
-			'ttf',
-			'eot',
-			'deb',
-			'7z',
-			'iso',
-			'pyc',
-			'class',
-			'jar',
-			'wasm',
-			'mp3',
-			'mp4',
-			'wav',
-			'ogg',
-			'webm',
-			'avi',
-			'mov',
-			'mkv',
-			'flac',
-			'db',
-			'sqlite',
-			'sqlite3',
-		]);
-		return !binaryExts.has(ext);
+		return true;
 	}
 
 	private stripRootPrefix(path: string): string {
