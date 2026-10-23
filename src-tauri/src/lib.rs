@@ -1732,6 +1732,11 @@ fn get_git_diff_for_commit(repo_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> {
+    window.set_title(&title).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_vector_session_token() -> Result<Option<String>, String> {
     let home = std::env::var("HOME").map_err(|e| e.to_string())?;
     let path = PathBuf::from(home)
@@ -1938,6 +1943,7 @@ pub fn run() {
             get_git_tags,
             create_git_tag,
             get_vector_session_token,
+            set_window_title,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
