@@ -157,53 +157,51 @@
             <div class="status-indicator-box">
               <span
                 class="status-dot"
-                [class.online]="aiService.isServerOnline()"
-                [class.offline]="!aiService.isServerOnline()"
+                [class.online]="aiService.isConfigured()"
+                [class.offline]="!aiService.isConfigured()"
               ></span>
               <span class="status-text">
-                {{ aiService.isServerOnline() ? 'llama-server is Online & Connected' : 'llama-server is Offline' }}
+                {{ aiService.isConfigured() ? 'Gemini AI is Ready (' + aiService.geminiModel() + ')' : 'No API Key - AI is Disabled' }}
               </span>
             </div>
-            <button
-              type="button"
-              class="btn-check-health"
-              [disabled]="aiService.isCheckingHealth()"
-              (click)="aiService.checkHealth()"
+            @if (aiService.isConfigured()) {
+              <button
+                type="button"
+                class="btn-check-health"
+                [disabled]="aiService.isCheckingHealth()"
+                (click)="testGeminiKey()"
+              >
+                {{ aiService.isCheckingHealth() ? 'Testing...' : '🔄 Test API Key' }}
+              </button>
+            }
+          </div>
+
+          <div class="ai-field-group">
+            <label class="ai-label">Google Gemini API Key</label>
+            <input
+              type="password"
+              class="ai-input"
+              [ngModel]="aiService.geminiApiKey()"
+              (ngModelChange)="aiService.setGeminiApiKey($event)"
+            />
+            <span class="ai-hint">Get your free API key from Google AI Studio (aistudio.google.com). No local server required.</span>
+          </div>
+
+          <div class="ai-field-group">
+            <label class="ai-label">Gemini Model</label>
+            <select
+              class="ai-input"
+              [ngModel]="aiService.geminiModel()"
+              (ngModelChange)="aiService.setGeminiModel($event)"
             >
-              {{ aiService.isCheckingHealth() ? 'Checking...' : '🔄 Check Connection' }}
-            </button>
-          </div>
-
-          <div class="ai-field-group">
-            <label class="ai-label">Server Endpoint URL</label>
-            <input
-              type="text"
-              class="ai-input"
-              [ngModel]="aiService.endpoint()"
-              (ngModelChange)="aiService.setEndpoint($event)"
-            />
-          </div>
-
-          <div class="ai-field-group">
-            <label class="ai-label">Model File Path (.gguf)</label>
-            <input
-              type="text"
-              class="ai-input"
-              [ngModel]="aiService.modelPath()"
-              (ngModelChange)="aiService.setModelPath($event)"
-            />
-            <span class="ai-hint">e.g. ~/models/qwen2.5-coder-1.5b-base.Q4_K_M.gguf</span>
-          </div>
-
-          <div class="ai-field-group">
-            <label class="ai-label">llama-server Binary Path (Optional)</label>
-            <input
-              type="text"
-              class="ai-input"
-              [ngModel]="aiService.binaryPath()"
-              (ngModelChange)="aiService.setBinaryPath($event)"
-            />
-            <span class="ai-hint">Leave blank to search ~/.vide/bin/llama-server or system PATH</span>
+              <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Recommended - Fast & Free Tier)</option>
+              <option value="gemini-3.8-flash">Gemini 3.8 Flash (High Intelligence - Code & Software Engineering)</option>
+              <option value="gemini-3.6-flash">Gemini 3.6 Flash (Fast & General Multimodal)</option>
+              <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (Lightweight & High-Volume)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+            </select>
+            <span class="ai-hint">Ultra-low latency models optimized for coding completions and refactoring.</span>
           </div>
 
           <div class="ai-field-group">
@@ -222,13 +220,13 @@
             <div class="feature-item">
               <span class="feature-icon">✨</span>
               <div class="feature-desc">
-                <strong>Inline Autocomplete (FIM):</strong> Real-time ghost text while typing, press Tab to accept.
+                <strong>Smart Trigger Completions:</strong> FIM ghost text triggers only on syntactic keys (brackets, spaces, operators) with 400ms debounce.
               </div>
             </div>
             <div class="feature-item">
               <span class="feature-icon">⚡</span>
               <div class="feature-desc">
-                <strong>Pattern Edit Propagation (Ctrl+Alt+P):</strong> Propagates multi-line edit transformations to following lines.
+                <strong>Gemini Cloud Powered:</strong> Zero CPU/GPU local load, high-precision code completions.
               </div>
             </div>
             <div class="feature-item">
@@ -246,15 +244,6 @@
           </div>
 
           <div class="action-footer ai-modal-footer">
-            @if (aiService.sidecarStatus()?.running) {
-              <button type="button" class="btn btn-danger" (click)="aiService.stopSidecar()">
-                ⏹ Stop Sidecar (PID: {{ aiService.sidecarStatus()?.pid }})
-              </button>
-            } @else {
-              <button type="button" class="btn btn-primary" (click)="startAiSidecar()">
-                ▶ Start llama-server (Sidecar)
-              </button>
-            }
             <button
               type="button"
               class="btn btn-secondary"

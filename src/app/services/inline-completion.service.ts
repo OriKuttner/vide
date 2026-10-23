@@ -74,6 +74,11 @@ export class InlineCompletionService {
             return { items: [] };
           }
 
+          // If no Gemini API key is configured or AI is disabled, do nothing
+          if (!this.aiService.isConfigured() || !this.aiService.isEnabled()) {
+            return { items: [] };
+          }
+
           const isExplicit = context.triggerKind === 1; // InlineCompletionTriggerKind.Explicit
 
           if (!isExplicit) {
@@ -90,7 +95,24 @@ export class InlineCompletionService {
               return { items: [] };
             }
 
-            // 2. NEVER trigger suggestions or thinking on cursor movement without actual text edits
+            // 2. Only trigger on specific keys or line indentation
+            const lineBeforeCursor = model.getValueInRange({
+              startLineNumber: position.lineNumber,
+              startColumn: 1,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            });
+
+            const isOnlyIndentation = lineBeforeCursor.trim().length === 0;
+            const lastChar = lineBeforeCursor.length > 0 ? lineBeforeCursor[lineBeforeCursor.length - 1] : '';
+            const triggerChars = [' ', '\t', '(', ')', '{', '}', '[', ']', '=', ':', ';', ',', '>', '<', '$', '.', '"', '\''];
+            const isTriggerKey = triggerChars.includes(lastChar);
+
+            if (!isOnlyIndentation && !isTriggerKey) {
+              return { items: [] };
+            }
+
+            // 3. NEVER trigger suggestions or thinking on cursor movement without actual text edits
             const uriStr = model.uri.toString();
             const lastEditVersion = this.modelEditVersions.get(uriStr);
             const lastHandledVersion = this.lastHandledVersions.get(uriStr);
@@ -102,7 +124,7 @@ export class InlineCompletionService {
             this.lastHandledVersions.set(uriStr, lastEditVersion);
           }
 
-          // 3. Abort previous in-flight AI request if any and immediately hide widget
+          // Abort previous in-flight AI request if any and immediately hide widget
           if (this.currentAbortController) {
             this.currentAbortController.abort();
             this.currentAbortController = null;

@@ -91,17 +91,7 @@ export class SearchModalComponent {
         } else if (mode === 'open-folder-path') {
           this.inputValue.set(this.workspaceService.nativeWorkspacePath() || '/home/ori/work/vide');
         } else if (mode === 'ai-settings') {
-          this.aiService.checkHealth();
-          this.aiService.refreshSidecarStatus();
-        }
-
-        if (mode !== 'indentation' && mode !== 'ai-settings' && mode !== 'ai-download') {
-          setTimeout(() => {
-            this.inputField?.nativeElement.focus();
-            if (mode === 'open-folder-path') {
-              this.inputField?.nativeElement.select();
-            }
-          }, 50);
+          // Gemini cloud settings
         }
       }
     });
@@ -122,18 +112,13 @@ export class SearchModalComponent {
     });
   }
 
-  public async startAiSidecar(): Promise<void> {
-    try {
-      const modelStatus = await this.aiService.checkModelStatus();
-      if (!modelStatus?.exists) {
-        this.workspaceService.openModal('ai-download');
-        return;
-      }
-      this.workspaceService.showNotification('Starting llama-server sidecar...');
-      await this.aiService.startSidecar();
-      this.workspaceService.showNotification('✓ llama-server sidecar started');
-    } catch (err: any) {
-      this.workspaceService.showNotification(`Error: ${err.message || err}`);
+  public async testGeminiKey(): Promise<void> {
+    const success = await this.aiService.testGeminiConnection();
+    if (success) {
+      this.workspaceService.showNotification('✓ Gemini API connection successful!');
+    } else {
+      const err = this.aiService.lastApiError() || 'Connection failed';
+      this.workspaceService.showNotification(`Gemini API Error: ${err}`);
     }
   }
 

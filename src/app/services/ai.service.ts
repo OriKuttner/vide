@@ -31,24 +31,25 @@ export interface AiDownloadProgress {
 export class AiService {
   private readonly ngZone = inject(NgZone);
 
-  // Configuration signals
-  readonly endpoint = signal<string>(
+  // Gemini Configuration signals
+  readonly geminiApiKey = signal<string>(
     typeof window !== 'undefined'
-      ? localStorage.getItem('vide_ai_endpoint') || 'http://127.0.0.1:8080'
-      : 'http://127.0.0.1:8080'
-  );
-
-  readonly modelPath = signal<string>(
-    typeof window !== 'undefined'
-      ? localStorage.getItem('vide_ai_model_path') || ''
+      ? localStorage.getItem('vide_gemini_api_key') || ''
       : ''
   );
 
-  readonly binaryPath = signal<string>(
-    typeof window !== 'undefined'
-      ? localStorage.getItem('vide_ai_binary_path') || ''
-      : ''
+  readonly geminiModel = signal<string>(
+    (() => {
+      if (typeof window === 'undefined') return 'gemini-3.5-flash-lite';
+      const saved = localStorage.getItem('vide_gemini_model');
+      if (saved && !['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'].includes(saved)) {
+        return saved;
+      }
+      return 'gemini-3.5-flash-lite';
+    })()
   );
+
+  readonly isConfigured = computed(() => this.geminiApiKey().trim().length > 0);
 
   readonly isEnabled = signal<boolean>(
     typeof window !== 'undefined'
@@ -56,48 +57,78 @@ export class AiService {
       : true
   );
 
-  // Status signals
-  readonly isServerOnline = signal<boolean>(false);
+  // Status signals (isServerOnline reflects whether Gemini is configured and enabled)
+  readonly isServerOnline = computed(() => this.isConfigured() && this.isEnabled());
   readonly isCheckingHealth = signal<boolean>(false);
   readonly isGenerating = signal<boolean>(false);
-  readonly sidecarStatus = signal<AiSidecarStatus | null>(null);
+  readonly lastApiError = signal<string | null>(null);
 
-  // Download signals
+  // Legacy compatibility signals
+  readonly endpoint = signal<string>('https://generativelanguage.googleapis.com');
+  readonly modelPath = signal<string>('');
+  readonly binaryPath = signal<string>('');
+  readonly sidecarStatus = signal<AiSidecarStatus | null>(null);
   readonly isDownloadingModel = signal<boolean>(false);
   readonly downloadProgress = signal<AiDownloadProgress | null>(null);
   readonly modelStatus = signal<AiModelStatus | null>(null);
 
-  private healthCheckInterval: any = null;
+  constructor() {}
 
-  constructor() {
-    this.initHealthPolling();
-    this.refreshSidecarStatus();
-  }
-
-  public setEndpoint(url: string): void {
-    const cleaned = url.trim().replace(/\/+$/, '');
-    this.endpoint.set(cleaned);
+  public setGeminiApiKey(key: string): void {
+    const cleaned = key.trim();
+    this.geminiApiKey.set(cleaned);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vide_ai_endpoint', cleaned);
+      localStorage.setItem('vide_gemini_api_key', cleaned);
     }
-    this.checkHealth();
+    this.lastApiError.set(null);
   }
 
-  public setModelPath(path: string): void {
-    const cleaned = path.trim();
-    this.modelPath.set(cleaned);
+  public setGeminiModel(model: string): void {
+    const cleaned = model.trim();
+    this.geminiModel.set(cleaned);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vide_ai_model_path', cleaned);
+      localStorage.setItem('vide_gemini_model', cleaned);
     }
   }
 
-  public setBinaryPath(path: string): void {
-    const cleaned = path.trim();
-    this.binaryPath.set(cleaned);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('vide_ai_binary_path', cleaned);
+  public async testGeminiConnection(): Promise<boolean> {
+    if (!this.isConfigured()) return false;
+    this.isCheckingHealth.set(true);
+    this.lastApiError.set(null);
+    try {
+      const apiKey = this.geminiApiKey().trim();
+      const model = this.geminiModel();
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
+          generationConfig: { maxOutputTokens: 5 },
+        }),
+      });
+
+      if (!resp.ok) {
+        const errJson = await resp.json().catch(() => null);
+        const msg = errJson?.error?.message || `HTTP ${resp.status} ${resp.statusText}`;
+        this.lastApiError.set(msg);
+        return false;
+      }
+
+      this.lastApiError.set(null);
+      return true;
+    } catch (err: any) {
+      this.lastApiError.set(err?.message || 'Network connection failed');
+      return false;
+    } finally {
+      this.isCheckingHealth.set(false);
     }
   }
+
+  public setEndpoint(url: string): void {}
+  public setModelPath(path: string): void {}
+  public setBinaryPath(path: string): void {}
 
   public toggleEnabled(): void {
     const newVal = !this.isEnabled();
@@ -194,7 +225,6 @@ export class AiService {
     try {
       const status = await invoke<AiSidecarStatus>('stop_ai_sidecar');
       this.sidecarStatus.set(status);
-      this.isServerOnline.set(false);
     } catch (err: any) {
       console.error('Failed to stop llama-server sidecar:', err);
       throw err;
@@ -211,50 +241,8 @@ export class AiService {
     }
   }
 
-  /**
-   * Pings the server to verify if llama-server or any OpenAI compatible endpoint is alive
-   */
   public async checkHealth(): Promise<boolean> {
-    if (!this.isEnabled()) {
-      this.isServerOnline.set(false);
-      return false;
-    }
-
-    this.isCheckingHealth.set(true);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-    try {
-      // llama-server provides /health
-      const resp = await fetch(`${this.endpoint()}/health`, {
-        signal: controller.signal,
-      }).catch(async () => {
-        // Fallback to /v1/models if /health is not implemented (e.g., standard OpenAI/Ollama)
-        return await fetch(`${this.endpoint()}/v1/models`, {
-          signal: controller.signal,
-        });
-      });
-
-      clearTimeout(timeoutId);
-      const ok = resp && resp.ok;
-      this.isServerOnline.set(!!ok);
-      return !!ok;
-    } catch {
-      clearTimeout(timeoutId);
-      this.isServerOnline.set(false);
-      return false;
-    } finally {
-      this.isCheckingHealth.set(false);
-    }
-  }
-
-  private initHealthPolling(): void {
-    if (typeof window === 'undefined') return;
-    this.checkHealth();
-    this.healthCheckInterval = setInterval(() => {
-      this.checkHealth();
-      this.refreshSidecarStatus();
-    }, 15000);
+    return this.isConfigured();
   }
 
   /**
@@ -265,62 +253,50 @@ export class AiService {
     suffix: string,
     abortSignal?: AbortSignal
   ): Promise<string | null> {
-    if (!this.isEnabled() || !this.isServerOnline()) {
+    if (!this.isConfigured() || !this.isEnabled()) {
       return null;
     }
 
     this.isGenerating.set(true);
     try {
-      // Option A: Try native llama-server /infill endpoint
-      const infillPayload = {
-        input_prefix: prefix,
-        input_suffix: suffix,
-        n_predict: 48,
-        temperature: 0.1,
-        top_k: 40,
-        stop: [
-          '\n\n',
-          '```',
-          '<|endoftext|>',
-          '<|fim_prefix|>',
-          '<|fim_suffix|>',
-          '<|fim_middle|>',
-          '<|file_separator|>',
-        ],
-      };
+      const apiKey = this.geminiApiKey().trim();
+      const model = this.geminiModel();
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-      const resp = await fetch(`${this.endpoint()}/infill`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(infillPayload),
-        signal: abortSignal,
-      });
+      const systemInstruction =
+        'You are an inline code completion assistant (Fill-In-The-Middle). You are given code BEFORE the cursor (<PREFIX>) and code AFTER the cursor (<SUFFIX>). Your job is to output ONLY the code that should be inserted directly at the cursor between PREFIX and SUFFIX. Never repeat any code from PREFIX or SUFFIX. Do not include markdown code fences (```). Do not include any explanations. Output pure code only.';
 
-      if (resp.ok) {
-        const data = await resp.json();
-        const text = data.content;
-        return this.cleanCompletion(text);
-      }
+      const prompt = `<PREFIX>\n${prefix}\n</PREFIX>\n<SUFFIX>\n${suffix}\n</SUFFIX>`;
 
-      // Option B: Fallback to /v1/completions using standard Qwen/DeepSeek FIM tokens
-      const prompt = `<|fim_prefix|>${prefix}<|fim_suffix|>${suffix}<|fim_middle|>`;
-      const compResp = await fetch(`${this.endpoint()}/v1/completions`, {
+      const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt,
-          max_tokens: 48,
-          temperature: 0.1,
-          stop: ['\n\n', '```', '<|endoftext|>', '<|fim_prefix|>'],
+          system_instruction: {
+            parts: [{ text: systemInstruction }],
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 64,
+            stopSequences: ['\n\n', '```', '</PREFIX>', '<SUFFIX>'],
+          },
         }),
         signal: abortSignal,
       });
 
-      if (compResp.ok) {
-        const compData = await compResp.json();
-        const text = compData.choices?.[0]?.text;
-        return this.cleanCompletion(text);
+      if (!resp.ok) {
+        return null;
       }
+
+      const data = await resp.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      return this.cleanCompletion(text);
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         // Silently ignore non-fatal completion network errors
@@ -483,52 +459,72 @@ ${truncatedDiff}`;
     messages: { role: string; content: string }[],
     temperature = 0.2
   ): Promise<string | null> {
+    if (!this.isConfigured() || !this.isEnabled()) {
+      return null;
+    }
+
     try {
-      const resp = await fetch(`${this.endpoint()}/v1/chat/completions`, {
+      const apiKey = this.geminiApiKey().trim();
+      const model = this.geminiModel();
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const systemMsg = messages.find((m) => m.role === 'system')?.content;
+      const userMsg = messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => m.content)
+        .join('\n\n');
+
+      const body: any = {
+        contents: [{ role: 'user', parts: [{ text: userMsg }] }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: 500,
+        },
+      };
+
+      if (systemMsg) {
+        body.system_instruction = {
+          parts: [{ text: systemMsg }],
+        };
+      }
+
+      const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages,
-          temperature,
-          max_tokens: 300,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!resp.ok) {
-        // Fallback to /completion if chat endpoint is not available
-        const lastUser = messages.find((m) => m.role === 'user')?.content || '';
-        const rawResp = await fetch(`${this.endpoint()}/completion`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: lastUser,
-            n_predict: 300,
-            temperature,
-          }),
-        });
-        if (rawResp.ok) {
-          const rawData = await rawResp.json();
-          return rawData.content || null;
-        }
         return null;
       }
 
       const data = await resp.json();
-      return data.choices?.[0]?.message?.content || null;
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     } catch (err) {
-      console.error('Chat completion failed:', err);
+      console.error('Gemini query failed:', err);
       return null;
     }
   }
 
   private cleanCompletion(text: string | null | undefined): string | null {
     if (!text) return null;
-    // Strip special tokens if echoed
     let cleaned = text
       .replace(/<\|fim_prefix\|>|<\|fim_suffix\|>|<\|fim_middle\|>|<\|endoftext\|>/g, '')
-      .replace(/<\|file_separator\|>/g, '');
+      .replace(/<\|file_separator\|>/g, '')
+      .replace(/<\/?PREFIX>/gi, '')
+      .replace(/<\/?SUFFIX>/gi, '');
 
-    // If suggestion starts with whitespace followed by newlines only, ignore
+    // Strip markdown code fences if model enclosed output in ```
+    if (cleaned.startsWith('```')) {
+      const firstLineEnd = cleaned.indexOf('\n');
+      const lastFence = cleaned.lastIndexOf('```');
+      if (firstLineEnd !== -1 && lastFence > firstLineEnd) {
+        cleaned = cleaned.substring(firstLineEnd + 1, lastFence);
+      } else {
+        cleaned = cleaned.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '');
+      }
+    }
+
     if (/^\s*$/.test(cleaned)) {
       return null;
     }

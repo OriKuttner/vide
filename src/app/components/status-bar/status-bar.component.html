@@ -94,14 +94,14 @@
     <button
       type="button"
       class="status-btn ai-badge"
-      [class.online]="aiService.isServerOnline() && !aiService.isGenerating()"
+      [class.online]="aiService.isConfigured() && !aiService.isGenerating()"
       [class.thinking]="aiService.isGenerating()"
-      [class.offline]="!aiService.isServerOnline()"
+      [class.offline]="!aiService.isConfigured()"
       (click)="workspaceService.openModal('ai-settings')"
-      [title]="aiService.isGenerating() ? 'AI is generating code...' : (aiService.isServerOnline() ? 'AI Server Online (' + aiService.endpoint() + ') - Click for Settings' : 'AI Server Offline - Click to Configure / Start')"
+      [title]="aiService.isGenerating() ? 'Gemini AI is generating code...' : (aiService.isConfigured() ? 'Gemini AI Ready (' + aiService.geminiModel() + ') - Click for Settings' : 'No Gemini API Key - Click to Configure')"
     >
       <span class="ai-sparkle" [class.spinning]="aiService.isGenerating()">✨</span>
-      <span>AI: {{ aiService.isGenerating() ? 'Thinking...' : (aiService.isServerOnline() ? 'Online' : 'Offline') }}</span>
+      <span>AI: {{ aiService.isGenerating() ? 'Thinking...' : (aiService.isConfigured() ? 'Gemini' : 'No Key') }}</span>
     </button>
   </div>
 </footer>
