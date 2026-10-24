@@ -497,6 +497,16 @@
 		font-weight: 600;
 		color: var(--text-primary, #333333);
 
+		&:hover .tree-delete-btn,
+		&:hover .tree-action-btn {
+			display: inline-flex;
+		}
+
+		&.selected {
+			background-color: var(--bg-item-active, #e2effd);
+			color: var(--text-item-active, #005fb8);
+		}
+
 		.chevron {
 			font-size: 13px;
 			color: var(--text-muted, #8c8c8c);
@@ -683,6 +693,33 @@
 			color: #ef4444;
 			transform: scale(1.15);
 			background-color: rgba(239, 68, 68, 0.15);
+		}
+	}
+
+	.tree-action-btn {
+		background: transparent;
+		border: none;
+		padding: 1px 4px;
+		display: none;
+		align-items: center;
+		justify-content: center;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-muted, #717171);
+		cursor: pointer;
+		border-radius: 3px;
+		opacity: 0.75;
+		transition:
+			opacity 0.15s ease,
+			background-color 0.15s ease,
+			color 0.15s ease,
+			transform 0.15s ease;
+
+		&:hover {
+			opacity: 1;
+			color: var(--accent-color, #007acc);
+			transform: scale(1.15);
+			background-color: rgba(0, 122, 204, 0.15);
 		}
 	}
 

@@ -239,7 +239,7 @@
 			</div>
 		}
 
-		<div class="tree-container">
+		<div class="tree-container" (click)="onTreeContainerClick($event)">
 			@if (workspaceService.isScanning()) {
 				<div class="scanning-overlay">
 					<div class="spinner"></div>
@@ -252,15 +252,47 @@
 						@if (node.kind === 'directory') {
 							<div
 								class="tree-row directory"
+								[class.selected]="workspaceService.selectedFolderPath() === node.path"
 								[style.padding-left.px]="node.level * 16 + 10"
-								(click)="workspaceService.toggleFolder(node)"
+								(click)="onDirectoryClick(node, $event)"
 							>
-								<span class="chevron" [class.expanded]="node.expanded">▶</span>
+								<span
+									class="chevron"
+									[class.expanded]="node.expanded"
+									(click)="onToggleChevron(node, $event)"
+									>▶</span
+								>
 								<span class="folder-icon">{{ node.expanded ? '📂' : '📁' }}</span>
-								<span class="node-name">{{ node.name }}</span>
+								<span class="node-name" [title]="node.path">{{ node.name }}</span>
 								@if (node.isLoading) {
 									<span class="loading-dot">⌛</span>
 								}
+								<div class="row-status-indicators dir-actions">
+									<button
+										type="button"
+										class="tree-action-btn btn-new-file"
+										title="New File in this folder"
+										(click)="onNewFileInFolder(node, $event)"
+									>
+										+
+									</button>
+									<button
+										type="button"
+										class="tree-action-btn btn-new-folder"
+										title="New Folder in this folder"
+										(click)="onNewFolderInFolder(node, $event)"
+									>
+										📁+
+									</button>
+									<button
+										type="button"
+										class="tree-delete-btn"
+										title="Delete folder permanently from disk"
+										(click)="onDeleteFolderFromTree(node, $event)"
+									>
+										🗑
+									</button>
+								</div>
 							</div>
 							@if (node.expanded && node.children && node.children.length > 0) {
 								<ng-container

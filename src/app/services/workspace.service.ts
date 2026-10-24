@@ -170,6 +170,7 @@ export class WorkspaceService {
 		| 'ai-settings'
 		| 'ai-download'
 		| 'delete-file-confirm'
+		| 'delete-folder-confirm'
 		| 'git-untrack-confirm'
 		| 'git-branches'
 		| 'git-create-tag'
@@ -184,7 +185,9 @@ export class WorkspaceService {
 	readonly isSearchingReferences = signal<boolean>(false);
 	readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
 	readonly pendingDeleteFile = signal<WorkspaceFile | null>(null);
+	readonly pendingDeleteFolder = signal<FileTreeNode | null>(null);
 	readonly pendingGitUntrackFile = signal<WorkspaceFile | null>(null);
+	readonly selectedFolderPath = signal<string>('');
 
 	// Line jump request (from Grep search or Go to Definition)
 	readonly pendingLineJump = signal<{
@@ -770,6 +773,167 @@ export class WorkspaceService {
 		await this.refreshFileTree();
 		await this.refreshGitStatus();
 		return true;
+	}
+
+	public selectFolder(folderPath: string): void {
+		this.selectedFolderPath.set(folderPath);
+	}
+
+	public clearSelectedFolder(): void {
+		this.selectedFolderPath.set('');
+	}
+
+	public confirmDeleteFolder(folder: FileTreeNode): void {
+		this.pendingDeleteFolder.set(folder);
+		this.openModal('delete-folder-confirm');
+	}
+
+	public async deleteFolderPermanently(folder: FileTreeNode): Promise<boolean> {
+		if (!folder || folder.kind !== 'directory') return false;
+
+		const folderRelPath = folder.path.replace(/^\/+|\/+$/g, '');
+		const folderPrefix = folderRelPath + '/';
+		const folderFsPrefix = folder.fsPath
+			? folder.fsPath.endsWith('/')
+				? folder.fsPath
+				: `${folder.fsPath}/`
+			: '';
+
+		// 1. Close all open tabs within this folder
+		const currentTabs = this.openTabs();
+		const newTabs = currentTabs.filter((t) => {
+			const normP = t.path.replace(/^\/+/, '');
+			if (normP === folderRelPath || normP.startsWith(folderPrefix)) return false;
+			if (
+				folderFsPrefix &&
+				t.fsPath &&
+				(t.fsPath === folder.fsPath || t.fsPath.startsWith(folderFsPrefix))
+			)
+				return false;
+			return true;
+		});
+
+		if (newTabs.length !== currentTabs.length) {
+			this.openTabs.set(newTabs);
+			if (!newTabs.some((t) => t.id === this.activeFileId())) {
+				this.activeFileId.set(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : '');
+			}
+		}
+
+		if (this.activeDiffFile()) {
+			const diffP = this.activeDiffFile()!.path.replace(/^\/+/, '');
+			if (diffP === folderRelPath || diffP.startsWith(folderPrefix)) {
+				this.closeDiffView(false);
+			}
+		}
+
+		// 2. Perform deletion on disk if running under Tauri
+		if (isTauriApp()) {
+			try {
+				await invoke('delete_workspace_file', {
+					repoPath: this.nativeWorkspacePath(),
+					filePath: folder.path,
+				});
+			} catch (err: any) {
+				console.error('Failed to delete folder from disk:', err);
+				this.showNotification(`Failed to delete folder: ${err?.message || err}`);
+				this.closeModal();
+				return false;
+			}
+		} else if (this.recentDirHandle) {
+			try {
+				await this.recentDirHandle.removeEntry(folder.name, { recursive: true });
+			} catch (e) {
+				console.warn('Could not remove entry from directory handle:', e);
+			}
+		}
+
+		// 3. Remove files within folder from in-memory state
+		this.files.update((files) =>
+			files.filter((f) => {
+				const normP = f.path.replace(/^\/+/, '');
+				if (normP === folderRelPath || normP.startsWith(folderPrefix)) return false;
+				if (
+					folderFsPrefix &&
+					f.fsPath &&
+					(f.fsPath === folder.fsPath || f.fsPath.startsWith(folderFsPrefix))
+				)
+					return false;
+				return true;
+			}),
+		);
+
+		// 4. If selectedFolderPath was inside this folder, clear it
+		const currentSelected = this.selectedFolderPath().replace(/^\/+|\/+$/g, '');
+		if (currentSelected === folderRelPath || currentSelected.startsWith(folderPrefix)) {
+			this.selectedFolderPath.set('');
+		}
+
+		// 5. Clean up active modal
+		this.pendingDeleteFolder.set(null);
+		this.closeModal();
+		this.showNotification(`✓ Deleted folder "${folder.name}"`);
+
+		// 6. Refresh File Tree from disk and Git status
+		await this.refreshFileTree();
+		await this.refreshGitStatus();
+		return true;
+	}
+
+	public findNodeByPath(nodes: FileTreeNode[], targetPath: string): FileTreeNode | null {
+		const normTarget = targetPath.replace(/^\/+|\/+$/g, '');
+		for (const n of nodes) {
+			const normN = n.path.replace(/^\/+|\/+$/g, '');
+			if (normN === normTarget) return n;
+			if (n.children && n.children.length > 0) {
+				const found = this.findNodeByPath(n.children, normTarget);
+				if (found) return found;
+			}
+		}
+		return null;
+	}
+
+	public insertNodeIntoTree(
+		nodes: FileTreeNode[],
+		newNode: FileTreeNode,
+		parentPath: string,
+	): boolean {
+		const normParent = parentPath.replace(/^\/+|\/+$/g, '');
+		if (!normParent) {
+			nodes.unshift(newNode);
+			return true;
+		}
+		for (const n of nodes) {
+			const normN = n.path.replace(/^\/+|\/+$/g, '');
+			if (normN === normParent && n.kind === 'directory') {
+				if (!n.children) n.children = [];
+				n.children.unshift(newNode);
+				n.expanded = true;
+				n.isLoaded = true;
+				return true;
+			}
+			if (n.children && n.children.length > 0) {
+				const inserted = this.insertNodeIntoTree(n.children, newNode, normParent);
+				if (inserted) return true;
+			}
+		}
+		return false;
+	}
+
+	public getAncestorFsPaths(relPath: string): string[] {
+		const nativeRoot = this.nativeWorkspacePath();
+		if (!nativeRoot) return [];
+		const parts = relPath.replace(/^\/+|\/+$/g, '').split('/');
+		const paths: string[] = [];
+		let currentRel = '';
+		for (let i = 0; i < parts.length; i++) {
+			currentRel = currentRel ? `${currentRel}/${parts[i]}` : parts[i];
+			const full = nativeRoot.endsWith('/')
+				? `${nativeRoot}${currentRel}`
+				: `${nativeRoot}/${currentRel}`;
+			paths.push(full);
+		}
+		return paths;
 	}
 
 	public confirmGitUntrackFile(file: WorkspaceFile): void {
@@ -1940,6 +2104,7 @@ export class WorkspaceService {
 			| 'ai-settings'
 			| 'ai-download'
 			| 'delete-file-confirm'
+			| 'delete-folder-confirm'
 			| 'git-untrack-confirm'
 			| 'git-branches'
 			| 'git-create-tag'
@@ -2064,10 +2229,17 @@ export class WorkspaceService {
 	}
 
 	public async createNewFile(fileName: string): Promise<{ success: boolean; error?: string }> {
-		const trimmed = fileName.trim();
+		let trimmed = fileName.trim();
 		if (!trimmed) {
 			return { success: false, error: 'Please enter a valid file name.' };
 		}
+		if (trimmed.startsWith('/')) {
+			trimmed = trimmed.replace(/^\/+/, '');
+		} else if (!trimmed.includes('/') && this.selectedFolderPath()) {
+			trimmed = `${this.selectedFolderPath().replace(/^\/+|\/+$/g, '')}/${trimmed}`;
+		}
+		trimmed = trimmed.replace(/^\/+/, '');
+
 		const parts = trimmed.split('/');
 		const baseName = parts[parts.length - 1];
 		if (!baseName) {
@@ -2125,6 +2297,21 @@ export class WorkspaceService {
 			}
 		}
 
+		if (isTauriApp() && fsPath) {
+			try {
+				await invoke('write_file_text', {
+					filePath: fsPath,
+					content: '',
+				});
+			} catch (err: any) {
+				console.error('Failed to create file on disk:', err);
+				return {
+					success: false,
+					error: `Failed to create file on disk: ${err?.message || err}`,
+				};
+			}
+		}
+
 		const ecRules = this.editorConfigService.getPropertiesForFile(trimmed);
 		const newFile: WorkspaceFile = {
 			id: trimmed,
@@ -2134,7 +2321,7 @@ export class WorkspaceService {
 			language,
 			content: '',
 			isLoaded: true,
-			isModified: true,
+			isModified: false,
 			indentType: ecRules.indentStyle || this.defaultIndentType(),
 			tabSize: ecRules.indentSize || this.defaultTabSize(),
 			isIndentationCustom: true,
@@ -2142,19 +2329,32 @@ export class WorkspaceService {
 
 		this.files.update((prev) => [newFile, ...prev]);
 
-		const newNode: FileTreeNode = {
-			id: trimmed,
-			name: baseName,
-			path: trimmed,
-			fsPath,
-			kind: 'file',
-			language,
-			file: newFile,
-			level: 0,
-		};
+		if (this.isDesktop() && nativeRoot) {
+			const toExpand = this.getAncestorFsPaths(trimmed);
+			await this.refreshFileTree(toExpand);
+		} else {
+			const parentPath = parts.slice(0, -1).join('/');
+			const newNode: FileTreeNode = {
+				id: trimmed,
+				name: baseName,
+				path: trimmed,
+				fsPath,
+				kind: 'file',
+				language,
+				file: newFile,
+				level: parts.length - 1,
+			};
+			this.fileTree.update((nodes) => {
+				const copy = [...nodes];
+				if (!this.insertNodeIntoTree(copy, newNode, parentPath)) {
+					copy.unshift(newNode);
+				}
+				return copy;
+			});
+		}
 
-		this.fileTree.update((prev) => [newNode, ...prev]);
-		await this.openFile(newFile);
+		const foundFile = this.files().find((f) => f.path === trimmed || f.id === trimmed);
+		await this.openFile(foundFile || newFile);
 		this.showNotification(`Created file: ${baseName}`);
 		this.closeModal();
 		return { success: true };
@@ -2163,10 +2363,17 @@ export class WorkspaceService {
 	public async createNewFolder(
 		folderPath: string,
 	): Promise<{ success: boolean; error?: string }> {
-		const trimmed = folderPath.trim();
+		let trimmed = folderPath.trim();
 		if (!trimmed) {
 			return { success: false, error: 'Please enter a valid directory name.' };
 		}
+		if (trimmed.startsWith('/')) {
+			trimmed = trimmed.replace(/^\/+/, '');
+		} else if (!trimmed.includes('/') && this.selectedFolderPath()) {
+			trimmed = `${this.selectedFolderPath().replace(/^\/+|\/+$/g, '')}/${trimmed}`;
+		}
+		trimmed = trimmed.replace(/^\/+|\/+$/g, '');
+
 		const parts = trimmed.split('/');
 		const folderName = parts[parts.length - 1];
 		if (!folderName) {
@@ -2180,11 +2387,7 @@ export class WorkspaceService {
 			: undefined;
 
 		const cleanPath = trimmed.replace(/^[/\\]+/, '');
-		const existingDir = this.fileTree().find(
-			(n) =>
-				n.kind === 'directory' &&
-				(n.path === cleanPath || n.path === trimmed || (fsPath && n.fsPath === fsPath)),
-		);
+		const existingDir = this.findNodeByPath(this.fileTree(), cleanPath);
 		if (existingDir) {
 			return {
 				success: false,
@@ -2204,26 +2407,45 @@ export class WorkspaceService {
 			}
 		}
 
-		const newNode: FileTreeNode = {
-			id: trimmed,
-			name: folderName,
-			path: trimmed,
-			fsPath,
-			kind: 'directory',
-			expanded: true,
-			isLoaded: true,
-			isLoading: false,
-			children: [],
-			level: 0,
-		};
-
 		if (isTauriApp() && fsPath) {
-			invoke('create_directory', { dirPath: fsPath }).catch((err) => {
+			try {
+				await invoke('create_directory', { dirPath: fsPath });
+			} catch (err: any) {
 				console.error('Failed to create directory on disk:', err);
+				return {
+					success: false,
+					error: `Failed to create folder on disk: ${err?.message || err}`,
+				};
+			}
+		}
+
+		if (this.isDesktop() && nativeRoot) {
+			const toExpand = this.getAncestorFsPaths(trimmed);
+			await this.refreshFileTree(toExpand);
+		} else {
+			const parentPath = parts.slice(0, -1).join('/');
+			const newNode: FileTreeNode = {
+				id: trimmed,
+				name: folderName,
+				path: trimmed,
+				fsPath,
+				kind: 'directory',
+				expanded: true,
+				isLoaded: true,
+				isLoading: false,
+				children: [],
+				level: parts.length - 1,
+			};
+			this.fileTree.update((nodes) => {
+				const copy = [...nodes];
+				if (!this.insertNodeIntoTree(copy, newNode, parentPath)) {
+					copy.unshift(newNode);
+				}
+				return copy;
 			});
 		}
 
-		this.fileTree.update((prev) => [newNode, ...prev]);
+		this.selectedFolderPath.set(trimmed);
 		this.showNotification(`Created folder: ${folderName}`);
 		this.closeModal();
 		return { success: true };
@@ -2888,6 +3110,12 @@ export class WorkspaceService {
 		}
 		if (setActive) {
 			this.activeFileId.set(file.id);
+			const lastSlash = file.path.lastIndexOf('/');
+			if (lastSlash !== -1) {
+				this.selectedFolderPath.set(file.path.substring(0, lastSlash));
+			} else {
+				this.selectedFolderPath.set('');
+			}
 			this.revealActiveFileInTree(file);
 			if (!this.isRestoringSession()) {
 				this.onFileOpened?.(file);
@@ -3144,6 +3372,7 @@ export class WorkspaceService {
 	 */
 	public async toggleFolder(node: FileTreeNode): Promise<void> {
 		if (node.kind !== 'directory') return;
+		this.selectedFolderPath.set(node.path);
 
 		if (node.isLoaded) {
 			node.expanded = !node.expanded;
@@ -3978,10 +4207,10 @@ export class WorkspaceService {
 		await this.refreshFileTree();
 	}
 
-	public async refreshFileTree(): Promise<void> {
+	public async refreshFileTree(additionalExpandedFsPaths?: string[]): Promise<void> {
 		const nativePath = this.nativeWorkspacePath();
 		if (this.isDesktop() && nativePath) {
-			await this.reloadNativeTreePreservingState(nativePath);
+			await this.reloadNativeTreePreservingState(nativePath, additionalExpandedFsPaths);
 			return;
 		}
 		if (this.recentDirHandle) {
@@ -3989,8 +4218,16 @@ export class WorkspaceService {
 		}
 	}
 
-	private async reloadNativeTreePreservingState(rootPath: string): Promise<void> {
+	private async reloadNativeTreePreservingState(
+		rootPath: string,
+		additionalExpandedFsPaths?: string[],
+	): Promise<void> {
 		const expandedFsPaths = new Set<string>();
+		if (additionalExpandedFsPaths) {
+			for (const p of additionalExpandedFsPaths) {
+				expandedFsPaths.add(p);
+			}
+		}
 		const collectExpanded = (nodes: FileTreeNode[]) => {
 			for (const n of nodes) {
 				if (n.kind === 'directory' && n.expanded && n.fsPath) {
@@ -4540,6 +4777,7 @@ export class WorkspaceService {
 		this.diffModeActive.set(false);
 		this.activeDiffFile.set(null);
 		this.gitBranch.set(null);
+		this.selectedFolderPath.set('');
 		this.onWorkspaceReset?.();
 		this.showNotification('Folder closed');
 	}

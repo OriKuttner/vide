@@ -358,6 +358,39 @@ export class SidebarComponent {
 		}
 	}
 
+	public onDirectoryClick(node: FileTreeNode, event: MouseEvent): void {
+		this.workspaceService.selectFolder(node.path);
+		this.workspaceService.toggleFolder(node);
+	}
+
+	public onToggleChevron(node: FileTreeNode, event: MouseEvent): void {
+		event.stopPropagation();
+		this.workspaceService.toggleFolder(node);
+	}
+
+	public onNewFileInFolder(node: FileTreeNode, event: MouseEvent): void {
+		event.stopPropagation();
+		this.workspaceService.selectFolder(node.path);
+		this.workspaceService.openModal('new-file');
+	}
+
+	public onNewFolderInFolder(node: FileTreeNode, event: MouseEvent): void {
+		event.stopPropagation();
+		this.workspaceService.selectFolder(node.path);
+		this.workspaceService.openModal('new-folder');
+	}
+
+	public onDeleteFolderFromTree(node: FileTreeNode, event: MouseEvent): void {
+		event.stopPropagation();
+		this.workspaceService.confirmDeleteFolder(node);
+	}
+
+	public onTreeContainerClick(event: MouseEvent): void {
+		if (event.target === event.currentTarget) {
+			this.workspaceService.clearSelectedFolder();
+		}
+	}
+
 	public onUntrackFile(file: WorkspaceFile, event: MouseEvent): void {
 		event.stopPropagation();
 		this.workspaceService.confirmGitUntrackFile(file);

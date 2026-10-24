@@ -20,6 +20,7 @@ import { AiService } from '../../services/ai.service';
 import { AssistantService } from '../../services/assistant.service';
 import {
 	WorkspaceFile,
+	FileTreeNode,
 	isOmniFluxFile,
 	isPhpFile,
 	isPerlFile,
@@ -101,7 +102,14 @@ export class SearchModalComponent {
 				this.inputValue.set('');
 				this.errorMessage.set('');
 				this.grepResults.set([]);
-				if (mode === 'file-search') {
+				if (mode === 'new-file' || mode === 'new-folder') {
+					const sel = this.workspaceService.selectedFolderPath();
+					if (sel) {
+						this.inputValue.set(`${sel.replace(/^\/+|\/+$/g, '')}/`);
+					} else {
+						this.inputValue.set('');
+					}
+				} else if (mode === 'file-search') {
 					this.fileResults.set(this.workspaceService.findFiles(''));
 				} else if (mode === 'change-language') {
 					this.languageResults.set(SUPPORTED_LANGUAGES);
@@ -124,7 +132,12 @@ export class SearchModalComponent {
 				}
 
 				setTimeout(() => {
-					this.inputField?.nativeElement?.focus();
+					if (this.inputField?.nativeElement) {
+						const el = this.inputField.nativeElement;
+						el.focus();
+						const len = el.value.length;
+						el.setSelectionRange(len, len);
+					}
 				}, 50);
 			}
 		});
@@ -193,6 +206,8 @@ export class SearchModalComponent {
 				return 'Unsaved Changes - Close Vector IDE';
 			case 'ai-settings':
 				return 'AI Assistant Configuration (Google Gemini)';
+			case 'delete-folder-confirm':
+				return 'Delete Folder Permanently?';
 			case 'references':
 				return `References: ${this.workspaceService.pendingReferencesSymbol()}`;
 			case 'git-commit-details': {
@@ -209,13 +224,22 @@ export class SearchModalComponent {
 			case 'unsaved-changes':
 			case 'close-editor-confirm':
 			case 'ai-settings':
+			case 'delete-folder-confirm':
 			case 'references':
 			case 'git-commit-details':
 				return '';
-			case 'new-file':
-				return 'Enter new file name and extension (e.g. app.of, service.ts):';
-			case 'new-folder':
-				return 'Enter new directory name:';
+			case 'new-file': {
+				const folder = this.workspaceService.selectedFolderPath();
+				return folder
+					? `Enter new file name in "${folder}":`
+					: 'Enter new file name and extension (e.g. app.of, service.ts):';
+			}
+			case 'new-folder': {
+				const folder = this.workspaceService.selectedFolderPath();
+				return folder
+					? `Enter new directory name in "${folder}":`
+					: 'Enter new directory name:';
+			}
 			case 'open-folder-path':
 				return 'Enter directory path to open (e.g. ~/projects/my-app or /path/to/folder):';
 			case 'grep':
@@ -504,6 +528,15 @@ export class SearchModalComponent {
 
 	public async executeDeleteFile(file: WorkspaceFile): Promise<void> {
 		await this.workspaceService.deleteFilePermanently(file);
+	}
+
+	public cancelDeleteFolder(): void {
+		this.workspaceService.pendingDeleteFolder.set(null);
+		this.close();
+	}
+
+	public async executeDeleteFolder(folder: FileTreeNode): Promise<void> {
+		await this.workspaceService.deleteFolderPermanently(folder);
 	}
 
 	public cancelGitUntrack(): void {
