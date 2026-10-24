@@ -667,7 +667,7 @@
                 class="git-file-row"
                 [class.active]="workspaceService.diffModeActive() && workspaceService.activeDiffFile()?.id === file.id"
                 (click)="workspaceService.openDiffView(file)"
-                title="Click to view Meld Side-by-Side Diff"
+                title="Click to view Side-by-Side Diff"
               >
                 @if (isImageNode(file)) {
                   <span class="file-icon-badge image-badge" title="Image">
@@ -714,7 +714,7 @@
                   <button
                     type="button"
                     class="git-action-btn diff-btn"
-                    title="Open Meld Side-by-Side Diff"
+                    title="Open Side-by-Side Diff"
                     (click)="onOpenDiff(file, $event)"
                   >
                     ◫

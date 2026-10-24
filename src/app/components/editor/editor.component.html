@@ -6,9 +6,9 @@
 
 <div class="editor-wrapper">
   @if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as diffFile) {
-    <div class="meld-diff-toolbar">
+    <div class="diff-toolbar">
       <div class="diff-left-section">
-        <span class="meld-tag">{{ diffFile.commitDiffInfo ? 'COMMIT DIFF' : 'MELD DIFF' }}</span>
+        <span class="diff-tag">{{ diffFile.commitDiffInfo ? 'COMMIT DIFF' : 'WORKING TREE DIFF' }}</span>
         <span class="diff-file-name">{{ diffFile.name }}</span>
         <span
           class="diff-status-badge"
@@ -45,7 +45,7 @@
           class="diff-action-btn view-toggle-btn"
           [class.active]="workspaceService.diffRenderSideBySide()"
           (click)="workspaceService.toggleDiffSideBySide()"
-          [title]="workspaceService.diffRenderSideBySide() ? 'Switch to Unified Inline View' : 'Switch to Side-by-Side (Meld) View'"
+          [title]="workspaceService.diffRenderSideBySide() ? 'Switch to Unified Inline View' : 'Switch to Side-by-Side View'"
         >
           <span class="btn-icon">{{ workspaceService.diffRenderSideBySide() ? '◫' : '☰' }}</span>
           <span>{{ workspaceService.diffRenderSideBySide() ? 'Side-by-Side' : 'Inline' }}</span>

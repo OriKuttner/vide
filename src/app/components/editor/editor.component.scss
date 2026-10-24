@@ -860,8 +860,8 @@
   }
 }
 
-/* Meld-style Diff Toolbar */
-.meld-diff-toolbar {
+/* Side-by-Side Diff Toolbar */
+.diff-toolbar {
   height: 46px;
   min-height: 46px;
   background-color: var(--bg-tabs-bar, #ececec);
@@ -880,7 +880,7 @@
     gap: 10px;
     min-width: 0;
 
-    .meld-tag {
+    .diff-tag {
       background: linear-gradient(135deg, #007acc, #005a9e);
       color: #ffffff;
       font-size: 11px;
