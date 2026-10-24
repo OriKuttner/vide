@@ -48,8 +48,11 @@ marked.use({
 			const linkTitle =
 				(typeof token === 'object' && token !== null ? token.title : title) || '';
 			const linkText =
-				(typeof token === 'object' && token !== null ? token.text || token.href : text) ||
-				linkHref;
+				(typeof token === 'object' && token !== null
+					? token.tokens
+						? (this as any).parser.parseInline(token.tokens)
+						: token.text || token.href
+					: text) || linkHref;
 			const titleAttr = linkTitle
 				? ` title="${String(linkTitle).replace(/"/g, '&quot;')}"`
 				: '';

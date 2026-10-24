@@ -22,7 +22,8 @@ import {
 import * as monaco from 'monaco-editor';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
-import { WorkspaceService } from '../../services/workspace.service';
+import { WorkspaceService, isTauriApp } from '../../services/workspace.service';
+import { invoke } from '@tauri-apps/api/core';
 import { InlineCompletionService } from '../../services/inline-completion.service';
 import { SymbolNavigationService } from '../../services/symbol-navigation.service';
 import { AiService } from '../../services/ai.service';
@@ -43,6 +44,7 @@ import {
 	isHtmlFile,
 	isPreviewableFile,
 	isBinaryFile,
+	getImageMimeType,
 } from '../../models/file.model';
 
 @Component({
@@ -104,18 +106,32 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 		return this.workspaceService.previewMode() === 'full' && this.isCurrentPreviewable();
 	});
 
+	// Image caching for Markdown preview
+	private readonly markdownImageCache = new Map<string, string>();
+	private readonly markdownImageVersion = signal<number>(0);
+	private readonly pendingMarkdownImages = new Set<string>();
+
 	readonly renderedMarkdownHtml = computed<SafeHtml>(() => {
 		if (!this.isPreviewActive() || !this.isCurrentMarkdown()) {
 			return '';
 		}
+
+		// Re-trigger computed when local images finish loading
+		this.markdownImageVersion();
+
 		const f = this.workspaceService.activeFile();
 		const rawContent = f?.content ?? '';
 		try {
-			const parsed = marked.parse(rawContent, {
+			let parsed = marked.parse(rawContent, {
 				async: false,
 				gfm: true,
-				breaks: true,
+				breaks: false,
 			}) as string;
+
+			if (f) {
+				parsed = this.resolveMarkdownImages(parsed, f);
+			}
+
 			return this.sanitizer.bypassSecurityTrustHtml(parsed);
 		} catch (err) {
 			console.error('Error parsing markdown:', err);
@@ -124,6 +140,105 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 			);
 		}
 	});
+
+	/**
+	 * Scans HTML for relative/local image src paths and replaces them with cached Base64 / Blob URLs.
+	 * Any images not yet in cache are queued for asynchronous loading.
+	 */
+	private resolveMarkdownImages(html: string, activeFile: WorkspaceFile): string {
+		const imgRegex = /<img\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*?)>/gi;
+		return html.replace(imgRegex, (match, before, src, after) => {
+			// Skip external or already-embedded URLs
+			if (/^(https?:|data:|blob:|\/\/)/i.test(src)) {
+				return match;
+			}
+
+			const cleanSrc = src.trim();
+			const cached = this.markdownImageCache.get(cleanSrc);
+			if (cached) {
+				return `<img${before}src="${cached}"${after}>`;
+			}
+
+			if (!this.pendingMarkdownImages.has(cleanSrc)) {
+				this.pendingMarkdownImages.add(cleanSrc);
+				this.loadMarkdownImage(cleanSrc, activeFile);
+			}
+
+			return match;
+		});
+	}
+
+	/**
+	 * Asynchronously loads a local image file and saves its Base64/Blob URL into markdownImageCache
+	 */
+	private async loadMarkdownImage(src: string, activeFile: WorkspaceFile): Promise<void> {
+		try {
+			const baseDir = activeFile.path.includes('/')
+				? activeFile.path.substring(0, activeFile.path.lastIndexOf('/'))
+				: '';
+			const resolvedRel = this.resolveRelativeWorkspacePath(baseDir, src);
+
+			let dataUrl = '';
+			const isDesktop = isTauriApp();
+			const nativeRoot = this.workspaceService.nativeWorkspacePath();
+
+			if (isDesktop && nativeRoot) {
+				const fullPath = `${nativeRoot.replace(/[/\\]+$/, '')}/${resolvedRel}`;
+				const mime = getImageMimeType(resolvedRel);
+				try {
+					const b64 = await invoke<string>('read_file_base64', { filePath: fullPath });
+					if (b64) {
+						dataUrl = `data:${mime};base64,${b64}`;
+					}
+				} catch (err) {
+					console.warn('Failed to load markdown image via Tauri:', fullPath, err);
+				}
+			} else {
+				// Web mode: find in workspace files
+				const wsFile = this.workspaceService
+					.files()
+					.find((f) => f.path === resolvedRel || f.path.endsWith(resolvedRel));
+				if (wsFile) {
+					if (wsFile.imageUrl) {
+						dataUrl = wsFile.imageUrl;
+					} else if (wsFile.handle && typeof wsFile.handle.getFile === 'function') {
+						const fileObj = await wsFile.handle.getFile();
+						dataUrl = URL.createObjectURL(fileObj);
+						wsFile.imageUrl = dataUrl;
+					} else if (wsFile.rawFile) {
+						dataUrl = URL.createObjectURL(wsFile.rawFile);
+						wsFile.imageUrl = dataUrl;
+					}
+				}
+			}
+
+			if (dataUrl) {
+				this.markdownImageCache.set(src, dataUrl);
+				this.markdownImageVersion.update((v) => v + 1);
+			}
+		} finally {
+			this.pendingMarkdownImages.delete(src);
+		}
+	}
+
+	/**
+	 * Resolves relative path against base directory within workspace
+	 */
+	private resolveRelativeWorkspacePath(baseDir: string, relativePath: string): string {
+		const cleanRel = relativePath.trim().replace(/^(\.\/)+/, '');
+		if (!baseDir) return cleanRel.replace(/^[/\\]+/, '');
+		const parts = baseDir.split(/[/\\]/).filter(Boolean);
+		const relParts = cleanRel.split(/[/\\]/);
+		for (const part of relParts) {
+			if (part === '.' || !part) continue;
+			if (part === '..') {
+				parts.pop();
+			} else {
+				parts.push(part);
+			}
+		}
+		return parts.join('/');
+	}
 
 	readonly renderedHtmlDoc = computed<string>(() => {
 		if (!this.isPreviewActive() || !this.isCurrentHtml()) {
@@ -606,6 +721,9 @@ ${rawContent}
 
 		this.fileViewStates.clear();
 		this.currentActiveFileId = null;
+
+		this.markdownImageCache.clear();
+		this.pendingMarkdownImages.clear();
 
 		this.editorInstance?.dispose();
 		this.diffEditorInstance?.dispose();
