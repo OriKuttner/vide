@@ -2352,6 +2352,93 @@ fn get_git_diff_for_commit(repo_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn run_git_read(
+	repo_path: String,
+	subcommand: String,
+	args: Option<Vec<String>>,
+) -> Result<String, String> {
+	let clean_repo = expand_path(&repo_path);
+	let sub = subcommand.trim().to_lowercase();
+
+	// Strictly allow only safe read-only git subcommands
+	const ALLOWED_SUBCOMMANDS: &[&str] = &[
+		"status",
+		"diff",
+		"log",
+		"show",
+		"branch",
+		"blame",
+		"rev-parse",
+		"describe",
+	];
+
+	if !ALLOWED_SUBCOMMANDS.contains(&sub.as_str()) {
+		return Err(format!(
+			"Permission denied: Git subcommand '{}' is not allowed. Only read-only subcommands (status, diff, log, show, branch, blame) are permitted.",
+			subcommand
+		));
+	}
+
+	// Validate arguments: reject flags that write or modify
+	let user_args = args.unwrap_or_default();
+	for arg in &user_args {
+		let lower = arg.to_lowercase();
+		if lower == "--delete"
+			|| lower == "-d"
+			|| lower == "-D"
+			|| lower == "--force"
+			|| lower == "-f"
+			|| lower == "--hard"
+			|| lower == "--mixed"
+			|| lower == "--soft"
+			|| lower.starts_with("--exec")
+			|| lower.starts_with("--output")
+			|| lower.starts_with("--edit")
+		{
+			return Err(format!("Permission denied: Disallowed Git flag '{}'.", arg));
+		}
+	}
+
+	let mut cmd = Command::new("git");
+	cmd.args(["-C", &clean_repo, "--no-pager", &sub]);
+	cmd.args(&user_args);
+
+	let output = cmd
+		.output()
+		.map_err(|e| format!("Failed to execute git {}: {}", sub, e))?;
+
+	let stdout = String::from_utf8_lossy(&output.stdout);
+	let stderr = String::from_utf8_lossy(&output.stderr);
+
+	if !output.status.success() && stdout.trim().is_empty() {
+		return Err(format!(
+			"Git error (code {:?}): {}",
+			output.status.code(),
+			stderr.trim()
+		));
+	}
+
+	let mut full_output = stdout.to_string();
+	if !stderr.trim().is_empty() {
+		if !full_output.is_empty() {
+			full_output.push_str("\n--- stderr ---\n");
+		}
+		full_output.push_str(&stderr);
+	}
+
+	// Cap output to 64KB to avoid overwhelming memory or LLM context
+	if full_output.len() > 64 * 1024 {
+		let truncated: String = full_output.chars().take(64 * 1024).collect();
+		return Ok(format!(
+			"{}\n\n[... Output truncated: exceeded 64KB limit ...]",
+			truncated
+		));
+	}
+
+	Ok(full_output)
+}
+
+#[tauri::command]
 fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> {
 	window.set_title(&title).map_err(|e| e.to_string())
 }
@@ -2580,6 +2667,7 @@ pub fn run() {
 			log_to_terminal,
 			inspect_file,
 			read_file_hex,
+			run_git_read,
 			exit_app,
 		])
 		.run(tauri::generate_context!())

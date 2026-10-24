@@ -1132,6 +1132,21 @@ export class WorkspaceService {
 		}
 	}
 
+	public async runGitRead(subcommand: string, args?: string[]): Promise<string> {
+		const repo = this.nativeWorkspacePath();
+		if (!repo) {
+			throw new Error('No workspace directory currently open.');
+		}
+		if (!isTauriApp()) {
+			throw new Error('Git operations are only supported in desktop mode.');
+		}
+		return await invoke<string>('run_git_read', {
+			repoPath: repo,
+			subcommand,
+			args: args || [],
+		});
+	}
+
 	public async loadGitBranches(): Promise<GitBranchItem[]> {
 		if (!this.isRealWorkspace() || !isTauriApp() || !this.nativeWorkspacePath()) {
 			this.gitBranches.set([]);

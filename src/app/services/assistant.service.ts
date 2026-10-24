@@ -35,6 +35,8 @@ When the user asks you to explain, investigate, analyze, or trace logic in the c
 
 === TOOL USAGE & CODE NAVIGATION GUIDELINES ===
 - LOCATING FILES: Use 'find_files' first to locate target files across the project by keyword rather than recursively listing folders with 'list_files'.
+- SEARCHING CODE: Use 'grep_search' to search for symbols, function definitions, usages, or error strings inside files across the project.
+- GIT INSPECTION: Use 'git_read' to inspect repository status, unstaged/staged diffs, branch info, or commit history. Modifying Git state is strictly disallowed.
 - TARGETING ACTION LOGIC (CRITICAL): When asked where a dialog, feature, or interaction is implemented in code:
   * ALWAYS highlight the CORE ACTION HANDLER, submission logic, or state mutation (e.g. 'onEnter()', 'onSubmit()', or the service method like 'createNewFile()').
   * NEVER highlight trivial string getters or label helpers (such as 'getTitle()', 'getLabel()').
@@ -394,6 +396,54 @@ export class AssistantService {
 								},
 							},
 							required: ['path', 'start_line'],
+						},
+					},
+					{
+						name: 'grep_search',
+						description:
+							'Searches for text, code snippets, or identifiers inside files across the project workspace (excluding heavy lockfiles, node_modules, build output, etc.). Returns matching file paths, line numbers, and matching line text.',
+						parameters: {
+							type: 'OBJECT',
+							properties: {
+								query: {
+									type: 'STRING',
+									description:
+										'The text or symbol to search for (e.g. "function calculateTotal", "interface UserState", "error-code").',
+								},
+								path_filter: {
+									type: 'STRING',
+									description:
+										'Optional relative path or directory substring to restrict the search to (e.g. "src/app", "components").',
+								},
+								case_sensitive: {
+									type: 'BOOLEAN',
+									description:
+										'Whether the search should be case-sensitive. Defaults to false.',
+								},
+							},
+							required: ['query'],
+						},
+					},
+					{
+						name: 'git_read',
+						description:
+							'Runs safe read-only Git commands in the current workspace repository to inspect status, unstaged/staged diffs, commit history, blame, or branch info. Note: Only read operations are permitted; writing or modifying Git state (commit, push, add, checkout) is strictly disallowed.',
+						parameters: {
+							type: 'OBJECT',
+							properties: {
+								subcommand: {
+									type: 'STRING',
+									description:
+										'The read-only Git subcommand to execute. Strictly limited to: "status", "diff", "log", "show", "branch", "blame".',
+								},
+								args: {
+									type: 'ARRAY',
+									items: { type: 'STRING' },
+									description:
+										'Optional arguments or flags for the subcommand (e.g. ["--staged"], ["-n", "5"], ["HEAD~1"], ["src/app/models/file.model.ts"]).',
+								},
+							},
+							required: ['subcommand'],
 						},
 					},
 				],
@@ -927,6 +977,12 @@ export class AssistantService {
 							const start = toolArgs.start_line;
 							const end = toolArgs.end_line || start;
 							stepLabel = `Highlighting lines ${start}-${end} in: ${toolArgs.path}`;
+						} else if (toolName === 'grep_search') {
+							stepLabel = `Searching code: "${toolArgs.query}"`;
+						} else if (toolName === 'git_read') {
+							const sub = toolArgs.subcommand || 'status';
+							const extra = Array.isArray(toolArgs.args) && toolArgs.args.length > 0 ? ` ${toolArgs.args.join(' ')}` : '';
+							stepLabel = `Running git ${sub}${extra}`;
 						}
 
 						terminalLog(
@@ -1029,6 +1085,72 @@ export class AssistantService {
 							// Once the target code location is highlighted on screen, navigation is complete.
 							// Switch to final synthesis turn to explain the highlighted code and conclude.
 							forceFinalizeNext = true;
+						} else if (toolName === 'grep_search') {
+							const query = (toolArgs.query || '').trim();
+							const caseSensitive = !!toolArgs.case_sensitive;
+							const rawPathFilter = (toolArgs.path_filter || '').trim();
+							const pathFilter = caseSensitive
+								? rawPathFilter
+								: rawPathFilter.toLowerCase();
+
+							if (!query) {
+								toolResult = { error: 'Search query cannot be empty.' };
+							} else {
+								const results = await this.workspaceService.grepFiles(query, {
+									matchCase: caseSensitive,
+								});
+
+								const filtered = pathFilter
+									? results.filter((r) =>
+											caseSensitive
+												? r.file.path.includes(pathFilter)
+												: r.file.path.toLowerCase().includes(pathFilter),
+										)
+									: results;
+
+								const capped = filtered.slice(0, 35);
+								toolResult = {
+									query,
+									total_matches: filtered.length,
+									returned_matches: capped.length,
+									matches: capped.map((r) => ({
+										path: r.file.path,
+										line: r.lineNumber,
+										text: r.lineText,
+									})),
+								};
+							}
+						} else if (toolName === 'git_read') {
+							const sub = (toolArgs.subcommand || '').trim().toLowerCase();
+							const args = Array.isArray(toolArgs.args) ? toolArgs.args : [];
+
+							const allowed = [
+								'status',
+								'diff',
+								'log',
+								'show',
+								'branch',
+								'blame',
+								'rev-parse',
+								'describe',
+							];
+							if (!allowed.includes(sub)) {
+								toolResult = {
+									error: `Permission denied: Git subcommand '${toolArgs.subcommand}' is not allowed. Only read-only subcommands (${allowed.join(', ')}) are permitted.`,
+								};
+							} else {
+								try {
+									const output = await this.workspaceService.runGitRead(sub, args);
+									toolResult = {
+										subcommand: sub,
+										output: output || '(Command completed with no output)',
+									};
+								} catch (err: any) {
+									toolResult = {
+										error: err?.message || String(err),
+									};
+								}
+							}
 						} else {
 							toolResult = { error: `Unknown tool: ${toolName}` };
 						}
@@ -1049,7 +1171,9 @@ export class AssistantService {
 							if (
 								toolName === 'read_file' ||
 								toolName === 'highlight_lines' ||
-								toolName === 'open_file'
+								toolName === 'open_file' ||
+								toolName === 'grep_search' ||
+								toolName === 'git_read'
 							) {
 								const pathStr = (toolArgs.path || '').trim();
 								if (pathStr && !visitedFiles.has(pathStr)) {
