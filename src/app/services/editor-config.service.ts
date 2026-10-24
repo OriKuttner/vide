@@ -78,7 +78,10 @@ export class EditorConfigService {
 			const eqIdx = line.indexOf('=');
 			if (eqIdx !== -1) {
 				const key = line.slice(0, eqIdx).trim().toLowerCase();
-				const val = line.slice(eqIdx + 1).trim().toLowerCase();
+				const val = line
+					.slice(eqIdx + 1)
+					.trim()
+					.toLowerCase();
 
 				// If no section defined yet, properties belong to root/global
 				if (!currentSection) {
@@ -106,7 +109,10 @@ export class EditorConfigService {
 		const merged: EditorConfigProperties = {};
 
 		for (const section of this.sections()) {
-			if (section.regex.test(normalized) || section.regex.test(normalized.split('/').pop() || '')) {
+			if (
+				section.regex.test(normalized) ||
+				section.regex.test(normalized.split('/').pop() || '')
+			) {
 				Object.assign(merged, section.properties);
 			}
 		}
@@ -202,7 +208,10 @@ export class EditorConfigService {
 		let pattern = glob;
 		// Handle {a,b,c} expansion
 		pattern = pattern.replace(/\{([^}]+)\}/g, (_, group) => {
-			const sub = group.split(',').map((s: string) => this.escapeRegex(s.trim())).join('|');
+			const sub = group
+				.split(',')
+				.map((s: string) => this.escapeRegex(s.trim()))
+				.join('|');
 			return `(${sub})`;
 		});
 

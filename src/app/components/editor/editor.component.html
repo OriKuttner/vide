@@ -5,393 +5,543 @@
 -->
 
 <div class="editor-wrapper">
-  @if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as diffFile) {
-    <div class="diff-toolbar">
-      <div class="diff-left-section">
-        <span class="diff-tag">{{ diffFile.commitDiffInfo ? 'COMMIT DIFF' : 'WORKING TREE DIFF' }}</span>
-        <span class="diff-file-name">{{ diffFile.name }}</span>
-        <span
-          class="diff-status-badge"
-          [class.status-m]="diffFile.gitStatus === 'modified'"
-          [class.status-a]="diffFile.gitStatus === 'added'"
-          [class.status-u]="diffFile.gitStatus === 'untracked'"
-        >
-          {{ diffFile.gitStatus === 'added' ? 'Added' : diffFile.gitStatus === 'untracked' ? 'Untracked' : 'Modified' }}
-        </span>
-        @if (diffChunkCount() > 0) {
-          <span class="diff-chunk-pill">
-            {{ diffChunkCount() }} difference{{ diffChunkCount() === 1 ? '' : 's' }}
-          </span>
-        }
-      </div>
+	@if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as diffFile) {
+		<div class="diff-toolbar">
+			<div class="diff-left-section">
+				<span class="diff-tag">{{
+					diffFile.commitDiffInfo ? 'COMMIT DIFF' : 'WORKING TREE DIFF'
+				}}</span>
+				<span class="diff-file-name">{{ diffFile.name }}</span>
+				<span
+					class="diff-status-badge"
+					[class.status-m]="diffFile.gitStatus === 'modified'"
+					[class.status-a]="diffFile.gitStatus === 'added'"
+					[class.status-u]="diffFile.gitStatus === 'untracked'"
+				>
+					{{
+						diffFile.gitStatus === 'added'
+							? 'Added'
+							: diffFile.gitStatus === 'untracked'
+								? 'Untracked'
+								: 'Modified'
+					}}
+				</span>
+				@if (diffChunkCount() > 0) {
+					<span class="diff-chunk-pill">
+						{{ diffChunkCount() }} difference{{ diffChunkCount() === 1 ? '' : 's' }}
+					</span>
+				}
+			</div>
 
-      <div class="diff-center-headers">
-        <div class="pane-header original-pane-header">
-          <span class="legend-indicator red">●</span>
-          <span class="pane-title">{{ diffFile.commitDiffInfo ? diffFile.commitDiffInfo.originalTitle : 'HEAD (Commit Baseline)' }}</span>
-          <span class="pane-tag">Read-only</span>
-        </div>
-        <div class="pane-separator">⇄</div>
-        <div class="pane-header modified-pane-header">
-          <span class="legend-indicator green">●</span>
-          <span class="pane-title">{{ diffFile.commitDiffInfo ? diffFile.commitDiffInfo.modifiedTitle : 'Working Tree (Local Changes)' }}</span>
-          <span class="pane-tag" [class.editable]="!diffFile.readOnly">{{ diffFile.readOnly ? 'Read-only' : 'Editable' }}</span>
-        </div>
-      </div>
+			<div class="diff-center-headers">
+				<div class="pane-header original-pane-header">
+					<span class="legend-indicator red">●</span>
+					<span class="pane-title">{{
+						diffFile.commitDiffInfo
+							? diffFile.commitDiffInfo.originalTitle
+							: 'HEAD (Commit Baseline)'
+					}}</span>
+					<span class="pane-tag">Read-only</span>
+				</div>
+				<div class="pane-separator">⇄</div>
+				<div class="pane-header modified-pane-header">
+					<span class="legend-indicator green">●</span>
+					<span class="pane-title">{{
+						diffFile.commitDiffInfo
+							? diffFile.commitDiffInfo.modifiedTitle
+							: 'Working Tree (Local Changes)'
+					}}</span>
+					<span class="pane-tag" [class.editable]="!diffFile.readOnly">{{
+						diffFile.readOnly ? 'Read-only' : 'Editable'
+					}}</span>
+				</div>
+			</div>
 
-      <div class="diff-right-actions">
-        <button
-          type="button"
-          class="diff-action-btn view-toggle-btn"
-          [class.active]="workspaceService.diffRenderSideBySide()"
-          (click)="workspaceService.toggleDiffSideBySide()"
-          [title]="workspaceService.diffRenderSideBySide() ? 'Switch to Unified Inline View' : 'Switch to Side-by-Side View'"
-        >
-          <span class="btn-icon">{{ workspaceService.diffRenderSideBySide() ? '◫' : '☰' }}</span>
-          <span>{{ workspaceService.diffRenderSideBySide() ? 'Side-by-Side' : 'Inline' }}</span>
-        </button>
+			<div class="diff-right-actions">
+				<button
+					type="button"
+					class="diff-action-btn view-toggle-btn"
+					[class.active]="workspaceService.diffRenderSideBySide()"
+					(click)="workspaceService.toggleDiffSideBySide()"
+					[title]="
+						workspaceService.diffRenderSideBySide()
+							? 'Switch to Unified Inline View'
+							: 'Switch to Side-by-Side View'
+					"
+				>
+					<span class="btn-icon">{{
+						workspaceService.diffRenderSideBySide() ? '◫' : '☰'
+					}}</span>
+					<span>{{
+						workspaceService.diffRenderSideBySide() ? 'Side-by-Side' : 'Inline'
+					}}</span>
+				</button>
 
-        @if (!diffFile.commitDiffInfo && !diffFile.readOnly) {
-          <button
-            type="button"
-            class="diff-action-btn revert-btn"
-            (click)="discardChanges(diffFile.id)"
-            title="Discard all local changes in this file (Restore HEAD)"
-          >
-            <span class="btn-icon">⎌</span>
-            <span>Discard Changes</span>
-          </button>
-        }
+				@if (!diffFile.commitDiffInfo && !diffFile.readOnly) {
+					<button
+						type="button"
+						class="diff-action-btn revert-btn"
+						(click)="discardChanges(diffFile.id)"
+						title="Discard all local changes in this file (Restore HEAD)"
+					>
+						<span class="btn-icon">⎌</span>
+						<span>Discard Changes</span>
+					</button>
+				}
 
-        <button
-          type="button"
-          class="diff-action-btn close-btn"
-          (click)="workspaceService.closeDiffView()"
-          [title]="diffFile.commitDiffInfo ? 'Close Diff View (Return to Commit Details)' : 'Close Diff View (Return to Editor)'"
-        >
-          <span class="btn-icon">{{ diffFile.commitDiffInfo ? '↩' : '✕' }}</span>
-          <span>{{ diffFile.commitDiffInfo ? 'Back to Commit' : 'Close Diff' }}</span>
-        </button>
-      </div>
-    </div>
-  }
+				<button
+					type="button"
+					class="diff-action-btn close-btn"
+					(click)="workspaceService.closeDiffView()"
+					[title]="
+						diffFile.commitDiffInfo
+							? 'Close Diff View (Return to Commit Details)'
+							: 'Close Diff View (Return to Editor)'
+					"
+				>
+					<span class="btn-icon">{{ diffFile.commitDiffInfo ? '↩' : '✕' }}</span>
+					<span>{{ diffFile.commitDiffInfo ? 'Back to Commit' : 'Close Diff' }}</span>
+				</button>
+			</div>
+		</div>
+	}
 
-  <div class="editor-stage" [class.resizing-preview]="isResizingPreview()">
-    @if (activeFileIsImage(); as imgFile) {
-      <div class="image-viewer-container">
-        <div class="image-viewer-toolbar">
-          <div class="img-left-meta">
-            <span class="img-badge">
-              <svg class="img-badge-svg" viewBox="0 0 16 16" fill="currentColor">
-                <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
-              </svg>
-              IMAGE
-            </span>
-            <span class="img-filename">{{ imgFile.name }}</span>
-            @if (imageDimensions(); as dims) {
-              <span class="img-dims">{{ dims.width }} × {{ dims.height }} px</span>
-            }
-            @if (imgFile.fileSize) {
-              <span class="img-size">{{ formatFileSize(imgFile.fileSize) }}</span>
-            }
-          </div>
+	<div class="editor-stage" [class.resizing-preview]="isResizingPreview()">
+		@if (activeFileIsImage(); as imgFile) {
+			<div class="image-viewer-container">
+				<div class="image-viewer-toolbar">
+					<div class="img-left-meta">
+						<span class="img-badge">
+							<svg class="img-badge-svg" viewBox="0 0 16 16" fill="currentColor">
+								<path
+									fill-rule="evenodd"
+									clip-rule="evenodd"
+									d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"
+								/>
+							</svg>
+							IMAGE
+						</span>
+						<span class="img-filename">{{ imgFile.name }}</span>
+						@if (imageDimensions(); as dims) {
+							<span class="img-dims">{{ dims.width }} × {{ dims.height }} px</span>
+						}
+						@if (imgFile.fileSize) {
+							<span class="img-size">{{ formatFileSize(imgFile.fileSize) }}</span>
+						}
+					</div>
 
-          <div class="img-zoom-toolbar">
-            <button type="button" class="img-tool-btn" (click)="zoomImgOut()" title="Zoom Out">−</button>
-            <span class="img-zoom-label">{{ Math.round(imageZoom() * 100) }}%</span>
-            <button type="button" class="img-tool-btn" (click)="zoomImgIn()" title="Zoom In">+</button>
-            <button type="button" class="img-tool-btn" (click)="resetImgZoom()" title="Original Size (100%)">1:1</button>
-            <button type="button" class="img-tool-btn" (click)="fitImgToWindow()" title="Fit to Window">Fit</button>
-          </div>
-        </div>
+					<div class="img-zoom-toolbar">
+						<button
+							type="button"
+							class="img-tool-btn"
+							(click)="zoomImgOut()"
+							title="Zoom Out"
+						>
+							−
+						</button>
+						<span class="img-zoom-label">{{ Math.round(imageZoom() * 100) }}%</span>
+						<button
+							type="button"
+							class="img-tool-btn"
+							(click)="zoomImgIn()"
+							title="Zoom In"
+						>
+							+
+						</button>
+						<button
+							type="button"
+							class="img-tool-btn"
+							(click)="resetImgZoom()"
+							title="Original Size (100%)"
+						>
+							1:1
+						</button>
+						<button
+							type="button"
+							class="img-tool-btn"
+							(click)="fitImgToWindow()"
+							title="Fit to Window"
+						>
+							Fit
+						</button>
+					</div>
+				</div>
 
-        <div class="image-stage-viewport" (wheel)="onImgWheel($event)">
-          @if (imgFile.imageUrl) {
-            <div class="checkerboard-backdrop">
-              <img
-                [src]="imgFile.imageUrl"
-                [alt]="imgFile.name"
-                [style.transform]="'scale(' + imageZoom() + ')'"
-                (load)="onImgLoad($event)"
-                class="previewed-image"
-              />
-            </div>
-          } @else {
-            <div class="img-loading">
-              <div class="mini-spinner"></div>
-              <span>Loading image preview...</span>
-            </div>
-          }
-        </div>
-      </div>
-    }
+				<div class="image-stage-viewport" (wheel)="onImgWheel($event)">
+					@if (imgFile.imageUrl) {
+						<div class="checkerboard-backdrop">
+							<img
+								[src]="imgFile.imageUrl"
+								[alt]="imgFile.name"
+								[style.transform]="'scale(' + imageZoom() + ')'"
+								(load)="onImgLoad($event)"
+								class="previewed-image"
+							/>
+						</div>
+					} @else {
+						<div class="img-loading">
+							<div class="mini-spinner"></div>
+							<span>Loading image preview...</span>
+						</div>
+					}
+				</div>
+			</div>
+		}
 
-    @if (activeFileIsBinary(); as binFile) {
-      <div class="binary-viewer-container">
-        <div class="binary-toolbar">
-          <div class="bin-left-meta">
-            <span class="bin-badge">
-              <svg class="bin-badge-svg" viewBox="0 0 16 16" fill="currentColor">
-                <path fill-rule="evenodd" clip-rule="evenodd" d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11zM4 4.5h8v1H4v-1zm0 3h8v1H4v-1zm0 3h5v1H4v-1z"/>
-              </svg>
-              BINARY
-            </span>
-            <span class="bin-filename">{{ binFile.name }}</span>
-            @if (binFile.fileSize) {
-              <span class="bin-size">{{ formatFileSize(binFile.fileSize) }}</span>
-            }
-            <span class="bin-readonly-badge">Read-only</span>
+		@if (activeFileIsBinary(); as binFile) {
+			<div class="binary-viewer-container">
+				<div class="binary-toolbar">
+					<div class="bin-left-meta">
+						<span class="bin-badge">
+							<svg class="bin-badge-svg" viewBox="0 0 16 16" fill="currentColor">
+								<path
+									fill-rule="evenodd"
+									clip-rule="evenodd"
+									d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11zM4 4.5h8v1H4v-1zm0 3h8v1H4v-1zm0 3h5v1H4v-1z"
+								/>
+							</svg>
+							BINARY
+						</span>
+						<span class="bin-filename">{{ binFile.name }}</span>
+						@if (binFile.fileSize) {
+							<span class="bin-size">{{ formatFileSize(binFile.fileSize) }}</span>
+						}
+						<span class="bin-readonly-badge">Read-only</span>
 
-            <div class="bin-type-desc" [title]="binFile.fileTypeDescription || 'Binary file'">
-              <span class="bin-type-label">Detected Type:</span>
-              <span class="bin-type-val">{{ binFile.fileTypeDescription || 'Binary file' }}</span>
-            </div>
-          </div>
-        </div>
+						<div
+							class="bin-type-desc"
+							[title]="binFile.fileTypeDescription || 'Binary file'"
+						>
+							<span class="bin-type-label">Detected Type:</span>
+							<span class="bin-type-val">{{
+								binFile.fileTypeDescription || 'Binary file'
+							}}</span>
+						</div>
+					</div>
+				</div>
 
-        <div class="hex-viewer-stage">
-          @if (binFile.hexData; as hex) {
-            <div class="hex-table-container">
-              <div class="hex-header-row">
-                <span class="hex-col-offset">OFFSET</span>
-                <span class="hex-col-bytes">{{ '00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F' }}</span>
-                <span class="hex-col-ascii">DECODED TEXT</span>
-              </div>
-              <div class="hex-lines">
-                @for (line of (hex.lines || []); track $index) {
-                  <div class="hex-row">
-                    <span class="hex-col-offset">{{ line.offset }}</span>
-                    <span class="hex-col-bytes">{{ line.hex_part1 + '  ' + line.hex_part2 }}</span>
-                    <span class="hex-col-ascii">{{ line.ascii }}</span>
-                  </div>
-                }
-              </div>
-              @if (hex.has_more) {
-                <div class="hex-load-more">
-                  <button type="button" class="load-more-btn" (click)="loadMoreHex(binFile)">
-                    Load More (showing {{ formatFileSize(hex.bytes_shown) }} of {{ formatFileSize(hex.total_size) }})
-                  </button>
-                </div>
-              }
-            </div>
-          } @else {
-            <div class="bin-loading">
-              <div class="mini-spinner"></div>
-              <span>Reading binary file data...</span>
-            </div>
-          }
-        </div>
-      </div>
-    }
+				<div class="hex-viewer-stage">
+					@if (binFile.hexData; as hex) {
+						<div class="hex-table-container">
+							<div class="hex-header-row">
+								<span class="hex-col-offset">OFFSET</span>
+								<span class="hex-col-bytes">{{
+									'00 01 02 03 04 05 06 07  08 09 0A 0B 0C 0D 0E 0F'
+								}}</span>
+								<span class="hex-col-ascii">DECODED TEXT</span>
+							</div>
+							<div class="hex-lines">
+								@for (line of hex.lines || []; track $index) {
+									<div class="hex-row">
+										<span class="hex-col-offset">{{ line.offset }}</span>
+										<span class="hex-col-bytes">{{
+											line.hex_part1 + '  ' + line.hex_part2
+										}}</span>
+										<span class="hex-col-ascii">{{ line.ascii }}</span>
+									</div>
+								}
+							</div>
+							@if (hex.has_more) {
+								<div class="hex-load-more">
+									<button
+										type="button"
+										class="load-more-btn"
+										(click)="loadMoreHex(binFile)"
+									>
+										Load More (showing {{ formatFileSize(hex.bytes_shown) }} of
+										{{ formatFileSize(hex.total_size) }})
+									</button>
+								</div>
+							}
+						</div>
+					} @else {
+						<div class="bin-loading">
+							<div class="mini-spinner"></div>
+							<span>Reading binary file data...</span>
+						</div>
+					}
+				</div>
+			</div>
+		}
 
-    @if (!workspaceService.activeFile() && !workspaceService.diffModeActive()) {
-      @if (!workspaceService.isRealWorkspace()) {
-        <div class="welcome-stage">
-          <div class="welcome-box">
-            <!-- 1. Centered Vector Logo -->
-            <div class="logo-wrapper">
-              <img class="welcome-logo" src="vector-logo.png" alt="Vector Logo" width="88" height="88" />
-            </div>
+		@if (!workspaceService.activeFile() && !workspaceService.diffModeActive()) {
+			@if (!workspaceService.isRealWorkspace()) {
+				<div class="welcome-stage">
+					<div class="welcome-box">
+						<!-- 1. Centered Vector Logo -->
+						<div class="logo-wrapper">
+							<img
+								class="welcome-logo"
+								src="vector-logo.png"
+								alt="Vector Logo"
+								width="88"
+								height="88"
+							/>
+						</div>
 
-            <!-- 2. Centered Open Folder CTA -->
-            <div class="welcome-main-action">
-              <button
-                type="button"
-                class="open-folder-cta"
-                (click)="workspaceService.openDirectoryFromDisk()"
-                title="Open Folder (Ctrl+O)"
-              >
-                <span class="cta-icon">📁</span>
-                <span class="cta-text">Open Folder</span>
-                <span class="cta-kbd">Ctrl+O</span>
-              </button>
-              @if (workspaceService.isDesktop()) {
-                <button
-                  type="button"
-                  class="open-path-cta"
-                  (click)="workspaceService.openModal('open-folder-path')"
-                  title="Open Folder by Path"
-                >
-                  ⌨ Open by Path...
-                </button>
-              }
-            </div>
+						<!-- 2. Centered Open Folder CTA -->
+						<div class="welcome-main-action">
+							<button
+								type="button"
+								class="open-folder-cta"
+								(click)="workspaceService.openDirectoryFromDisk()"
+								title="Open Folder (Ctrl+O)"
+							>
+								<span class="cta-icon">📁</span>
+								<span class="cta-text">Open Folder</span>
+								<span class="cta-kbd">Ctrl+O</span>
+							</button>
+							@if (workspaceService.isDesktop()) {
+								<button
+									type="button"
+									class="open-path-cta"
+									(click)="workspaceService.openModal('open-folder-path')"
+									title="Open Folder by Path"
+								>
+									⌨ Open by Path...
+								</button>
+							}
+						</div>
 
-            <!-- 3. Squares with names of recent folders -->
-            @if (workspaceService.recentWorkspaces().length > 0) {
-              <div class="recent-tiles-section">
-                <span class="recent-section-title">Recent Folders</span>
-                <div class="recent-tiles-grid">
-                  @for (item of workspaceService.recentWorkspaces(); track item.path) {
-                    <div
-                      class="recent-tile"
-                      (click)="workspaceService.openRecentByPath(item.path)"
-                      [title]="item.path"
-                    >
-                      <button
-                        type="button"
-                        class="tile-remove-btn"
-                        (click)="workspaceService.removeRecentWorkspace(item.path, $event)"
-                        title="Remove from recent"
-                      >
-                        ×
-                      </button>
-                      <div class="tile-icon-box">
-                        <svg class="tile-folder-svg" width="36" height="36" viewBox="0 0 16 16" fill="currentColor">
-                          <path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a1.99 1.99 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4H2.19zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139C1.72 3.042 1.95 3 2.19 3h7.638a3.003 3.003 0 0 1-.947-.707L8.053 1.465A1 1 0 0 0 7.34 1H6.172a1 1 0 0 0-.707.293L4.757 2.293z"/>
-                        </svg>
-                      </div>
-                      <span class="tile-name">{{ item.name }}</span>
-                      <span class="tile-path">{{ item.path }}</span>
-                    </div>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-      } @else {
-        <div class="empty-workspace-editor-stage">
-          <div class="empty-editor-watermark">
-            <img class="watermark-logo" src="vector-logo.png" alt="Vide Logo" width="64" height="64" />
-            <div class="workspace-heading">
-              <span class="workspace-folder-icon">📂</span>
-              <span class="workspace-folder-title">{{ workspaceService.workspaceName() }}</span>
-            </div>
-            @if (workspaceService.fileTree().length === 0) {
-              <p class="empty-workspace-hint">This folder is empty. Create a file to get started.</p>
-            } @else {
-              <p class="empty-workspace-hint">Select a file from the explorer or use a shortcut below.</p>
-            }
-            <div class="workspace-shortcuts-list">
-              <button type="button" class="shortcut-row" (click)="workspaceService.openModal('new-file')">
-                <span class="shortcut-label">New File</span>
-                <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
-              </button>
-              <button type="button" class="shortcut-row" (click)="workspaceService.openModal('file-search')">
-                <span class="shortcut-label">Go to File</span>
-                <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>P</kbd></span>
-              </button>
-              <button type="button" class="shortcut-row" (click)="workspaceService.setSidebarView('search')">
-                <span class="shortcut-label">Find in Files</span>
-                <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F</kbd></span>
-              </button>
-              <button type="button" class="shortcut-row" (click)="workspaceService.openDirectoryFromDisk()">
-                <span class="shortcut-label">Switch Folder</span>
-                <span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>O</kbd></span>
-              </button>
-            </div>
-          </div>
-        </div>
-      }
-    }
+						<!-- 3. Squares with names of recent folders -->
+						@if (workspaceService.recentWorkspaces().length > 0) {
+							<div class="recent-tiles-section">
+								<span class="recent-section-title">Recent Folders</span>
+								<div class="recent-tiles-grid">
+									@for (
+										item of workspaceService.recentWorkspaces();
+										track item.path
+									) {
+										<div
+											class="recent-tile"
+											(click)="workspaceService.openRecentByPath(item.path)"
+											[title]="item.path"
+										>
+											<button
+												type="button"
+												class="tile-remove-btn"
+												(click)="
+													workspaceService.removeRecentWorkspace(
+														item.path,
+														$event
+													)
+												"
+												title="Remove from recent"
+											>
+												×
+											</button>
+											<div class="tile-icon-box">
+												<svg
+													class="tile-folder-svg"
+													width="36"
+													height="36"
+													viewBox="0 0 16 16"
+													fill="currentColor"
+												>
+													<path
+														d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a1.99 1.99 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4H2.19zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139C1.72 3.042 1.95 3 2.19 3h7.638a3.003 3.003 0 0 1-.947-.707L8.053 1.465A1 1 0 0 0 7.34 1H6.172a1 1 0 0 0-.707.293L4.757 2.293z"
+													/>
+												</svg>
+											</div>
+											<span class="tile-name">{{ item.name }}</span>
+											<span class="tile-path">{{ item.path }}</span>
+										</div>
+									}
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+			} @else {
+				<div class="empty-workspace-editor-stage">
+					<div class="empty-editor-watermark">
+						<img
+							class="watermark-logo"
+							src="vector-logo.png"
+							alt="Vide Logo"
+							width="64"
+							height="64"
+						/>
+						<div class="workspace-heading">
+							<span class="workspace-folder-icon">📂</span>
+							<span class="workspace-folder-title">{{
+								workspaceService.workspaceName()
+							}}</span>
+						</div>
+						@if (workspaceService.fileTree().length === 0) {
+							<p class="empty-workspace-hint">
+								This folder is empty. Create a file to get started.
+							</p>
+						} @else {
+							<p class="empty-workspace-hint">
+								Select a file from the explorer or use a shortcut below.
+							</p>
+						}
+						<div class="workspace-shortcuts-list">
+							<button
+								type="button"
+								class="shortcut-row"
+								(click)="workspaceService.openModal('new-file')"
+							>
+								<span class="shortcut-label">New File</span>
+								<span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>N</kbd></span>
+							</button>
+							<button
+								type="button"
+								class="shortcut-row"
+								(click)="workspaceService.openModal('file-search')"
+							>
+								<span class="shortcut-label">Go to File</span>
+								<span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>P</kbd></span>
+							</button>
+							<button
+								type="button"
+								class="shortcut-row"
+								(click)="workspaceService.setSidebarView('search')"
+							>
+								<span class="shortcut-label">Find in Files</span>
+								<span class="shortcut-keys"
+									><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F</kbd></span
+								>
+							</button>
+							<button
+								type="button"
+								class="shortcut-row"
+								(click)="workspaceService.openDirectoryFromDisk()"
+							>
+								<span class="shortcut-label">Switch Folder</span>
+								<span class="shortcut-keys"><kbd>Ctrl</kbd> + <kbd>O</kbd></span>
+							</button>
+						</div>
+					</div>
+				</div>
+			}
+		}
 
-    <div
-      #editorContainer
-      class="monaco-host"
-      [style.width.%]="isSplitPreview() ? previewSplitPercent() : 100"
-      [class.hidden-pane]="workspaceService.diffModeActive() || activeFileIsImage() || activeFileIsBinary() || isFullPreview()"
-    ></div>
+		<div
+			#editorContainer
+			class="monaco-host"
+			[style.width.%]="isSplitPreview() ? previewSplitPercent() : 100"
+			[class.hidden-pane]="
+				workspaceService.diffModeActive() ||
+				activeFileIsImage() ||
+				activeFileIsBinary() ||
+				isFullPreview()
+			"
+		></div>
 
-    @if (isSplitPreview()) {
-      <div
-        class="preview-resizer"
-        [style.left.%]="previewSplitPercent()"
-        [class.resizing]="isResizingPreview()"
-        (mousedown)="onStartResizePreview($event)"
-        (dblclick)="previewSplitPercent.set(50)"
-        title="Drag to resize / Double-click to reset 50%"
-      >
-        <div class="resizer-handle"></div>
-      </div>
-    }
+		@if (isSplitPreview()) {
+			<div
+				class="preview-resizer"
+				[style.left.%]="previewSplitPercent()"
+				[class.resizing]="isResizingPreview()"
+				(mousedown)="onStartResizePreview($event)"
+				(dblclick)="previewSplitPercent.set(50)"
+				title="Drag to resize / Double-click to reset 50%"
+			>
+				<div class="resizer-handle"></div>
+			</div>
+		}
 
-    @if (isPreviewActive()) {
-      <div
-        class="preview-pane-container"
-        [class.full-screen]="isFullPreview()"
-        [style.width.%]="isFullPreview() ? 100 : (100 - previewSplitPercent())"
-      >
-        <div class="preview-toolbar">
-          <div class="preview-meta-left">
-            <span class="preview-badge" [class.badge-html]="isCurrentHtml()">
-              <svg class="badge-icon" viewBox="0 0 16 16" fill="currentColor">
-                @if (isCurrentHtml()) {
-                  <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm5.854 4.146a.5.5 0 0 0-.708 0l-3 3a.5.5 0 0 0 0 .708l3 3a.5.5 0 0 0 .708-.708L3.207 9.5l2.647-2.646a.5.5 0 0 0 0-.708zm4.292 0a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L12.793 9.5l-2.647-2.646a.5.5 0 0 1 0-.708z"/>
-                } @else {
-                  <path d="M14 3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h12zM2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H2z"/>
-                  <path fill-rule="evenodd" d="M2.5 5h1.5v6H2.5V7l1-1-1-1zm3 0h1.5l1.25 3.5L9.5 5H11v6H9.5V7.5L8.25 11h-1L6 7.5V11H4.5V5h1z"/>
-                }
-              </svg>
-              <span>{{ isCurrentHtml() ? 'HTML' : 'MARKDOWN' }}</span>
-            </span>
-            <span class="preview-filename">{{ workspaceService.activeFile()?.name }}</span>
-            <span class="live-dot" title="Live synchronized preview">● Live</span>
-          </div>
+		@if (isPreviewActive()) {
+			<div
+				class="preview-pane-container"
+				[class.full-screen]="isFullPreview()"
+				[style.width.%]="isFullPreview() ? 100 : 100 - previewSplitPercent()"
+			>
+				<div class="preview-toolbar">
+					<div class="preview-meta-left">
+						<span class="preview-badge" [class.badge-html]="isCurrentHtml()">
+							<svg class="badge-icon" viewBox="0 0 16 16" fill="currentColor">
+								@if (isCurrentHtml()) {
+									<path
+										d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm5.854 4.146a.5.5 0 0 0-.708 0l-3 3a.5.5 0 0 0 0 .708l3 3a.5.5 0 0 0 .708-.708L3.207 9.5l2.647-2.646a.5.5 0 0 0 0-.708zm4.292 0a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L12.793 9.5l-2.647-2.646a.5.5 0 0 1 0-.708z"
+									/>
+								} @else {
+									<path
+										d="M14 3a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h12zM2 2a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H2z"
+									/>
+									<path
+										fill-rule="evenodd"
+										d="M2.5 5h1.5v6H2.5V7l1-1-1-1zm3 0h1.5l1.25 3.5L9.5 5H11v6H9.5V7.5L8.25 11h-1L6 7.5V11H4.5V5h1z"
+									/>
+								}
+							</svg>
+							<span>{{ isCurrentHtml() ? 'HTML' : 'MARKDOWN' }}</span>
+						</span>
+						<span class="preview-filename">{{
+							workspaceService.activeFile()?.name
+						}}</span>
+						<span class="live-dot" title="Live synchronized preview">● Live</span>
+					</div>
 
-          <div class="preview-mode-switch">
-            <button
-              type="button"
-              class="preview-tool-btn"
-              [class.active]="workspaceService.previewMode() === 'split'"
-              (click)="workspaceService.setPreviewMode('split')"
-              title="Side by Side (Split View)"
-            >
-              <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
-                <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm1 0a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6V2H1zm8 10h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H9v11z"/>
-              </svg>
-              <span>Split</span>
-            </button>
+					<div class="preview-mode-switch">
+						<button
+							type="button"
+							class="preview-tool-btn"
+							[class.active]="workspaceService.previewMode() === 'split'"
+							(click)="workspaceService.setPreviewMode('split')"
+							title="Side by Side (Split View)"
+						>
+							<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+								<path
+									d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm1 0a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6V2H1zm8 10h6a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H9v11z"
+								/>
+							</svg>
+							<span>Split</span>
+						</button>
 
-            <button
-              type="button"
-              class="preview-tool-btn"
-              [class.active]="workspaceService.previewMode() === 'full'"
-              (click)="workspaceService.setPreviewMode('full')"
-              title="Full View (Preview Only)"
-            >
-              <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
-                <path d="M1.5 1a.5.5 0 0 0-.5.5v3a.5.5 0 0 1-1 0v-3A1.5 1.5 0 0 1 1.5 0h3a.5.5 0 0 1 0 1h-3zM11 .5a.5.5 0 0 1 .5-.5h3A1.5 1.5 0 0 1 16 1.5v3a.5.5 0 0 1-1 0v-3a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5zM.5 11a.5.5 0 0 1 .5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 1 0 1h-3A1.5 1.5 0 0 1 0 14.5v-3a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 1 .5-.5z"/>
-              </svg>
-              <span>Full</span>
-            </button>
+						<button
+							type="button"
+							class="preview-tool-btn"
+							[class.active]="workspaceService.previewMode() === 'full'"
+							(click)="workspaceService.setPreviewMode('full')"
+							title="Full View (Preview Only)"
+						>
+							<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+								<path
+									d="M1.5 1a.5.5 0 0 0-.5.5v3a.5.5 0 0 1-1 0v-3A1.5 1.5 0 0 1 1.5 0h3a.5.5 0 0 1 0 1h-3zM11 .5a.5.5 0 0 1 .5-.5h3A1.5 1.5 0 0 1 16 1.5v3a.5.5 0 0 1-1 0v-3a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 1-.5-.5zM.5 11a.5.5 0 0 1 .5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 1 0 1h-3A1.5 1.5 0 0 1 0 14.5v-3a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a.5.5 0 0 1 0-1h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 1 .5-.5z"
+								/>
+							</svg>
+							<span>Full</span>
+						</button>
 
-            <button
-              type="button"
-              class="preview-tool-btn close-btn"
-              (click)="workspaceService.setPreviewMode('none')"
-              title="Close Preview (Ctrl+Shift+V)"
-            >
-              <span>✕</span>
-            </button>
-          </div>
-        </div>
+						<button
+							type="button"
+							class="preview-tool-btn close-btn"
+							(click)="workspaceService.setPreviewMode('none')"
+							title="Close Preview (Ctrl+Shift+V)"
+						>
+							<span>✕</span>
+						</button>
+					</div>
+				</div>
 
-        <div class="preview-viewport">
-          @if (isCurrentHtml()) {
-            <iframe
-              class="html-preview-iframe"
-              [srcdoc]="renderedHtmlDoc()"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-              title="HTML Preview"
-            ></iframe>
-          } @else {
-            <div class="markdown-preview-scroll">
-              <div
-                class="markdown-body"
-                [style.font-size.px]="zoomService.editorFontSize()"
-                [innerHTML]="renderedMarkdownHtml()"
-              ></div>
-            </div>
-          }
-        </div>
-      </div>
-    }
+				<div class="preview-viewport">
+					@if (isCurrentHtml()) {
+						<iframe
+							class="html-preview-iframe"
+							[srcdoc]="renderedHtmlDoc()"
+							sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+							title="HTML Preview"
+						></iframe>
+					} @else {
+						<div class="markdown-preview-scroll">
+							<div
+								class="markdown-body"
+								[style.font-size.px]="zoomService.editorFontSize()"
+								[innerHTML]="renderedMarkdownHtml()"
+							></div>
+						</div>
+					}
+				</div>
+			</div>
+		}
 
-    <div
-      #diffContainer
-      class="monaco-diff-host"
-      [class.hidden-pane]="!workspaceService.diffModeActive() || activeFileIsImage()"
-    ></div>
-  </div>
+		<div
+			#diffContainer
+			class="monaco-diff-host"
+			[class.hidden-pane]="!workspaceService.diffModeActive() || activeFileIsImage()"
+		></div>
+	</div>
 </div>

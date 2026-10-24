@@ -5,19 +5,19 @@
  */
 
 import {
-  Component,
-  ElementRef,
-  ViewChild,
-  OnInit,
-  AfterViewInit,
-  OnDestroy,
-  effect,
-  inject,
-  output,
-  signal,
-  computed,
-  untracked,
-  HostListener,
+	Component,
+	ElementRef,
+	ViewChild,
+	OnInit,
+	AfterViewInit,
+	OnDestroy,
+	effect,
+	inject,
+	output,
+	signal,
+	computed,
+	untracked,
+	HostListener,
 } from '@angular/core';
 import * as monaco from 'monaco-editor';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -36,108 +36,110 @@ import { MenuRegistry, MenuId } from 'monaco-editor/platform/actions/common/acti
 import { registerOmniFlux } from '../../languages/omniflux.language';
 import { registerAllLanguageSnippets } from '../../languages/snippets.registry';
 import {
-  WorkspaceFile,
-  isImageFile,
-  detectLanguage,
-  isMarkdownFile,
-  isHtmlFile,
-  isPreviewableFile,
-  isBinaryFile,
+	WorkspaceFile,
+	isImageFile,
+	detectLanguage,
+	isMarkdownFile,
+	isHtmlFile,
+	isPreviewableFile,
+	isBinaryFile,
 } from '../../models/file.model';
 
 @Component({
-  selector: 'app-editor',
-  standalone: true,
-  templateUrl: './editor.component.html',
-  styleUrl: './editor.component.scss',
+	selector: 'app-editor',
+	standalone: true,
+	templateUrl: './editor.component.html',
+	styleUrl: './editor.component.scss',
 })
 export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
-  @ViewChild('editorContainer', { static: true })
-  private editorContainer!: ElementRef<HTMLDivElement>;
+	@ViewChild('editorContainer', { static: true })
+	private editorContainer!: ElementRef<HTMLDivElement>;
 
-  @ViewChild('diffContainer', { static: true })
-  private diffContainer!: ElementRef<HTMLDivElement>;
+	@ViewChild('diffContainer', { static: true })
+	private diffContainer!: ElementRef<HTMLDivElement>;
 
-  public workspaceService = inject(WorkspaceService);
-  public zoomService = inject(ZoomService);
-  private inlineCompletionService = inject(InlineCompletionService);
-  private symbolNavigationService = inject(SymbolNavigationService);
-  public aiService = inject(AiService);
-  private themeService = inject(ThemeService);
-  public navigationHistoryService = inject(NavigationHistoryService);
-  private codeFormattingService = inject(CodeFormattingService);
-  public editorConfigService = inject(EditorConfigService);
-  private sanitizer = inject(DomSanitizer);
+	public workspaceService = inject(WorkspaceService);
+	public zoomService = inject(ZoomService);
+	private inlineCompletionService = inject(InlineCompletionService);
+	private symbolNavigationService = inject(SymbolNavigationService);
+	public aiService = inject(AiService);
+	private themeService = inject(ThemeService);
+	public navigationHistoryService = inject(NavigationHistoryService);
+	private codeFormattingService = inject(CodeFormattingService);
+	public editorConfigService = inject(EditorConfigService);
+	private sanitizer = inject(DomSanitizer);
 
-  public readonly cursorChange = output<{ line: number; column: number }>();
-  public readonly diffChunkCount = signal<number>(0);
+	public readonly cursorChange = output<{ line: number; column: number }>();
+	public readonly diffChunkCount = signal<number>(0);
 
-  // Markdown & HTML Live Preview state
-  public previewSplitPercent = signal<number>(50);
-  public isResizingPreview = signal<boolean>(false);
+	// Markdown & HTML Live Preview state
+	public previewSplitPercent = signal<number>(50);
+	public isResizingPreview = signal<boolean>(false);
 
-  readonly isCurrentMarkdown = computed(() => {
-    const f = this.workspaceService.activeFile();
-    return f ? isMarkdownFile(f.name) : false;
-  });
+	readonly isCurrentMarkdown = computed(() => {
+		const f = this.workspaceService.activeFile();
+		return f ? isMarkdownFile(f.name) : false;
+	});
 
-  readonly isCurrentHtml = computed(() => {
-    const f = this.workspaceService.activeFile();
-    return f ? isHtmlFile(f.name, f.language) : false;
-  });
+	readonly isCurrentHtml = computed(() => {
+		const f = this.workspaceService.activeFile();
+		return f ? isHtmlFile(f.name, f.language) : false;
+	});
 
-  readonly isCurrentPreviewable = computed(() => {
-    const f = this.workspaceService.activeFile();
-    return f ? isPreviewableFile(f.name, f.language) : false;
-  });
+	readonly isCurrentPreviewable = computed(() => {
+		const f = this.workspaceService.activeFile();
+		return f ? isPreviewableFile(f.name, f.language) : false;
+	});
 
-  readonly isPreviewActive = computed(() => {
-    const mode = this.workspaceService.previewMode();
-    return (mode === 'split' || mode === 'full') && this.isCurrentPreviewable();
-  });
+	readonly isPreviewActive = computed(() => {
+		const mode = this.workspaceService.previewMode();
+		return (mode === 'split' || mode === 'full') && this.isCurrentPreviewable();
+	});
 
-  readonly isSplitPreview = computed(() => {
-    return this.workspaceService.previewMode() === 'split' && this.isCurrentPreviewable();
-  });
+	readonly isSplitPreview = computed(() => {
+		return this.workspaceService.previewMode() === 'split' && this.isCurrentPreviewable();
+	});
 
-  readonly isFullPreview = computed(() => {
-    return this.workspaceService.previewMode() === 'full' && this.isCurrentPreviewable();
-  });
+	readonly isFullPreview = computed(() => {
+		return this.workspaceService.previewMode() === 'full' && this.isCurrentPreviewable();
+	});
 
-  readonly renderedMarkdownHtml = computed<SafeHtml>(() => {
-    if (!this.isPreviewActive() || !this.isCurrentMarkdown()) {
-      return '';
-    }
-    const f = this.workspaceService.activeFile();
-    const rawContent = f?.content ?? '';
-    try {
-      const parsed = marked.parse(rawContent, {
-        async: false,
-        gfm: true,
-        breaks: true,
-      }) as string;
-      return this.sanitizer.bypassSecurityTrustHtml(parsed);
-    } catch (err) {
-      console.error('Error parsing markdown:', err);
-      return this.sanitizer.bypassSecurityTrustHtml('<div class="preview-error">Failed to parse Markdown</div>');
-    }
-  });
+	readonly renderedMarkdownHtml = computed<SafeHtml>(() => {
+		if (!this.isPreviewActive() || !this.isCurrentMarkdown()) {
+			return '';
+		}
+		const f = this.workspaceService.activeFile();
+		const rawContent = f?.content ?? '';
+		try {
+			const parsed = marked.parse(rawContent, {
+				async: false,
+				gfm: true,
+				breaks: true,
+			}) as string;
+			return this.sanitizer.bypassSecurityTrustHtml(parsed);
+		} catch (err) {
+			console.error('Error parsing markdown:', err);
+			return this.sanitizer.bypassSecurityTrustHtml(
+				'<div class="preview-error">Failed to parse Markdown</div>',
+			);
+		}
+	});
 
-  readonly renderedHtmlDoc = computed<string>(() => {
-    if (!this.isPreviewActive() || !this.isCurrentHtml()) {
-      return '';
-    }
-    const f = this.workspaceService.activeFile();
-    const rawContent = f?.content ?? '';
-    const isDoc = /<!doctype\s+html|<html[\s>]/i.test(rawContent);
-    if (isDoc) {
-      return rawContent;
-    }
-    const isDark = this.themeService.currentTheme() === 'dark';
-    const bg = isDark ? '#1e1e1e' : '#ffffff';
-    const color = isDark ? '#d4d4d4' : '#1f2328';
-    const fontSize = this.zoomService.editorFontSize();
-    return `<!DOCTYPE html>
+	readonly renderedHtmlDoc = computed<string>(() => {
+		if (!this.isPreviewActive() || !this.isCurrentHtml()) {
+			return '';
+		}
+		const f = this.workspaceService.activeFile();
+		const rawContent = f?.content ?? '';
+		const isDoc = /<!doctype\s+html|<html[\s>]/i.test(rawContent);
+		if (isDoc) {
+			return rawContent;
+		}
+		const isDark = this.themeService.currentTheme() === 'dark';
+		const bg = isDark ? '#1e1e1e' : '#ffffff';
+		const color = isDark ? '#d4d4d4' : '#1f2328';
+		const fontSize = this.zoomService.editorFontSize();
+		return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -156,2091 +158,2229 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 ${rawContent}
 </body>
 </html>`;
-  });
-
-  // Image viewer state
-  readonly Math = Math;
-  public imageZoom = signal<number>(1.0);
-  public imageDimensions = signal<{ width: number; height: number } | null>(null);
-
-  readonly activeFileIsImage = computed(() => {
-    const f = this.workspaceService.activeFile();
-    if (!f) return null;
-    if (f.isImage || isImageFile(f.name)) return f;
-    return null;
-  });
-
-  readonly activeFileIsBinary = computed(() => {
-    const f = this.workspaceService.activeFile();
-    if (!f) return null;
-    if (f.isBinary || f.language === 'binary' || isBinaryFile(f.name)) return f;
-    return null;
-  });
-
-  private editorInstance: monaco.editor.IStandaloneCodeEditor | null = null;
-  private diffEditorInstance: monaco.editor.IStandaloneDiffEditor | null = null;
-  private fileModels = new Map<string, monaco.editor.ITextModel>();
-  private originalDiffModels = new Map<string, monaco.editor.ITextModel>();
-  private fileViewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
-  private saveViewStateDebounceTimer: any = null;
-  private currentActiveFileId: string | null = null;
-  private resizeObserver: ResizeObserver | null = null;
-  private static markersListenerRegistered = false;
-  private isProgrammaticUpdate = false;
-  private aiThinkingWidget: AiThinkingWidget | null = null;
-  private highlightDecorations: monaco.editor.IEditorDecorationsCollection | null = null;
-
-  constructor() {
-    this.initMonacoEnvironment();
-
-    // Effect to layout AI thinking widget above cursor when generating state changes
-    effect(() => {
-      const isGenerating = this.aiService.isGenerating();
-      if (this.editorInstance && this.aiThinkingWidget) {
-        this.editorInstance.layoutContentWidget(this.aiThinkingWidget);
-      }
-    });
-
-    // Effect to switch active file in Monaco or reset image/binary viewer
-    effect(
-      () => {
-        const active = this.workspaceService.activeFile();
-        if (active) {
-          untracked(() => {
-            const isImg = active.isImage || isImageFile(active.name);
-            const isBin = active.isBinary || active.language === 'binary' || isBinaryFile(active.name);
-            if (isImg || isBin) {
-              if (this.currentActiveFileId && this.editorInstance) {
-                this.saveCurrentFileViewState(this.currentActiveFileId);
-                this.currentActiveFileId = null;
-              }
-              if (this.editorInstance && this.editorInstance.getModel()) {
-                this.editorInstance.setModel(null);
-              }
-              if (isImg) {
-                this.imageZoom.set(1.0);
-                this.imageDimensions.set(null);
-              }
-            } else if (this.editorInstance) {
-              this.switchToFile(active);
-            }
-          });
-        } else {
-          const editor = this.editorInstance;
-          if (editor) {
-            untracked(() => {
-              if (this.currentActiveFileId) {
-                this.saveCurrentFileViewState(this.currentActiveFileId);
-                this.currentActiveFileId = null;
-              }
-              if (editor.getModel()) {
-                editor.setModel(null);
-              }
-            });
-          }
-        }
-      },
-      { allowSignalWrites: true }
-    );
-
-    // Effect to dispose and release Monaco models for closed tabs to prevent memory leaks
-    effect(() => {
-      const tabs = this.workspaceService.openTabs();
-      const openIds = new Set(tabs.map((t) => t.id));
-      const editor = this.editorInstance;
-
-      // Clean up fileModels for tabs that were closed
-      for (const [fileId, model] of this.fileModels.entries()) {
-        if (!openIds.has(fileId)) {
-          if (editor && editor.getModel() === model) {
-            editor.setModel(null);
-          }
-          if (!model.isDisposed()) {
-            model.dispose();
-          }
-          this.fileModels.delete(fileId);
-          this.fileViewStates.delete(fileId);
-          if (this.currentActiveFileId === fileId) {
-            this.currentActiveFileId = null;
-          }
-        }
-      }
-
-      // Clean up originalDiffModels for tabs that were closed
-      for (const [fileId, model] of this.originalDiffModels.entries()) {
-        if (!openIds.has(fileId)) {
-          if (!model.isDisposed()) {
-            model.dispose();
-          }
-          this.originalDiffModels.delete(fileId);
-        }
-      }
-    });
-
-    // Effect to reactively update editor font size when zoom changes
-    effect(() => {
-      const fontSize = this.zoomService.editorFontSize();
-      const lineHeight = Math.round(fontSize * 1.5);
-      if (this.editorInstance) {
-        this.editorInstance.updateOptions({
-          fontSize,
-          lineHeight,
-        });
-      }
-      if (this.diffEditorInstance) {
-        this.diffEditorInstance.getOriginalEditor().updateOptions({
-          fontSize,
-          lineHeight,
-        });
-        this.diffEditorInstance.getModifiedEditor().updateOptions({
-          fontSize,
-          lineHeight,
-        });
-      }
-    });
-
-    // Effect to switch Monaco theme reactively
-    effect(() => {
-      const theme = this.themeService.currentTheme();
-      const monacoTheme = theme === 'light' ? 'vector-light' : 'vector-dark';
-      monaco.editor.setTheme(monacoTheme);
-    });
-
-    // Effect to handle diff mode and file changes
-    effect(() => {
-      const isDiff = this.workspaceService.diffModeActive();
-      const diffFile = this.workspaceService.activeDiffFile();
-      if (isDiff && diffFile) {
-        if (!this.diffEditorInstance) {
-          this.createDiffEditor();
-        }
-        this.setupDiffModels(diffFile);
-        setTimeout(() => {
-          this.diffEditorInstance?.layout();
-        }, 0);
-      } else {
-        if (this.diffEditorInstance) {
-          this.diffEditorInstance.setModel(null);
-        }
-        setTimeout(() => {
-          this.editorInstance?.layout();
-        }, 0);
-      }
-    });
-
-    // Effect to toggle diff renderSideBySide
-    effect(() => {
-      const sideBySide = this.workspaceService.diffRenderSideBySide();
-      if (this.diffEditorInstance) {
-        this.diffEditorInstance.updateOptions({
-          renderSideBySide: sideBySide,
-        });
-      }
-    });
-
-    // Effect to jump to line (e.g. from Grep search or Go to Definition)
-    effect(() => {
-      const jump = this.workspaceService.pendingLineJump();
-      if (jump && this.editorInstance) {
-        const active = this.workspaceService.activeFile();
-        if (active && (active.isBinary || active.language === 'binary' || isBinaryFile(active.name))) {
-          this.workspaceService.pendingLineJump.set(null);
-          return;
-        }
-        if (!jump.fileId || (active && (active.id === jump.fileId || active.path === jump.fileId))) {
-          const model = this.editorInstance.getModel();
-          if (model && model.getLineCount() < jump.lineNumber && active && !active.isLoaded) {
-            return;
-          }
-          if (model) {
-            this.editorInstance.revealLineInCenter(jump.lineNumber);
-            this.editorInstance.setPosition({ lineNumber: jump.lineNumber, column: jump.column || 1 });
-            this.editorInstance.focus();
-          }
-          this.workspaceService.pendingLineJump.set(null);
-        }
-      }
-    });
-
-    // Effect to update content programmatically (from AI tools / external changes)
-    effect(() => {
-      const rep = this.workspaceService.pendingContentReplacement();
-      if (rep && this.editorInstance) {
-        const model = this.fileModels.get(rep.fileId) || (this.currentActiveFileId === rep.fileId ? this.editorInstance.getModel() : null);
-        if (model) {
-          this.isProgrammaticUpdate = true;
-          model.setValue(rep.newContent);
-          this.isProgrammaticUpdate = false;
-        }
-        this.workspaceService.pendingContentReplacement.set(null);
-      }
-    });
-
-    // Effect to highlight line range and scroll into center (from Ada / CLI goto)
-    effect(() => {
-      const hl = this.workspaceService.pendingHighlight();
-      if (hl && this.editorInstance) {
-        const active = this.workspaceService.activeFile();
-        if (active && (active.isBinary || active.language === 'binary' || isBinaryFile(active.name))) {
-          this.workspaceService.pendingHighlight.set(null);
-          return;
-        }
-        if (active && (active.id === hl.fileId || active.path === hl.fileId)) {
-          this.applyHighlight(hl.highlightStart, hl.highlightEnd);
-          this.workspaceService.pendingHighlight.set(null);
-        }
-      }
-    });
-
-    // Effect to toggle Sticky Scroll dynamically
-    effect(() => {
-      const enabled = this.workspaceService.stickyScrollEnabled();
-      if (this.editorInstance) {
-        this.editorInstance.updateOptions({
-          stickyScroll: {
-            enabled,
-            maxLineCount: 5,
-            defaultModel: 'foldingProviderModel',
-          },
-        });
-      }
-    });
-
-    // Effect to update Monaco model language
-    effect(() => {
-      const change = this.workspaceService.pendingLanguageChange();
-      if (change && this.editorInstance) {
-        const model = this.fileModels.get(change.fileId);
-        if (model) {
-          monaco.editor.setModelLanguage(model, change.language);
-        }
-        this.workspaceService.pendingLanguageChange.set(null);
-      }
-    });
-
-    // Effect to trigger redetect indentation for active file on demand
-    effect(
-      () => {
-        const fileId = this.workspaceService.pendingRedetectIndentation();
-        if (fileId && this.editorInstance) {
-          const model = this.fileModels.get(fileId);
-          const active = this.workspaceService.activeFile();
-          if (model && active && active.id === fileId) {
-            const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
-            const defTabSize = this.workspaceService.defaultTabSize();
-            model.detectIndentation(defInsertSpaces, defTabSize);
-            this.syncIndentationFromModel(model, active);
-          }
-          this.workspaceService.pendingRedetectIndentation.set(null);
-        }
-      },
-      { allowSignalWrites: true }
-    );
-
-    // Effect to convert indentation in active file buffer
-    effect(
-      () => {
-        const req = this.workspaceService.pendingConvertIndentation();
-        if (req && this.editorInstance) {
-          const model =
-            (req.fileId ? this.fileModels.get(req.fileId) : null) ||
-            this.editorInstance.getModel();
-          if (model) {
-            this.convertModelIndentation(
-              model,
-              req.type,
-              req.size,
-              req.fromType,
-              req.fromSize
-            );
-          }
-          this.workspaceService.pendingConvertIndentation.set(null);
-        }
-      },
-      { allowSignalWrites: true }
-    );
-
-    // Effect to update indentation options
-    effect(() => {
-      const isTabs = this.workspaceService.indentType() === 'tabs';
-      const size = this.workspaceService.tabSize();
-      if (this.editorInstance) {
-        this.editorInstance.updateOptions({
-          insertSpaces: !isTabs,
-          tabSize: size,
-        });
-        const model = this.editorInstance.getModel();
-        if (model) {
-          const currentOpts = model.getOptions();
-          if (currentOpts.insertSpaces !== !isTabs || currentOpts.tabSize !== size) {
-            model.updateOptions({
-              insertSpaces: !isTabs,
-              tabSize: size,
-            });
-          }
-        }
-      }
-      if (this.diffEditorInstance) {
-        this.diffEditorInstance.getOriginalEditor().updateOptions({
-          insertSpaces: !isTabs,
-          tabSize: size,
-        });
-        this.diffEditorInstance.getModifiedEditor().updateOptions({
-          insertSpaces: !isTabs,
-          tabSize: size,
-        });
-      }
-    });
-
-    // Effect to re-layout Monaco editor when preview mode or split changes
-    effect(() => {
-      this.workspaceService.previewMode();
-      this.previewSplitPercent();
-      if (this.editorInstance) {
-        setTimeout(() => {
-          this.editorInstance?.layout();
-        }, 30);
-      }
-    });
-  }
-
-  ngOnInit(): void {
-    this.initMonacoEnvironment();
-    registerOmniFlux(monaco);
-    registerAllLanguageSnippets(monaco);
-    this.inlineCompletionService.registerProviders(monaco);
-    this.symbolNavigationService.registerProviders(monaco);
-    this.codeFormattingService.registerProviders(monaco);
-    this.registerAiCodeActions();
-    this.setupThemes();
-    this.createEditor();
-    this.createDiffEditor();
-    this.workspaceService.registerBeforeCloseCallback(() => {
-      this.saveCurrentFileViewState();
-    });
-    this.workspaceService.onContentProcessedOnSave = (fileId: string, newContent: string) => {
-      const model = this.fileModels.get(fileId);
-      if (model && model.getValue() !== newContent) {
-        this.isProgrammaticUpdate = true;
-        try {
-          const viewState = this.editorInstance?.saveViewState();
-          model.setValue(newContent);
-          if (viewState && this.currentActiveFileId === fileId) {
-            this.editorInstance?.restoreViewState(viewState);
-          }
-        } finally {
-          this.isProgrammaticUpdate = false;
-        }
-      }
-    };
-  }
-
-  @HostListener('window:beforeunload')
-  onBeforeUnload(): void {
-    this.saveCurrentFileViewState();
-  }
-
-  ngAfterViewInit(): void {
-    requestAnimationFrame(() => {
-      this.editorInstance?.layout();
-      this.diffEditorInstance?.layout();
-      const active = this.workspaceService.activeFile();
-      if (active && !active.isImage) {
-        this.restoreFileViewState(active);
-      }
-    });
-  }
-
-  ngOnDestroy(): void {
-    if (this.saveViewStateDebounceTimer) {
-      clearTimeout(this.saveViewStateDebounceTimer);
-    }
-    this.saveCurrentFileViewState();
-    if (this.resizeObserver) {
-      this.resizeObserver.disconnect();
-    }
-    for (const model of this.fileModels.values()) {
-      model.dispose();
-    }
-    this.fileModels.clear();
-
-    for (const model of this.originalDiffModels.values()) {
-      model.dispose();
-    }
-    this.originalDiffModels.clear();
-
-    if (this.aiThinkingWidget && this.editorInstance) {
-      this.editorInstance.removeContentWidget(this.aiThinkingWidget);
-      this.aiThinkingWidget = null;
-    }
-
-    this.highlightDecorations?.clear();
-    this.highlightDecorations = null;
-
-    this.fileViewStates.clear();
-    this.currentActiveFileId = null;
-
-    this.editorInstance?.dispose();
-    this.diffEditorInstance?.dispose();
-    document.body.classList.remove('vide-hide-goto-def');
-  }
-
-  private initMonacoEnvironment(): void {
-    if (typeof window !== 'undefined' && !(window as any).MonacoEnvironment) {
-      (window as any).MonacoEnvironment = {
-        getWorker: (_: any, label: string) => {
-          const isDevServer =
-            typeof window !== 'undefined' &&
-            window.location.protocol === 'http:' &&
-            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-          if (isDevServer) {
-            try {
-              if (label === 'json') {
-                return new Worker(new URL('../../workers/json.worker', import.meta.url), {
-                  type: 'module',
-                });
-              }
-              if (label === 'css' || label === 'scss' || label === 'less') {
-                return new Worker(new URL('../../workers/css.worker', import.meta.url), {
-                  type: 'module',
-                });
-              }
-              if (label === 'html' || label === 'handlebars' || label === 'razor') {
-                return new Worker(new URL('../../workers/html.worker', import.meta.url), {
-                  type: 'module',
-                });
-              }
-              if (label === 'typescript' || label === 'javascript') {
-                return new Worker(new URL('../../workers/ts.worker', import.meta.url), {
-                  type: 'module',
-                });
-              }
-              return new Worker(new URL('../../workers/editor.worker', import.meta.url), {
-                type: 'module',
-              });
-            } catch {
-              // Fallback to main thread
-            }
-          }
-
-          // In packaged desktop mode on Linux (WebKitGTK under custom scheme or tauri.localhost),
-          // ES module workers fail to handshake and cause Monaco to hang indefinitely.
-          // Throwing here cleanly triggers Monaco's built-in synchronous main-thread worker.
-          throw new Error('Web Workers disabled for WebKitGTK desktop packaged mode');
-        },
-      };
-    }
-
-    // Configure TypeScript & JavaScript defaults for IntelliSense & diagnostics
-    const tsLang = (monaco.languages as any).typescript;
-    if (tsLang) {
-      // Ignore errors related to missing external module definitions and import.meta in non-ESM targets
-      const ignoredCodes = [2307, 2792, 7016, 2688, 1343, 1470];
-
-      tsLang.typescriptDefaults?.setDiagnosticsOptions({
-        noSemanticValidation: false,
-        noSyntaxValidation: false,
-        diagnosticCodesToIgnore: ignoredCodes,
-      });
-      tsLang.javascriptDefaults?.setDiagnosticsOptions({
-        noSemanticValidation: false,
-        noSyntaxValidation: false,
-        diagnosticCodesToIgnore: ignoredCodes,
-      });
-      tsLang.typescriptDefaults?.setCompilerOptions({
-        target: 99, // ESNext
-        allowNonTextExtensions: true,
-        moduleResolution: 2, // NodeJs
-        module: 99, // ESNext
-        noEmit: true,
-        esModuleInterop: true,
-        allowJs: true,
-      });
-      tsLang.javascriptDefaults?.setCompilerOptions({
-        target: 99, // ESNext
-        allowNonTextExtensions: true,
-        moduleResolution: 2, // NodeJs
-        module: 99, // ESNext
-        noEmit: true,
-        esModuleInterop: true,
-        allowJs: true,
-      });
-    }
-
-    // Global marker listener to strip ignored diagnostic codes and clear diff markers
-    if (!EditorComponent.markersListenerRegistered && typeof monaco !== 'undefined' && monaco.editor) {
-      EditorComponent.markersListenerRegistered = true;
-      let isCleaningMarkers = false;
-      monaco.editor.onDidChangeMarkers((uris) => {
-        if (isCleaningMarkers) return;
-        for (const uri of uris) {
-          const uriStr = uri.toString();
-          if (uriStr.includes('diff-original')) {
-            const model = monaco.editor.getModel(uri);
-            if (model && !model.isDisposed()) {
-              try {
-                isCleaningMarkers = true;
-                monaco.editor.setModelMarkers(model, 'typescript', []);
-                monaco.editor.setModelMarkers(model, 'javascript', []);
-              } finally {
-                isCleaningMarkers = false;
-              }
-            }
-            continue;
-          }
-
-          const markers = monaco.editor.getModelMarkers({ resource: uri });
-          const hasBad = markers.some((m) =>
-            [1343, 1470, 2307, 2792, 7016, 2688].includes(Number(m.code))
-          );
-          if (hasBad) {
-            const cleanMarkers = markers.filter(
-              (m) => ![1343, 1470, 2307, 2792, 7016, 2688].includes(Number(m.code))
-            );
-            const model = monaco.editor.getModel(uri);
-            if (model && !model.isDisposed()) {
-              try {
-                isCleaningMarkers = true;
-                monaco.editor.setModelMarkers(model, 'typescript', cleanMarkers);
-              } finally {
-                isCleaningMarkers = false;
-              }
-            }
-          }
-        }
-      });
-    }
-  }
-
-  private setupThemes(): void {
-    // Light theme (Default)
-    monaco.editor.defineTheme('vector-light', {
-      base: 'vs',
-      inherit: true,
-      rules: [
-        { token: 'keyword.routing', foreground: '006699', fontStyle: 'bold' },
-        { token: 'keyword.other.http', foreground: '795E26', fontStyle: 'bold' },
-        { token: 'variable.name', foreground: '001080' },
-        { token: 'support.function', foreground: '795E26' },
-        { token: 'keyword', foreground: 'AF00DB' },
-        { token: 'storage.type', foreground: '0000FF' },
-        { token: 'string', foreground: 'A31515' },
-        { token: 'number', foreground: '098658' },
-        { token: 'comment', foreground: '008000', fontStyle: 'italic' },
-      ],
-      colors: {
-        'editor.background': '#ffffff',
-        'editor.foreground': '#1e1e1e',
-        'editorCursor.foreground': '#000000',
-        'editor.lineHighlightBackground': '#f5f5f5',
-        'editorLineNumber.foreground': '#237893',
-        'editorLineNumber.activeForeground': '#0b216f',
-        'editor.selectionBackground': '#add6ff',
-        'editor.inactiveSelectionBackground': '#e5ebf1',
-        // VS Code style diff colors
-        'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.35)',
-        'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.20)',
-        'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.28)',
-        'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.14)',
-        'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.50)',
-        'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.45)',
-        'diffEditor.diagonalFill': '#efefef',
-      },
-    });
-
-    // Dark theme
-    monaco.editor.defineTheme('vector-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        { token: 'keyword.routing', foreground: '4EC9B0', fontStyle: 'bold' },
-        { token: 'keyword.other.http', foreground: 'DCDCAA', fontStyle: 'bold' },
-        { token: 'variable.name', foreground: '9CDCFE' },
-        { token: 'support.function', foreground: 'DCDCAA' },
-        { token: 'keyword', foreground: 'C586C0' },
-        { token: 'storage.type', foreground: '569CD6' },
-        { token: 'string', foreground: 'CE9178' },
-        { token: 'number', foreground: 'B5CEA8' },
-        { token: 'comment', foreground: '6A9955', fontStyle: 'italic' },
-      ],
-      colors: {
-        'editor.background': '#1e1e1e',
-        'editor.foreground': '#d4d4d4',
-        'editorCursor.foreground': '#aeafad',
-        'editor.lineHighlightBackground': '#2a2d2e',
-        'editorLineNumber.foreground': '#858585',
-        'editorLineNumber.activeForeground': '#c6c6c6',
-        'editor.selectionBackground': '#264f78',
-        'editor.inactiveSelectionBackground': '#3a3d41',
-        // VS Code style diff colors
-        'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.35)',
-        'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.20)',
-        'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.30)',
-        'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.15)',
-        'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.50)',
-        'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.45)',
-        'diffEditor.diagonalFill': '#2a2d2e',
-      },
-    });
-  }
-
-  private createEditor(): void {
-    const active = this.workspaceService.activeFile();
-    const initialModel = active ? this.getOrCreateModel(active) : null;
-    this.currentActiveFileId = active ? active.id : null;
-
-    const initialMonacoTheme =
-      this.themeService.currentTheme() === 'light' ? 'vector-light' : 'vector-dark';
-
-    this.editorInstance = monaco.editor.create(this.editorContainer.nativeElement, {
-      model: initialModel,
-      theme: initialMonacoTheme,
-      fontSize: this.zoomService.editorFontSize(),
-      fontWeight: '500',
-      lineHeight: Math.round(this.zoomService.editorFontSize() * 1.5),
-      mouseWheelZoom: true,
-      wordWrap: 'on',
-      tabSize: 4,
-      insertSpaces: false,
-      detectIndentation: true,
-      fontFamily:
-        "'Consolas', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Noto Sans Hebrew', 'Courier New', monospace",
-      fontLigatures: true,
-      lineNumbers: 'on',
-      roundedSelection: false,
-      scrollBeyondLastLine: false,
-      readOnly: false,
-      cursorBlinking: 'smooth',
-      smoothScrolling: true,
-      contextmenu: true,
-      minimap: { enabled: true },
-      automaticLayout: false,
-      inlineSuggest: {
-        enabled: true,
-        mode: 'subwordSmart',
-        showToolbar: 'always',
-      },
-      suggest: {
-        preview: true,
-        showIcons: true,
-        snippetsPreventQuickSuggestions: false,
-      },
-      quickSuggestions: {
-        other: true,
-        comments: true,
-        strings: true,
-      },
-      suggestOnTriggerCharacters: true,
-      tabCompletion: 'on',
-      acceptSuggestionOnEnter: 'smart',
-      wordBasedSuggestions: 'allDocuments',
-      snippetSuggestions: 'top',
-      stickyScroll: {
-        enabled: true,
-        maxLineCount: 5,
-        defaultModel: 'foldingProviderModel',
-      },
-    });
-
-    // Floating AI Thinking widget above cursor
-    this.aiThinkingWidget = new AiThinkingWidget(this.editorInstance, () => this.aiService.isGenerating());
-    this.editorInstance.addContentWidget(this.aiThinkingWidget);
-
-    // Listen to cursor position changes
-    this.editorInstance.onDidChangeCursorPosition((e) => {
-      if (this.isProgrammaticUpdate) return;
-      this.cursorChange.emit({
-        line: e.position.lineNumber,
-        column: e.position.column,
-      });
-      const active = this.workspaceService.activeFile();
-      if (active) {
-        active.cursor = { line: e.position.lineNumber, column: e.position.column };
-        this.workspaceService.updateFileCursor(active.id, { line: e.position.lineNumber, column: e.position.column });
-      }
-      if (this.aiThinkingWidget && this.aiService.isGenerating()) {
-        this.editorInstance?.layoutContentWidget(this.aiThinkingWidget);
-      }
-      this.updateDefinitionContext(e.position);
-      this.queueSaveCurrentViewState();
-    });
-
-    // Listen to scroll changes to persist scroll position
-    this.editorInstance.onDidScrollChange(() => {
-      if (this.isProgrammaticUpdate) return;
-      this.queueSaveCurrentViewState();
-    });
-
-    // Listen to content changes
-    this.editorInstance.onDidChangeModelContent(() => {
-      if (this.isProgrammaticUpdate) return;
-      this.clearHighlight();
-      const activeFile = this.workspaceService.activeFile();
-      if (activeFile && this.editorInstance) {
-        const val = this.editorInstance.getValue();
-        this.workspaceService.updateContent(activeFile.id, val);
-        const model = this.editorInstance.getModel();
-        if (
-          model &&
-          (!activeFile.language || activeFile.language === 'plaintext') &&
-          val.length < 50000
-        ) {
-          const detected = detectLanguage(activeFile.name, val);
-          if (detected !== 'plaintext' && detected !== activeFile.language) {
-            activeFile.language = detected;
-            monaco.editor.setModelLanguage(model, detected);
-            this.workspaceService.updateFileLanguage(activeFile.id, detected);
-          }
-        }
-      }
-    });
-
-    // Keyboard shortcut: Escape to dismiss/clear highlight decorations
-    this.editorInstance.addCommand(monaco.KeyCode.Escape, () => {
-      this.clearHighlight();
-    });
-
-    // Keyboard shortcut: Ctrl+S (Cmd+S) to save active file
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      this.workspaceService.saveCurrentFile();
-    });
-
-    // Keyboard shortcut: Ctrl+P / Cmd+P to open file search
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
-      this.workspaceService.openModal('file-search');
-    });
-
-    // Keyboard shortcut: Ctrl+Shift+P / Cmd+Shift+P to open file search / command palette
-    this.editorInstance.addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP,
-      () => {
-        this.workspaceService.openModal('file-search');
-      }
-    );
-
-    // Keyboard shortcut: Ctrl+B to toggle sidebar
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
-      this.workspaceService.toggleSidebar();
-    });
-
-    // Keyboard shortcut: Ctrl+Shift+F to open global search
-    this.editorInstance.addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
-      () => {
-        this.workspaceService.setSidebarView('search');
-      }
-    );
-
-    // Keyboard shortcut: Ctrl+O to open folder
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO, () => {
-      this.workspaceService.openDirectoryFromDisk();
-    });
-
-    // Keyboard shortcut: Ctrl+N to create new file
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, () => {
-      this.workspaceService.openModal('new-file');
-    });
-
-    // Keyboard shortcuts for Zoom In / Out / Reset
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Equal, () => {
-      this.zoomService.zoomIn();
-    });
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => {
-      this.zoomService.zoomOut();
-    });
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Digit0, () => {
-      this.zoomService.resetZoom();
-    });
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.NumpadAdd, () => {
-      this.zoomService.zoomIn();
-    });
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.NumpadSubtract, () => {
-      this.zoomService.zoomOut();
-    });
-    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Numpad0, () => {
-      this.zoomService.resetZoom();
-    });
-
-    // Keyboard shortcut: Ctrl+Shift+V to toggle preview if active file is previewable
-    this.editorInstance.addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV,
-      () => {
-        if (this.isCurrentPreviewable()) {
-          this.workspaceService.togglePreview();
-        }
-      }
-    );
-
-    // Keyboard shortcut: Shift+Alt+F / Ctrl+Shift+I to Format Document
-    this.editorInstance.addCommand(
-      monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
-      () => {
-        this.editorInstance?.getAction('editor.action.formatDocument')?.run();
-      }
-    );
-    this.editorInstance.addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI,
-      () => {
-        this.editorInstance?.getAction('editor.action.formatDocument')?.run();
-      }
-    );
-
-    // Keyboard shortcut / Command: Ctrl+Alt+P (Cmd+Alt+P) to propagate edit pattern to following lines
-    this.editorInstance.addAction({
-      id: 'vide.ai.propagatePattern',
-      label: '✨ AI: Propagate Edit Pattern to Following Lines',
-      keybindings: [
-        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyP,
-      ],
-      contextMenuGroupId: 'modification',
-      contextMenuOrder: 1.5,
-      run: async (ed) => {
-        await this.propagateEditPattern(ed);
-      },
-    });
-
-    // Action & Shortcut: Shift+F12 to Find References (at top of context menu)
-    this.editorInstance.addAction({
-      id: 'vide.findReferences',
-      label: 'Find References',
-      keybindings: [
-        monaco.KeyMod.Shift | monaco.KeyCode.F12,
-      ],
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 0.1,
-      run: async (ed) => {
-        const pos = ed.getPosition();
-        const model = ed.getModel();
-        if (pos && model) {
-          await this.symbolNavigationService.triggerFindReferences(model, pos);
-        }
-      },
-    });
-
-    // Action & Shortcut: Alt+Left for Navigation History: Go Back
-    this.editorInstance.addAction({
-      id: 'vide.navigateBack',
-      label: 'Go Back (Alt+←)',
-      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow],
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 0.2,
-      run: async () => {
-        await this.navigationHistoryService.navigateBack();
-      },
-    });
-
-    // Action & Shortcut: Alt+Right for Navigation History: Go Forward
-    this.editorInstance.addAction({
-      id: 'vide.navigateForward',
-      label: 'Go Forward (Alt+→)',
-      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.RightArrow],
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 0.3,
-      run: async () => {
-        await this.navigationHistoryService.navigateForward();
-      },
-    });
-
-    // Action: Show Navigation Stack (Recent 30 Locations)
-    this.editorInstance.addAction({
-      id: 'vide.showNavigationStack',
-      label: 'Navigation Stack (Recent 30 Locations)',
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 0.4,
-      run: () => {
-        this.navigationHistoryService.openDropdown();
-      },
-    });
-
-    // Action & Shortcut: Alt+A to manually bookmark/save position in navigation stack
-    this.editorInstance.addAction({
-      id: 'vide.addToStack',
-      label: 'Add to Stack',
-      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyA],
-      contextMenuGroupId: 'navigation',
-      contextMenuOrder: 1.25,
-      run: (ed) => {
-        const pos = ed.getPosition();
-        const active = this.workspaceService.activeFile();
-        if (pos && active) {
-          this.navigationHistoryService.addManualLocation(active, pos.lineNumber, pos.column);
-        }
-      },
-    });
-
-    // Reconfigure Monaco MenuRegistry: Move "Go to Symbol..." (editor.action.quickOutline)
-    // from 'navigation' group (where order was 3) into '1_modification' with order 1.05
-    // so it appears immediately above "Rename Symbol" (which has group '1_modification' and order 1.1)
-    try {
-      const menuItems = (MenuRegistry as any).getMenuItems(MenuId.EditorContext);
-      if (Array.isArray(menuItems)) {
-        for (const item of menuItems) {
-          if (item?.command?.id === 'editor.action.quickOutline') {
-            item.group = '1_modification';
-            item.order = 1.05;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('Could not reorder Go to Symbol action in MenuRegistry', e);
-    }
-
-    // Hide "Go to Definition" when on definition, and always unify references
-    this.editorInstance.onContextMenu((e) => {
-      const pos = e.target?.position || this.editorInstance?.getPosition();
-      this.updateDefinitionContext(pos);
-      this.purgeDefinitionMenuItems();
-    });
-
-    // Precision resize handling for both standard and diff editor
-    this.resizeObserver = new ResizeObserver(() => {
-      this.editorInstance?.layout();
-      this.diffEditorInstance?.layout();
-    });
-    this.resizeObserver.observe(this.editorContainer.nativeElement);
-    this.resizeObserver.observe(this.diffContainer.nativeElement);
-
-    const isBin = active && (active.isBinary || active.language === 'binary' || isBinaryFile(active.name));
-    if (active && !active.isImage && !isBin) {
-      this.switchToFile(active);
-    }
-  }
-
-  private updateDefinitionContext(targetPos?: monaco.IPosition | null): void {
-    if (!this.editorInstance) return;
-    const model = this.editorInstance.getModel();
-    const pos = targetPos || this.editorInstance.getPosition();
-    if (!model || !pos) return;
-
-    const atDef = this.symbolNavigationService.isCursorOnDefinition(model, pos);
-
-    // 1. Update Monaco internal context key so Monaco natively omits Go to Definition, Peek Definition, and redundant Go to References
-    try {
-      const contextKeyService = (this.editorInstance as any)._contextKeyService;
-      if (contextKeyService?.setContext) {
-        contextKeyService.setContext('editorHasDefinitionProvider', !atDef);
-        contextKeyService.setContext('editorHasReferenceProvider', false);
-      }
-    } catch {
-      // Fallback if Monaco internals change
-    }
-
-    // 2. Toggle body class for instant CSS rule
-    document.body.classList.toggle('vide-hide-goto-def', atDef);
-
-    // 3. Proactively cleanse context menu DOM
-    this.purgeDefinitionMenuItems();
-  }
-
-  private purgeDefinitionMenuItems(): void {
-    const isAtDef = document.body.classList.contains('vide-hide-goto-def');
-    const purge = () => {
-      document.querySelectorAll('.monaco-menu .action-item, .context-view .action-item').forEach((item) => {
-        const text = (item.textContent || '').trim();
-        const aria = item.querySelector('[aria-label]')?.getAttribute('aria-label') || '';
-        const title = item.getAttribute('title') || '';
-
-        // Purge redundant built-in reference actions (unified to our Find References)
-        const isRedundantRef =
-          (text.toLowerCase().includes('reference') || aria.toLowerCase().includes('reference') || title.toLowerCase().includes('reference')) &&
-          !text.includes('Find References') && !aria.includes('Find References') &&
-          !text.includes('Navigation Stack') && !aria.includes('Navigation Stack');
-
-        if (isRedundantRef) {
-          (item as HTMLElement).style.display = 'none';
-        }
-
-        // Purge definition actions when cursor is already on definition line
-        if (isAtDef) {
-          if (
-            text.includes('Go to Definition') ||
-            text.includes('Peek Definition') ||
-            aria.includes('Go to Definition') ||
-            aria.includes('Peek Definition')
-          ) {
-            (item as HTMLElement).style.display = 'none';
-          }
-        }
-      });
-
-      // Ensure "Go to Symbol..." is visually positioned directly above "Rename Symbol" in DOM
-      const allItems = Array.from(document.querySelectorAll<HTMLElement>('.monaco-menu .action-item, .context-view .action-item'));
-      const gotoSymbolEl = allItems.find((item) => {
-        const t = (item.textContent || '').trim().toLowerCase();
-        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
-        return t.includes('go to symbol') || a.includes('go to symbol');
-      });
-      const renameSymbolEl = allItems.find((item) => {
-        const t = (item.textContent || '').trim().toLowerCase();
-        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
-        return t.includes('rename symbol') || a.includes('rename symbol');
-      });
-
-      if (gotoSymbolEl && renameSymbolEl && gotoSymbolEl.parentElement && gotoSymbolEl.parentElement === renameSymbolEl.parentElement) {
-        if (gotoSymbolEl.nextElementSibling !== renameSymbolEl) {
-          renameSymbolEl.parentElement.insertBefore(gotoSymbolEl, renameSymbolEl);
-        }
-      }
-
-      // Ensure "Add to Stack" is visually positioned directly after "Peek Definition" / "Peek"
-      const addToStackEl = allItems.find((item) => {
-        const t = (item.textContent || '').trim().toLowerCase();
-        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
-        return t.includes('add to stack') || a.includes('add to stack');
-      });
-      const peekEl = allItems.find((item) => {
-        if (item.style.display === 'none') return false;
-        const t = (item.textContent || '').trim().toLowerCase();
-        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
-        return t.startsWith('peek') || a.startsWith('peek');
-      });
-
-      if (addToStackEl && peekEl && addToStackEl.parentElement && addToStackEl.parentElement === peekEl.parentElement) {
-        if (peekEl.nextElementSibling !== addToStackEl) {
-          peekEl.parentElement.insertBefore(addToStackEl, peekEl.nextSibling);
-        }
-      }
-
-      // Clean up any redundant consecutive separators in the menu
-      const containers = Array.from(document.querySelectorAll<HTMLElement>('.monaco-menu .actions-container, .context-view .actions-container'));
-      for (const container of containers) {
-        const children = Array.from(container.children) as HTMLElement[];
-        let prevWasSeparator = false;
-        for (const child of children) {
-          if (child.style.display === 'none') continue;
-          const isSep = child.classList.contains('separator') || child.getAttribute('role') === 'presentation';
-          if (isSep && prevWasSeparator) {
-            child.style.display = 'none';
-          } else if (isSep) {
-            prevWasSeparator = true;
-          } else {
-            prevWasSeparator = false;
-          }
-        }
-      }
-    };
-
-    purge();
-    requestAnimationFrame(purge);
-    setTimeout(purge, 20);
-    setTimeout(purge, 60);
-    setTimeout(purge, 150);
-  }
-
-  private getViewStateStorageKey(): string {
-    let ws =
-      this.workspaceService.nativeWorkspacePath() ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('vector_last_native_path') : null) ||
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('vector_last_workspace_name') : null) ||
-      'default';
-    ws = ws.replace(/\/+$/, '');
-    return `vide_file_view_states_${ws}`;
-  }
-
-  private getSavedViewState(file: WorkspaceFile): monaco.editor.ICodeEditorViewState | null {
-    const memVs = this.fileViewStates.get(file.id) || (file.path ? this.fileViewStates.get(file.path) : null);
-    if (memVs) return memVs;
-
-    if (typeof localStorage === 'undefined') return null;
-    try {
-      const storageKey = this.getViewStateStorageKey();
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const allStates = JSON.parse(raw);
-        const stored = (file.path && allStates[file.path]) || allStates[file.id];
-        if (stored) {
-          const vs = stored.viewState || stored;
-          this.fileViewStates.set(file.id, vs);
-          if (file.path) this.fileViewStates.set(file.path, vs);
-          return vs;
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load view state from localStorage:', e);
-    }
-    return null;
-  }
-
-  private restoreFileViewState(file: WorkspaceFile): void {
-    if (!this.editorInstance) return;
-    const vs = this.getSavedViewState(file);
-    if (vs) {
-      this.editorInstance.restoreViewState(vs);
-      const vsPos = vs.cursorState?.[0]?.position;
-      const targetPos =
-        file.cursor && (file.cursor.line > 1 || file.cursor.column > 1) && (!vsPos || vsPos.lineNumber <= 1)
-          ? { lineNumber: file.cursor.line, column: file.cursor.column || 1 }
-          : vsPos || (file.cursor ? { lineNumber: file.cursor.line, column: file.cursor.column || 1 } : null);
-
-      if (targetPos) {
-        if (targetPos.lineNumber > 1 || targetPos.column > 1) {
-          this.editorInstance.setPosition(targetPos);
-          requestAnimationFrame(() => {
-            if (this.currentActiveFileId === file.id && this.editorInstance) {
-              this.editorInstance.revealPositionInCenterIfOutsideViewport(targetPos);
-            }
-          });
-        }
-      }
-    } else if (file.cursor && (file.cursor.line > 1 || file.cursor.column > 1)) {
-      const pos = { lineNumber: file.cursor.line, column: file.cursor.column || 1 };
-      this.editorInstance.setPosition(pos);
-      requestAnimationFrame(() => {
-        if (this.currentActiveFileId === file.id && this.editorInstance && file.cursor) {
-          this.editorInstance.revealPositionInCenterIfOutsideViewport(pos);
-        }
-      });
-    }
-  }
-
-  private saveCurrentFileViewState(targetFileId?: string): void {
-    if (!this.editorInstance) return;
-    if (this.workspaceService.isRestoringSession()) return;
-    const fileId = targetFileId || this.currentActiveFileId;
-    if (!fileId) return;
-
-    const file = this.workspaceService.files().find((f) => f.id === fileId || f.path === fileId);
-    if (!file || file.isImage || file.isBinary || file.language === 'binary' || isBinaryFile(file.name)) return;
-
-    const vs = this.editorInstance.saveViewState();
-    if (!vs) return;
-
-    this.fileViewStates.set(file.id, vs);
-    if (file.path) {
-      this.fileViewStates.set(file.path, vs);
-    }
-
-    const pos = this.editorInstance.getPosition();
-    if (pos) {
-      file.cursor = { line: pos.lineNumber, column: pos.column };
-      this.workspaceService.updateFileCursor(file.id, { line: pos.lineNumber, column: pos.column });
-    }
-
-    if (typeof localStorage === 'undefined') return;
-    try {
-      const storageKey = this.getViewStateStorageKey();
-      const raw = localStorage.getItem(storageKey);
-      const allStates: Record<string, any> = raw ? JSON.parse(raw) : {};
-
-      const fileKey = file.path || file.id;
-      allStates[fileKey] = {
-        viewState: vs,
-        cursor: pos ? { lineNumber: pos.lineNumber, column: pos.column } : undefined,
-        updatedAt: Date.now(),
-      };
-      if (file.id && file.id !== fileKey) {
-        allStates[file.id] = allStates[fileKey];
-      }
-
-      // Limit stored view states to 150 most recent files
-      const keys = Object.keys(allStates);
-      if (keys.length > 200) {
-        const sorted = keys.sort((a, b) => (allStates[b]?.updatedAt || 0) - (allStates[a]?.updatedAt || 0));
-        const pruned: Record<string, any> = {};
-        for (let i = 0; i < 150; i++) {
-          pruned[sorted[i]] = allStates[sorted[i]];
-        }
-        localStorage.setItem(storageKey, JSON.stringify(pruned));
-      } else {
-        localStorage.setItem(storageKey, JSON.stringify(allStates));
-      }
-    } catch (e) {
-      console.warn('Failed to save view state to localStorage:', e);
-    }
-  }
-
-  private queueSaveCurrentViewState(): void {
-    if (this.saveViewStateDebounceTimer) {
-      clearTimeout(this.saveViewStateDebounceTimer);
-    }
-    this.saveViewStateDebounceTimer = setTimeout(() => {
-      this.saveCurrentFileViewState();
-    }, 250);
-  }
-
-  private createDiffEditor(): void {
-    if (this.diffEditorInstance) return;
-
-    const initialTheme =
-      this.themeService.currentTheme() === 'light' ? 'vector-light' : 'vector-dark';
-
-    this.diffEditorInstance = monaco.editor.createDiffEditor(this.diffContainer.nativeElement, {
-      theme: initialTheme,
-      fontSize: this.zoomService.editorFontSize(),
-      fontWeight: '500',
-      lineHeight: Math.round(this.zoomService.editorFontSize() * 1.5),
-      mouseWheelZoom: true,
-      wordWrap: 'on',
-      fontFamily:
-        "'Consolas', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Noto Sans Hebrew', 'Courier New', monospace",
-      fontLigatures: true,
-      lineNumbers: 'on',
-      roundedSelection: false,
-      scrollBeyondLastLine: false,
-      readOnly: false,
-      originalEditable: false,
-      renderSideBySide: this.workspaceService.diffRenderSideBySide(),
-      enableSplitViewResizing: true,
-      splitViewDefaultRatio: 0.5,
-      cursorBlinking: 'smooth',
-      smoothScrolling: true,
-      contextmenu: true,
-      automaticLayout: true,
-      diffWordWrap: 'on',
-      renderIndicators: true,
-      ignoreTrimWhitespace: false,
-      renderValidationDecorations: 'off',
-    });
-
-    const isTabs = this.workspaceService.indentType() === 'tabs';
-    const size = this.workspaceService.tabSize();
-    this.diffEditorInstance.getOriginalEditor().updateOptions({
-      insertSpaces: !isTabs,
-      tabSize: size,
-      renderValidationDecorations: 'off',
-    });
-    this.diffEditorInstance.getModifiedEditor().updateOptions({
-      insertSpaces: !isTabs,
-      tabSize: size,
-      renderValidationDecorations: 'off',
-    });
-
-    // Modified editor content changes sync back to WorkspaceService
-    this.diffEditorInstance.getModifiedEditor().onDidChangeModelContent(() => {
-      if (this.isProgrammaticUpdate) return;
-      const activeDiff = this.workspaceService.activeDiffFile();
-      if (activeDiff && this.diffEditorInstance) {
-        const val = this.diffEditorInstance.getModifiedEditor().getValue();
-        this.workspaceService.updateContent(activeDiff.id, val);
-      }
-    });
-
-    // Cursor position in modified editor
-    this.diffEditorInstance.getModifiedEditor().onDidChangeCursorPosition((e) => {
-      this.cursorChange.emit({
-        line: e.position.lineNumber,
-        column: e.position.column,
-      });
-    });
-
-    // Track diff changes count
-    this.diffEditorInstance.onDidUpdateDiff(() => {
-      const changes = this.diffEditorInstance?.getLineChanges();
-      this.diffChunkCount.set(changes ? changes.length : 0);
-    });
-
-    // Ctrl+S shortcut to save file while in diff view
-    this.diffEditorInstance.getModifiedEditor().addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-      () => {
-        this.workspaceService.saveCurrentFile();
-      }
-    );
-
-    // Zoom shortcuts for diff editor
-    this.diffEditorInstance.getModifiedEditor().addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Equal,
-      () => {
-        this.zoomService.zoomIn();
-      }
-    );
-    this.diffEditorInstance.getModifiedEditor().addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus,
-      () => {
-        this.zoomService.zoomOut();
-      }
-    );
-    // Ctrl+P / Ctrl+Shift+P shortcut to open file search in diff view
-    [this.diffEditorInstance.getModifiedEditor(), this.diffEditorInstance.getOriginalEditor()].forEach((ed) => {
-      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
-        this.workspaceService.openModal('file-search');
-      });
-      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, () => {
-        this.workspaceService.openModal('file-search');
-      });
-      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
-        this.workspaceService.toggleSidebar();
-      });
-      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
-        this.workspaceService.setSidebarView('search');
-      });
-      ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
-        this.navigationHistoryService.navigateBack();
-      });
-      ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
-        this.navigationHistoryService.navigateForward();
-      });
-      ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyA, () => {
-        const pos = ed.getPosition();
-        const active = this.workspaceService.activeDiffFile() || this.workspaceService.activeFile();
-        if (pos && active) {
-          this.navigationHistoryService.addManualLocation(active, pos.lineNumber, pos.column);
-        }
-      });
-      ed.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, () => {
-        ed.getAction('editor.action.formatDocument')?.run();
-      });
-    });
-  }
-
-  private setupDiffModels(file: WorkspaceFile): void {
-    if (!this.diffEditorInstance) return;
-
-    this.isProgrammaticUpdate = true;
-    try {
-      // Modified model (Working tree)
-      const modModel = this.getOrCreateModel(file);
-      if (modModel.getValue() !== file.content) {
-        modModel.setValue(file.content);
-      }
-
-      // Original model (HEAD baseline)
-      const safeId = encodeURIComponent(file.id || file.path || file.name);
-      const origUri = monaco.Uri.parse(`inmemory://diff-original/${safeId}`);
-      let origModel = this.originalDiffModels.get(file.id);
-      const originalText = file.originalContent !== undefined ? file.originalContent : file.content;
-
-      if (!origModel || origModel.isDisposed()) {
-        const existing = monaco.editor.getModel(origUri);
-        if (existing && !existing.isDisposed()) {
-          origModel = existing;
-        } else {
-          origModel = monaco.editor.createModel(originalText, file.language, origUri);
-        }
-        const modOpts = modModel.getOptions();
-        origModel.updateOptions({
-          insertSpaces: modOpts.insertSpaces,
-          tabSize: modOpts.tabSize,
-        });
-        this.originalDiffModels.set(file.id, origModel);
-      }
-
-      if (origModel.getValue() !== originalText) {
-        origModel.setValue(originalText);
-      }
-
-      this.diffEditorInstance.setModel({
-        original: origModel,
-        modified: modModel,
-      });
-
-      this.diffEditorInstance.updateOptions({
-        originalEditable: false,
-        readOnly: !!file.readOnly,
-      });
-
-      // Clear any diagnostic error markers on diff models
-      monaco.editor.setModelMarkers(origModel, 'typescript', []);
-      monaco.editor.setModelMarkers(origModel, 'javascript', []);
-
-      requestAnimationFrame(() => {
-        this.diffEditorInstance?.layout();
-        this.diffEditorInstance?.getOriginalEditor().layout();
-        this.diffEditorInstance?.getModifiedEditor().layout();
-      });
-    } finally {
-      this.isProgrammaticUpdate = false;
-    }
-  }
-
-  public discardChanges(fileId: string): void {
-    this.workspaceService.revertFile(fileId);
-    const file = this.workspaceService.files().find((f) => f.id === fileId);
-    if (file) {
-      const modModel = this.fileModels.get(fileId);
-      if (modModel && file.originalContent !== undefined) {
-        modModel.setValue(file.originalContent);
-      }
-      this.workspaceService.closeDiffView();
-    }
-  }
-
-  @HostListener('window:keydown.escape')
-  public onGlobalEscape(): void {
-    this.clearHighlight();
-  }
-
-  public applyHighlight(start: number, end: number): void {
-    if (!this.editorInstance) return;
-    this.editorInstance.revealRangeInCenter(
-      new monaco.Range(start, 1, end, 1),
-      monaco.editor.ScrollType.Smooth
-    );
-    this.editorInstance.setPosition({ lineNumber: start, column: 1 });
-    this.editorInstance.focus();
-
-    if (this.highlightDecorations) {
-      this.highlightDecorations.clear();
-    }
-
-    this.highlightDecorations = this.editorInstance.createDecorationsCollection([
-      {
-        range: new monaco.Range(start, 1, end, 1),
-        options: {
-          isWholeLine: true,
-          className: 'vide-highlight-yellow',
-          marginClassName: 'vide-highlight-gutter',
-          overviewRuler: {
-            color: 'rgba(250, 204, 21, 0.8)',
-            position: monaco.editor.OverviewRulerLane.Full,
-          },
-          minimap: {
-            color: 'rgba(250, 204, 21, 0.8)',
-            position: monaco.editor.MinimapPosition.Inline,
-          },
-        },
-      },
-    ]);
-  }
-
-  public clearHighlight(): void {
-    if (this.highlightDecorations) {
-      this.highlightDecorations.clear();
-      this.highlightDecorations = null;
-    }
-  }
-
-  private switchToFile(file: WorkspaceFile): void {
-    if (!this.editorInstance) return;
-    if (file.isBinary || file.language === 'binary' || isBinaryFile(file.name)) {
-      if (this.editorInstance.getModel()) {
-        this.editorInstance.setModel(null);
-      }
-      this.currentActiveFileId = null;
-      return;
-    }
-
-    // Save view state of outgoing file before switching
-    if (this.currentActiveFileId && this.currentActiveFileId !== file.id) {
-      this.saveCurrentFileViewState(this.currentActiveFileId);
-    }
-
-    this.isProgrammaticUpdate = true;
-    try {
-      const model = this.getOrCreateModel(file);
-      const isSwitchingModel = this.editorInstance.getModel() !== model;
-      if (isSwitchingModel) {
-        this.clearHighlight();
-        this.editorInstance.setModel(model);
-        this.currentActiveFileId = file.id;
-
-        // Restore saved view state (cursor position, scroll position, selections)
-        this.restoreFileViewState(file);
-        this.editorInstance.focus();
-      } else {
-        this.currentActiveFileId = file.id;
-      }
-      const content = file.content ?? '';
-      if (model.getValue() !== content) {
-        const wasEmpty = model.getValue().length === 0;
-        const currentVs = wasEmpty ? null : this.editorInstance.saveViewState();
-        model.setValue(content);
-        if (wasEmpty) {
-          this.restoreFileViewState(file);
-        } else if (currentVs) {
-          this.editorInstance.restoreViewState(currentVs);
-        }
-        if (!file.isIndentationCustom) {
-          const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
-          const defTabSize = this.workspaceService.defaultTabSize();
-          model.detectIndentation(defInsertSpaces, defTabSize);
-        }
-      }
-
-      // Detect language from content if currently plaintext
-      const currentContent = file.content ?? model.getValue();
-      if ((!file.language || file.language === 'plaintext') && currentContent) {
-        const detected = detectLanguage(file.name, currentContent);
-        if (detected !== 'plaintext' && detected !== file.language) {
-          file.language = detected;
-          monaco.editor.setModelLanguage(model, detected);
-          untracked(() => {
-            this.workspaceService.updateFileLanguage(file.id, detected);
-          });
-        }
-      }
-
-      this.syncIndentationFromModel(model, file);
-    } catch (err) {
-      console.error('Error switching to file in Monaco:', err);
-    } finally {
-      this.isProgrammaticUpdate = false;
-    }
-
-    const hl = untracked(() => this.workspaceService.pendingHighlight());
-    if (hl && (hl.fileId === file.id || hl.fileId === file.path)) {
-      setTimeout(() => {
-        this.applyHighlight(hl.highlightStart, hl.highlightEnd);
-        this.workspaceService.pendingHighlight.set(null);
-      }, 20);
-    }
-
-    const jump = untracked(() => this.workspaceService.pendingLineJump());
-    if (jump && (!jump.fileId || jump.fileId === file.id || jump.fileId === file.path)) {
-      setTimeout(() => {
-        if (this.editorInstance && this.currentActiveFileId === file.id) {
-          this.editorInstance.revealLineInCenter(jump.lineNumber);
-          this.editorInstance.setPosition({ lineNumber: jump.lineNumber, column: jump.column || 1 });
-          this.editorInstance.focus();
-          this.workspaceService.pendingLineJump.set(null);
-        }
-      }, 30);
-    }
-
-    this.editorInstance.layout();
-    requestAnimationFrame(() => {
-      this.editorInstance?.layout();
-    });
-    setTimeout(() => {
-      this.editorInstance?.layout();
-    }, 50);
-  }
-
-  private getOrCreateModel(file: WorkspaceFile): monaco.editor.ITextModel {
-    let model = this.fileModels.get(file.id);
-    if (!model || model.isDisposed()) {
-      const safeId = encodeURIComponent(file.id || file.path || file.name);
-      const uri = monaco.Uri.parse(`inmemory://workspace/${safeId}`);
-      const existing = monaco.editor.getModel(uri);
-
-      let initialLang = file.language || 'plaintext';
-      if (initialLang === 'plaintext' && file.content) {
-        const detected = detectLanguage(file.name, file.content);
-        if (detected !== 'plaintext') {
-          initialLang = detected;
-          file.language = detected;
-        }
-      }
-
-      const textModel: monaco.editor.ITextModel =
-        (existing && !existing.isDisposed())
-          ? existing
-          : monaco.editor.createModel(file.content ?? '', initialLang, uri);
-
-      if (file.isIndentationCustom && file.tabSize !== undefined) {
-        textModel.updateOptions({
-          insertSpaces: file.indentType === 'spaces',
-          tabSize: file.tabSize,
-        });
-      } else {
-        const ecRules = this.editorConfigService.getPropertiesForFile(file.name || file.path);
-        const defInsertSpaces = ecRules.indentStyle
-          ? ecRules.indentStyle === 'spaces'
-          : this.workspaceService.defaultIndentType() === 'spaces';
-        const defTabSize = ecRules.indentSize || this.workspaceService.defaultTabSize();
-        textModel.detectIndentation(defInsertSpaces, defTabSize);
-      }
-
-      textModel.onDidChangeOptions(() => {
-        const active = this.workspaceService.activeFile();
-        if (active && active.id === file.id) {
-          this.syncIndentationFromModel(textModel, active);
-        }
-      });
-
-      model = textModel;
-      this.fileModels.set(file.id, model);
-    }
-    return model;
-  }
-
-  private syncIndentationFromModel(model: monaco.editor.ITextModel, file: WorkspaceFile): void {
-    const opts = model.getOptions();
-    const type: 'tabs' | 'spaces' = opts.insertSpaces ? 'spaces' : 'tabs';
-    const size = opts.tabSize;
-    file.indentType = type;
-    file.tabSize = size;
-    queueMicrotask(() => {
-      this.workspaceService.syncActiveIndentation(type, size);
-    });
-  }
-
-  private detectSourceIndent(
-    model: monaco.editor.ITextModel,
-    fallbackSize = 4
-  ): { isTabs: boolean; indentSize: number; tabLines: number; spaceLines: number } {
-    let tabLines = 0;
-    let spaceLines = 0;
-    const indentCounts = new Map<number, number>();
-
-    const lineCount = Math.min(model.getLineCount(), 1000);
-    for (let i = 1; i <= lineCount; i++) {
-      const line = model.getLineContent(i);
-      const match = line.match(/^([ \t]+)/);
-      if (!match) continue;
-      const leading = match[1];
-      if (leading.startsWith('\t')) {
-        tabLines++;
-      } else if (leading.startsWith(' ')) {
-        spaceLines++;
-        const count = leading.match(/^ +/)?.[0].length || 0;
-        if (count > 0) {
-          indentCounts.set(count, (indentCounts.get(count) || 0) + 1);
-        }
-      }
-    }
-
-    if (tabLines > spaceLines) {
-      return { isTabs: true, indentSize: 1, tabLines, spaceLines };
-    }
-
-    let modulo2Only = 0;
-    let modulo4Count = 0;
-    for (const [spaces, count] of indentCounts.entries()) {
-      if (spaces % 2 === 0 && spaces % 4 !== 0) {
-        modulo2Only += count;
-      } else if (spaces % 4 === 0) {
-        modulo4Count += count;
-      }
-    }
-
-    let indentSize = fallbackSize;
-    if (modulo2Only > modulo4Count) {
-      indentSize = 2;
-    } else if (modulo4Count > 0) {
-      indentSize = 4;
-    } else if (modulo2Only > 0) {
-      indentSize = 2;
-    }
-
-    return { isTabs: false, indentSize, tabLines, spaceLines };
-  }
-
-  private convertModelIndentation(
-    model: monaco.editor.ITextModel,
-    targetType: 'tabs' | 'spaces',
-    targetTabSize: number,
-    fromType?: 'tabs' | 'spaces',
-    fromSize?: number
-  ): void {
-    const detected = this.detectSourceIndent(model, fromSize || 4);
-    let sourceIsTabs = fromType ? fromType === 'tabs' : detected.isTabs;
-    if (detected.tabLines > 0 && detected.spaceLines === 0) {
-      sourceIsTabs = true;
-    } else if (detected.spaceLines > 0 && detected.tabLines === 0) {
-      sourceIsTabs = false;
-    }
-
-    const sourceIndentSize = fromSize || detected.indentSize || 4;
-
-    const lineCount = model.getLineCount();
-    const edits: monaco.editor.ISingleEditOperation[] = [];
-
-    for (let i = 1; i <= lineCount; i++) {
-      const line = model.getLineContent(i);
-      const match = line.match(/^([ \t]+)/);
-      if (!match) continue;
-
-      const currentLeading = match[1];
-      let newLeading = '';
-
-      if (targetType === 'tabs') {
-        if (sourceIsTabs) {
-          // File was already tabs; keep leading tabs and alignment spaces
-          newLeading = currentLeading;
-        } else {
-          // File was spaces (or mixed); convert space levels into tabs
-          let tabCount = 0;
-          let spaceCount = 0;
-          for (const ch of currentLeading) {
-            if (ch === '\t') tabCount++;
-            else if (ch === ' ') spaceCount++;
-          }
-          const totalLevels = tabCount + Math.floor(spaceCount / sourceIndentSize);
-          const leftoverSpaces = spaceCount % sourceIndentSize;
-          newLeading = '\t'.repeat(totalLevels) + ' '.repeat(leftoverSpaces);
-        }
-      } else {
-        // targetType === 'spaces'
-        if (sourceIsTabs) {
-          // Convert leading tabs to targetTabSize spaces
-          let tabCount = 0;
-          let idx = 0;
-          while (idx < currentLeading.length && currentLeading[idx] === '\t') {
-            tabCount++;
-            idx++;
-          }
-          const trailing = currentLeading.substring(idx);
-          newLeading = ' '.repeat(tabCount * targetTabSize) + trailing;
-        } else {
-          // Re-indent from sourceIndentSize to targetTabSize
-          let tabCount = 0;
-          let spaceCount = 0;
-          for (const ch of currentLeading) {
-            if (ch === '\t') tabCount++;
-            else if (ch === ' ') spaceCount++;
-          }
-          const totalLevels = tabCount + Math.floor(spaceCount / sourceIndentSize);
-          const leftoverSpaces = spaceCount % sourceIndentSize;
-          newLeading = ' '.repeat(totalLevels * targetTabSize + leftoverSpaces);
-        }
-      }
-
-      if (newLeading !== currentLeading) {
-        edits.push({
-          range: new monaco.Range(i, 1, i, currentLeading.length + 1),
-          text: newLeading,
-        });
-      }
-    }
-
-    if (edits.length > 0) {
-      model.pushEditOperations([], edits, () => null);
-      const newContent = model.getValue();
-      const active = this.workspaceService.activeFile();
-      if (active) {
-        active.content = newContent;
-        active.isModified = true;
-        this.workspaceService.updateContent(active.id, newContent);
-      }
-      const fromLabel = sourceIsTabs ? 'Tabs' : `${sourceIndentSize} Spaces`;
-      const toLabel = targetType === 'tabs' ? 'Tabs' : `${targetTabSize} Spaces`;
-      this.workspaceService.showNotification(
-        `✓ Converted ${edits.length} line(s) from ${fromLabel} to ${toLabel}`
-      );
-    } else {
-      const toLabel = targetType === 'tabs' ? `Tabs (size ${targetTabSize})` : `${targetTabSize} Spaces`;
-      this.workspaceService.showNotification(
-        `Indentation set to ${toLabel}`
-      );
-    }
-
-    model.updateOptions({
-      insertSpaces: targetType === 'spaces',
-      tabSize: targetTabSize,
-    });
-    this.editorInstance?.updateOptions({
-      insertSpaces: targetType === 'spaces',
-      tabSize: targetTabSize,
-    });
-
-    const active = this.workspaceService.activeFile();
-    if (active) {
-      active.indentType = targetType;
-      active.tabSize = targetTabSize;
-      active.isIndentationCustom = true;
-    }
-    this.workspaceService.syncActiveIndentation(targetType, targetTabSize);
-  }
-
-  public zoomImgIn(): void {
-    const next = Math.min(5.0, Math.round((this.imageZoom() + 0.2) * 10) / 10);
-    this.imageZoom.set(next);
-  }
-
-  public zoomImgOut(): void {
-    const next = Math.max(0.2, Math.round((this.imageZoom() - 0.2) * 10) / 10);
-    this.imageZoom.set(next);
-  }
-
-  public resetImgZoom(): void {
-    this.imageZoom.set(1.0);
-  }
-
-  public fitImgToWindow(): void {
-    this.imageZoom.set(0.85);
-  }
-
-  public onImgWheel(event: WheelEvent): void {
-    event.preventDefault();
-    if (event.deltaY < 0) {
-      this.zoomImgIn();
-    } else {
-      this.zoomImgOut();
-    }
-  }
-
-  public onImgLoad(event: Event): void {
-    const img = event.target as HTMLImageElement;
-    if (img) {
-      this.imageDimensions.set({
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-      });
-    }
-  }
-
-  public formatFileSize(bytes?: number): string {
-    if (!bytes) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  }
-
-  public loadMoreHex(file: WorkspaceFile): void {
-    this.workspaceService.loadMoreHex(file);
-  }
-
-  public onStartResizePreview(event: MouseEvent): void {
-    event.preventDefault();
-    this.isResizingPreview.set(true);
-
-    const stageEl = this.editorContainer.nativeElement.parentElement;
-    if (!stageEl) return;
-
-    const onMouseMove = (e: MouseEvent) => {
-      const rect = stageEl.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const offsetX = e.clientX - rect.left;
-      let percent = (offsetX / rect.width) * 100;
-      percent = Math.max(20, Math.min(80, percent));
-      this.previewSplitPercent.set(Math.round(percent * 10) / 10);
-    };
-
-    const onMouseUp = () => {
-      this.isResizingPreview.set(false);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      this.editorInstance?.layout();
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  }
-
-  private registerAiCodeActions(): void {
-    const supportedLanguages = [
-      'omniflux',
-      'php',
-      'typescript',
-      'javascript',
-      'c',
-      'cpp',
-      'python',
-      'rust',
-      'json',
-      'html',
-      'css',
-      'shell',
-      'perl',
-    ];
-
-    // Register global handler for AI syntax quick-fix command
-    monaco.editor.registerCommand(
-      'vide.ai.applySyntaxFix',
-      async (_accessor: any, uri: monaco.Uri, range: monaco.IRange, message: string, lang: string) => {
-        const model = monaco.editor.getModel(uri);
-        if (!model) return;
-
-        const snippet = model.getValueInRange(range);
-        this.workspaceService.showNotification('✨ AI is repairing syntax error...');
-        const fixed = await this.aiService.fixSyntaxError(snippet, message, lang);
-        if (fixed && fixed.trim().length > 0) {
-          model.pushEditOperations(
-            [],
-            [
-              {
-                range: range,
-                text: fixed,
-                forceMoveMarkers: true,
-              },
-            ],
-            () => null
-          );
-          this.workspaceService.showNotification('✓ Syntax error fixed by AI');
-        } else {
-          this.workspaceService.showNotification('Could not generate syntax fix');
-        }
-      }
-    );
-
-    for (const lang of supportedLanguages) {
-      monaco.languages.registerCodeActionProvider(lang, {
-        provideCodeActions: (model, _range, context) => {
-          if (!this.aiService.isEnabled() || !this.aiService.isServerOnline()) {
-            return { actions: [], dispose: () => {} };
-          }
-
-          const markers = context.markers.filter(
-            (m) =>
-              m.severity === monaco.MarkerSeverity.Error ||
-              m.severity === monaco.MarkerSeverity.Warning
-          );
-
-          if (markers.length === 0) {
-            return { actions: [], dispose: () => {} };
-          }
-
-          const actions: monaco.languages.CodeAction[] = [];
-
-          for (const marker of markers) {
-            const startLine = Math.max(1, marker.startLineNumber - 2);
-            const endLine = Math.min(model.getLineCount(), marker.endLineNumber + 2);
-            const snippetRange = new monaco.Range(
-              startLine,
-              1,
-              endLine,
-              model.getLineMaxColumn(endLine)
-            );
-
-            actions.push({
-              title: `✨ AI Fix: ${marker.message.substring(0, 55)}`,
-              kind: 'quickfix',
-              isPreferred: true,
-              isAI: true,
-              diagnostics: [marker],
-              command: {
-                id: 'vide.ai.applySyntaxFix',
-                title: 'Apply AI Syntax Fix',
-                arguments: [model.uri, snippetRange, marker.message, lang],
-              },
-            });
-          }
-
-          return {
-            actions,
-            dispose: () => {},
-          };
-        },
-      });
-    }
-  }
-
-  private async propagateEditPattern(ed: monaco.editor.ICodeEditor): Promise<void> {
-    if (!this.aiService.isEnabled() || !this.aiService.isServerOnline()) {
-      this.workspaceService.showNotification('AI server is offline. Check AI Settings.');
-      return;
-    }
-
-    const model = ed.getModel();
-    const selection = ed.getSelection();
-    if (!model || !selection) return;
-
-    let originalLine = '';
-    let editedLine = '';
-    let targetRange: monaco.Range | null = null;
-    let targetLines: string[] = [];
-
-    // Case 1: Multi-line selection. Line 1 is the template/edited line, remainder are targets.
-    if (selection.startLineNumber < selection.endLineNumber) {
-      const startLine = selection.startLineNumber;
-      const endLine = selection.endLineNumber;
-      editedLine = model.getLineContent(startLine);
-
-      // Try to find originalLine from savedContent if available
-      const activeFile = this.workspaceService.activeFile();
-      const savedLines = activeFile?.savedContent ? activeFile.savedContent.split('\n') : [];
-      originalLine = savedLines[startLine - 1] || editedLine;
-
-      for (let ln = startLine + 1; ln <= endLine; ln++) {
-        targetLines.push(model.getLineContent(ln));
-      }
-      targetRange = new monaco.Range(
-        startLine + 1,
-        1,
-        endLine,
-        model.getLineMaxColumn(endLine)
-      );
-    } else {
-      // Case 2: Cursor on a single line.
-      const currentLineNum = selection.positionLineNumber;
-      editedLine = model.getLineContent(currentLineNum);
-
-      const activeFile = this.workspaceService.activeFile();
-      const savedLines = activeFile?.savedContent ? activeFile.savedContent.split('\n') : [];
-      originalLine = savedLines[currentLineNum - 1] || '';
-
-      if (!originalLine || originalLine === editedLine) {
-        this.workspaceService.showNotification(
-          'Select the edited line and target lines, or edit a saved line to propagate pattern.'
-        );
-        return;
-      }
-
-      // Collect next 1 to 5 non-empty lines as targets
-      const maxLine = Math.min(model.getLineCount(), currentLineNum + 5);
-      for (let ln = currentLineNum + 1; ln <= maxLine; ln++) {
-        const content = model.getLineContent(ln);
-        if (content.trim().length > 0) {
-          targetLines.push(content);
-        } else {
-          break; // Stop at empty lines
-        }
-      }
-
-      if (targetLines.length === 0) {
-        this.workspaceService.showNotification('No following lines found to propagate pattern.');
-        return;
-      }
-
-      const endTargetLine = currentLineNum + targetLines.length;
-      targetRange = new monaco.Range(
-        currentLineNum + 1,
-        1,
-        endTargetLine,
-        model.getLineMaxColumn(endTargetLine)
-      );
-    }
-
-    this.workspaceService.showNotification('✨ AI is propagating edit pattern...');
-    const transformed = await this.aiService.suggestPatternEdits(originalLine, editedLine, targetLines);
-
-    if (transformed && transformed.length === targetLines.length && targetRange) {
-      model.pushEditOperations(
-        [],
-        [
-          {
-            range: targetRange,
-            text: transformed.join('\n'),
-            forceMoveMarkers: true,
-          },
-        ],
-        () => null
-      );
-      this.workspaceService.showNotification(`✓ AI pattern applied to ${transformed.length} line(s)`);
-    } else {
-      this.workspaceService.showNotification('Could not propagate edit pattern');
-    }
-  }
+	});
+
+	// Image viewer state
+	readonly Math = Math;
+	public imageZoom = signal<number>(1.0);
+	public imageDimensions = signal<{ width: number; height: number } | null>(null);
+
+	readonly activeFileIsImage = computed(() => {
+		const f = this.workspaceService.activeFile();
+		if (!f) return null;
+		if (f.isImage || isImageFile(f.name)) return f;
+		return null;
+	});
+
+	readonly activeFileIsBinary = computed(() => {
+		const f = this.workspaceService.activeFile();
+		if (!f) return null;
+		if (f.isBinary || f.language === 'binary' || isBinaryFile(f.name)) return f;
+		return null;
+	});
+
+	private editorInstance: monaco.editor.IStandaloneCodeEditor | null = null;
+	private diffEditorInstance: monaco.editor.IStandaloneDiffEditor | null = null;
+	private fileModels = new Map<string, monaco.editor.ITextModel>();
+	private originalDiffModels = new Map<string, monaco.editor.ITextModel>();
+	private fileViewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
+	private saveViewStateDebounceTimer: any = null;
+	private currentActiveFileId: string | null = null;
+	private resizeObserver: ResizeObserver | null = null;
+	private static markersListenerRegistered = false;
+	private isProgrammaticUpdate = false;
+	private aiThinkingWidget: AiThinkingWidget | null = null;
+	private highlightDecorations: monaco.editor.IEditorDecorationsCollection | null = null;
+
+	constructor() {
+		this.initMonacoEnvironment();
+
+		// Effect to layout AI thinking widget above cursor when generating state changes
+		effect(() => {
+			const isGenerating = this.aiService.isGenerating();
+			if (this.editorInstance && this.aiThinkingWidget) {
+				this.editorInstance.layoutContentWidget(this.aiThinkingWidget);
+			}
+		});
+
+		// Effect to switch active file in Monaco or reset image/binary viewer
+		effect(
+			() => {
+				const active = this.workspaceService.activeFile();
+				if (active) {
+					untracked(() => {
+						const isImg = active.isImage || isImageFile(active.name);
+						const isBin =
+							active.isBinary ||
+							active.language === 'binary' ||
+							isBinaryFile(active.name);
+						if (isImg || isBin) {
+							if (this.currentActiveFileId && this.editorInstance) {
+								this.saveCurrentFileViewState(this.currentActiveFileId);
+								this.currentActiveFileId = null;
+							}
+							if (this.editorInstance && this.editorInstance.getModel()) {
+								this.editorInstance.setModel(null);
+							}
+							if (isImg) {
+								this.imageZoom.set(1.0);
+								this.imageDimensions.set(null);
+							}
+						} else if (this.editorInstance) {
+							this.switchToFile(active);
+						}
+					});
+				} else {
+					const editor = this.editorInstance;
+					if (editor) {
+						untracked(() => {
+							if (this.currentActiveFileId) {
+								this.saveCurrentFileViewState(this.currentActiveFileId);
+								this.currentActiveFileId = null;
+							}
+							if (editor.getModel()) {
+								editor.setModel(null);
+							}
+						});
+					}
+				}
+			},
+			{ allowSignalWrites: true },
+		);
+
+		// Effect to dispose and release Monaco models for closed tabs to prevent memory leaks
+		effect(() => {
+			const tabs = this.workspaceService.openTabs();
+			const openIds = new Set(tabs.map((t) => t.id));
+			const editor = this.editorInstance;
+
+			// Clean up fileModels for tabs that were closed
+			for (const [fileId, model] of this.fileModels.entries()) {
+				if (!openIds.has(fileId)) {
+					if (editor && editor.getModel() === model) {
+						editor.setModel(null);
+					}
+					if (!model.isDisposed()) {
+						model.dispose();
+					}
+					this.fileModels.delete(fileId);
+					this.fileViewStates.delete(fileId);
+					if (this.currentActiveFileId === fileId) {
+						this.currentActiveFileId = null;
+					}
+				}
+			}
+
+			// Clean up originalDiffModels for tabs that were closed
+			for (const [fileId, model] of this.originalDiffModels.entries()) {
+				if (!openIds.has(fileId)) {
+					if (!model.isDisposed()) {
+						model.dispose();
+					}
+					this.originalDiffModels.delete(fileId);
+				}
+			}
+		});
+
+		// Effect to reactively update editor font size when zoom changes
+		effect(() => {
+			const fontSize = this.zoomService.editorFontSize();
+			const lineHeight = Math.round(fontSize * 1.5);
+			if (this.editorInstance) {
+				this.editorInstance.updateOptions({
+					fontSize,
+					lineHeight,
+				});
+			}
+			if (this.diffEditorInstance) {
+				this.diffEditorInstance.getOriginalEditor().updateOptions({
+					fontSize,
+					lineHeight,
+				});
+				this.diffEditorInstance.getModifiedEditor().updateOptions({
+					fontSize,
+					lineHeight,
+				});
+			}
+		});
+
+		// Effect to switch Monaco theme reactively
+		effect(() => {
+			const theme = this.themeService.currentTheme();
+			const monacoTheme = theme === 'light' ? 'vector-light' : 'vector-dark';
+			monaco.editor.setTheme(monacoTheme);
+		});
+
+		// Effect to handle diff mode and file changes
+		effect(() => {
+			const isDiff = this.workspaceService.diffModeActive();
+			const diffFile = this.workspaceService.activeDiffFile();
+			if (isDiff && diffFile) {
+				if (!this.diffEditorInstance) {
+					this.createDiffEditor();
+				}
+				this.setupDiffModels(diffFile);
+				setTimeout(() => {
+					this.diffEditorInstance?.layout();
+				}, 0);
+			} else {
+				if (this.diffEditorInstance) {
+					this.diffEditorInstance.setModel(null);
+				}
+				setTimeout(() => {
+					this.editorInstance?.layout();
+				}, 0);
+			}
+		});
+
+		// Effect to toggle diff renderSideBySide
+		effect(() => {
+			const sideBySide = this.workspaceService.diffRenderSideBySide();
+			if (this.diffEditorInstance) {
+				this.diffEditorInstance.updateOptions({
+					renderSideBySide: sideBySide,
+				});
+			}
+		});
+
+		// Effect to jump to line (e.g. from Grep search or Go to Definition)
+		effect(() => {
+			const jump = this.workspaceService.pendingLineJump();
+			if (jump && this.editorInstance) {
+				const active = this.workspaceService.activeFile();
+				if (
+					active &&
+					(active.isBinary || active.language === 'binary' || isBinaryFile(active.name))
+				) {
+					this.workspaceService.pendingLineJump.set(null);
+					return;
+				}
+				if (
+					!jump.fileId ||
+					(active && (active.id === jump.fileId || active.path === jump.fileId))
+				) {
+					const model = this.editorInstance.getModel();
+					if (
+						model &&
+						model.getLineCount() < jump.lineNumber &&
+						active &&
+						!active.isLoaded
+					) {
+						return;
+					}
+					if (model) {
+						this.editorInstance.revealLineInCenter(jump.lineNumber);
+						this.editorInstance.setPosition({
+							lineNumber: jump.lineNumber,
+							column: jump.column || 1,
+						});
+						this.editorInstance.focus();
+					}
+					this.workspaceService.pendingLineJump.set(null);
+				}
+			}
+		});
+
+		// Effect to update content programmatically (from AI tools / external changes)
+		effect(() => {
+			const rep = this.workspaceService.pendingContentReplacement();
+			if (rep && this.editorInstance) {
+				const model =
+					this.fileModels.get(rep.fileId) ||
+					(this.currentActiveFileId === rep.fileId
+						? this.editorInstance.getModel()
+						: null);
+				if (model) {
+					this.isProgrammaticUpdate = true;
+					model.setValue(rep.newContent);
+					this.isProgrammaticUpdate = false;
+				}
+				this.workspaceService.pendingContentReplacement.set(null);
+			}
+		});
+
+		// Effect to highlight line range and scroll into center (from Ada / CLI goto)
+		effect(() => {
+			const hl = this.workspaceService.pendingHighlight();
+			if (hl && this.editorInstance) {
+				const active = this.workspaceService.activeFile();
+				if (
+					active &&
+					(active.isBinary || active.language === 'binary' || isBinaryFile(active.name))
+				) {
+					this.workspaceService.pendingHighlight.set(null);
+					return;
+				}
+				if (active && (active.id === hl.fileId || active.path === hl.fileId)) {
+					this.applyHighlight(hl.highlightStart, hl.highlightEnd);
+					this.workspaceService.pendingHighlight.set(null);
+				}
+			}
+		});
+
+		// Effect to toggle Sticky Scroll dynamically
+		effect(() => {
+			const enabled = this.workspaceService.stickyScrollEnabled();
+			if (this.editorInstance) {
+				this.editorInstance.updateOptions({
+					stickyScroll: {
+						enabled,
+						maxLineCount: 5,
+						defaultModel: 'foldingProviderModel',
+					},
+				});
+			}
+		});
+
+		// Effect to update Monaco model language
+		effect(() => {
+			const change = this.workspaceService.pendingLanguageChange();
+			if (change && this.editorInstance) {
+				const model = this.fileModels.get(change.fileId);
+				if (model) {
+					monaco.editor.setModelLanguage(model, change.language);
+				}
+				this.workspaceService.pendingLanguageChange.set(null);
+			}
+		});
+
+		// Effect to trigger redetect indentation for active file on demand
+		effect(
+			() => {
+				const fileId = this.workspaceService.pendingRedetectIndentation();
+				if (fileId && this.editorInstance) {
+					const model = this.fileModels.get(fileId);
+					const active = this.workspaceService.activeFile();
+					if (model && active && active.id === fileId) {
+						const defInsertSpaces =
+							this.workspaceService.defaultIndentType() === 'spaces';
+						const defTabSize = this.workspaceService.defaultTabSize();
+						model.detectIndentation(defInsertSpaces, defTabSize);
+						this.syncIndentationFromModel(model, active);
+					}
+					this.workspaceService.pendingRedetectIndentation.set(null);
+				}
+			},
+			{ allowSignalWrites: true },
+		);
+
+		// Effect to convert indentation in active file buffer
+		effect(
+			() => {
+				const req = this.workspaceService.pendingConvertIndentation();
+				if (req && this.editorInstance) {
+					const model =
+						(req.fileId ? this.fileModels.get(req.fileId) : null) ||
+						this.editorInstance.getModel();
+					if (model) {
+						this.convertModelIndentation(
+							model,
+							req.type,
+							req.size,
+							req.fromType,
+							req.fromSize,
+						);
+					}
+					this.workspaceService.pendingConvertIndentation.set(null);
+				}
+			},
+			{ allowSignalWrites: true },
+		);
+
+		// Effect to update indentation options
+		effect(() => {
+			const isTabs = this.workspaceService.indentType() === 'tabs';
+			const size = this.workspaceService.tabSize();
+			if (this.editorInstance) {
+				this.editorInstance.updateOptions({
+					insertSpaces: !isTabs,
+					tabSize: size,
+				});
+				const model = this.editorInstance.getModel();
+				if (model) {
+					const currentOpts = model.getOptions();
+					if (currentOpts.insertSpaces !== !isTabs || currentOpts.tabSize !== size) {
+						model.updateOptions({
+							insertSpaces: !isTabs,
+							tabSize: size,
+						});
+					}
+				}
+			}
+			if (this.diffEditorInstance) {
+				this.diffEditorInstance.getOriginalEditor().updateOptions({
+					insertSpaces: !isTabs,
+					tabSize: size,
+				});
+				this.diffEditorInstance.getModifiedEditor().updateOptions({
+					insertSpaces: !isTabs,
+					tabSize: size,
+				});
+			}
+		});
+
+		// Effect to re-layout Monaco editor when preview mode or split changes
+		effect(() => {
+			this.workspaceService.previewMode();
+			this.previewSplitPercent();
+			if (this.editorInstance) {
+				setTimeout(() => {
+					this.editorInstance?.layout();
+				}, 30);
+			}
+		});
+	}
+
+	ngOnInit(): void {
+		this.initMonacoEnvironment();
+		registerOmniFlux(monaco);
+		registerAllLanguageSnippets(monaco);
+		this.inlineCompletionService.registerProviders(monaco);
+		this.symbolNavigationService.registerProviders(monaco);
+		this.codeFormattingService.registerProviders(monaco);
+		this.registerAiCodeActions();
+		this.setupThemes();
+		this.createEditor();
+		this.createDiffEditor();
+		this.workspaceService.registerBeforeCloseCallback(() => {
+			this.saveCurrentFileViewState();
+		});
+		this.workspaceService.onContentProcessedOnSave = (fileId: string, newContent: string) => {
+			const model = this.fileModels.get(fileId);
+			if (model && model.getValue() !== newContent) {
+				this.isProgrammaticUpdate = true;
+				try {
+					const viewState = this.editorInstance?.saveViewState();
+					model.setValue(newContent);
+					if (viewState && this.currentActiveFileId === fileId) {
+						this.editorInstance?.restoreViewState(viewState);
+					}
+				} finally {
+					this.isProgrammaticUpdate = false;
+				}
+			}
+		};
+	}
+
+	@HostListener('window:beforeunload')
+	onBeforeUnload(): void {
+		this.saveCurrentFileViewState();
+	}
+
+	ngAfterViewInit(): void {
+		requestAnimationFrame(() => {
+			this.editorInstance?.layout();
+			this.diffEditorInstance?.layout();
+			const active = this.workspaceService.activeFile();
+			if (active && !active.isImage) {
+				this.restoreFileViewState(active);
+			}
+		});
+	}
+
+	ngOnDestroy(): void {
+		if (this.saveViewStateDebounceTimer) {
+			clearTimeout(this.saveViewStateDebounceTimer);
+		}
+		this.saveCurrentFileViewState();
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+		}
+		for (const model of this.fileModels.values()) {
+			model.dispose();
+		}
+		this.fileModels.clear();
+
+		for (const model of this.originalDiffModels.values()) {
+			model.dispose();
+		}
+		this.originalDiffModels.clear();
+
+		if (this.aiThinkingWidget && this.editorInstance) {
+			this.editorInstance.removeContentWidget(this.aiThinkingWidget);
+			this.aiThinkingWidget = null;
+		}
+
+		this.highlightDecorations?.clear();
+		this.highlightDecorations = null;
+
+		this.fileViewStates.clear();
+		this.currentActiveFileId = null;
+
+		this.editorInstance?.dispose();
+		this.diffEditorInstance?.dispose();
+		document.body.classList.remove('vide-hide-goto-def');
+	}
+
+	private initMonacoEnvironment(): void {
+		if (typeof window !== 'undefined' && !(window as any).MonacoEnvironment) {
+			(window as any).MonacoEnvironment = {
+				getWorker: (_: any, label: string) => {
+					const isDevServer =
+						typeof window !== 'undefined' &&
+						window.location.protocol === 'http:' &&
+						(window.location.hostname === 'localhost' ||
+							window.location.hostname === '127.0.0.1');
+
+					if (isDevServer) {
+						try {
+							if (label === 'json') {
+								return new Worker(
+									new URL('../../workers/json.worker', import.meta.url),
+									{
+										type: 'module',
+									},
+								);
+							}
+							if (label === 'css' || label === 'scss' || label === 'less') {
+								return new Worker(
+									new URL('../../workers/css.worker', import.meta.url),
+									{
+										type: 'module',
+									},
+								);
+							}
+							if (label === 'html' || label === 'handlebars' || label === 'razor') {
+								return new Worker(
+									new URL('../../workers/html.worker', import.meta.url),
+									{
+										type: 'module',
+									},
+								);
+							}
+							if (label === 'typescript' || label === 'javascript') {
+								return new Worker(
+									new URL('../../workers/ts.worker', import.meta.url),
+									{
+										type: 'module',
+									},
+								);
+							}
+							return new Worker(
+								new URL('../../workers/editor.worker', import.meta.url),
+								{
+									type: 'module',
+								},
+							);
+						} catch {
+							// Fallback to main thread
+						}
+					}
+
+					// In packaged desktop mode on Linux (WebKitGTK under custom scheme or tauri.localhost),
+					// ES module workers fail to handshake and cause Monaco to hang indefinitely.
+					// Throwing here cleanly triggers Monaco's built-in synchronous main-thread worker.
+					throw new Error('Web Workers disabled for WebKitGTK desktop packaged mode');
+				},
+			};
+		}
+
+		// Configure TypeScript & JavaScript defaults for IntelliSense & diagnostics
+		const tsLang = (monaco.languages as any).typescript;
+		if (tsLang) {
+			// Ignore errors related to missing external module definitions and import.meta in non-ESM targets
+			const ignoredCodes = [2307, 2792, 7016, 2688, 1343, 1470];
+
+			tsLang.typescriptDefaults?.setDiagnosticsOptions({
+				noSemanticValidation: false,
+				noSyntaxValidation: false,
+				diagnosticCodesToIgnore: ignoredCodes,
+			});
+			tsLang.javascriptDefaults?.setDiagnosticsOptions({
+				noSemanticValidation: false,
+				noSyntaxValidation: false,
+				diagnosticCodesToIgnore: ignoredCodes,
+			});
+			tsLang.typescriptDefaults?.setCompilerOptions({
+				target: 99, // ESNext
+				allowNonTextExtensions: true,
+				moduleResolution: 2, // NodeJs
+				module: 99, // ESNext
+				noEmit: true,
+				esModuleInterop: true,
+				allowJs: true,
+			});
+			tsLang.javascriptDefaults?.setCompilerOptions({
+				target: 99, // ESNext
+				allowNonTextExtensions: true,
+				moduleResolution: 2, // NodeJs
+				module: 99, // ESNext
+				noEmit: true,
+				esModuleInterop: true,
+				allowJs: true,
+			});
+		}
+
+		// Global marker listener to strip ignored diagnostic codes and clear diff markers
+		if (
+			!EditorComponent.markersListenerRegistered &&
+			typeof monaco !== 'undefined' &&
+			monaco.editor
+		) {
+			EditorComponent.markersListenerRegistered = true;
+			let isCleaningMarkers = false;
+			monaco.editor.onDidChangeMarkers((uris) => {
+				if (isCleaningMarkers) return;
+				for (const uri of uris) {
+					const uriStr = uri.toString();
+					if (uriStr.includes('diff-original')) {
+						const model = monaco.editor.getModel(uri);
+						if (model && !model.isDisposed()) {
+							try {
+								isCleaningMarkers = true;
+								monaco.editor.setModelMarkers(model, 'typescript', []);
+								monaco.editor.setModelMarkers(model, 'javascript', []);
+							} finally {
+								isCleaningMarkers = false;
+							}
+						}
+						continue;
+					}
+
+					const markers = monaco.editor.getModelMarkers({ resource: uri });
+					const hasBad = markers.some((m) =>
+						[1343, 1470, 2307, 2792, 7016, 2688].includes(Number(m.code)),
+					);
+					if (hasBad) {
+						const cleanMarkers = markers.filter(
+							(m) => ![1343, 1470, 2307, 2792, 7016, 2688].includes(Number(m.code)),
+						);
+						const model = monaco.editor.getModel(uri);
+						if (model && !model.isDisposed()) {
+							try {
+								isCleaningMarkers = true;
+								monaco.editor.setModelMarkers(model, 'typescript', cleanMarkers);
+							} finally {
+								isCleaningMarkers = false;
+							}
+						}
+					}
+				}
+			});
+		}
+	}
+
+	private setupThemes(): void {
+		// Light theme (Default)
+		monaco.editor.defineTheme('vector-light', {
+			base: 'vs',
+			inherit: true,
+			rules: [
+				{ token: 'keyword.routing', foreground: '006699', fontStyle: 'bold' },
+				{ token: 'keyword.other.http', foreground: '795E26', fontStyle: 'bold' },
+				{ token: 'variable.name', foreground: '001080' },
+				{ token: 'support.function', foreground: '795E26' },
+				{ token: 'keyword', foreground: 'AF00DB' },
+				{ token: 'storage.type', foreground: '0000FF' },
+				{ token: 'string', foreground: 'A31515' },
+				{ token: 'number', foreground: '098658' },
+				{ token: 'comment', foreground: '008000', fontStyle: 'italic' },
+			],
+			colors: {
+				'editor.background': '#ffffff',
+				'editor.foreground': '#1e1e1e',
+				'editorCursor.foreground': '#000000',
+				'editor.lineHighlightBackground': '#f5f5f5',
+				'editorLineNumber.foreground': '#237893',
+				'editorLineNumber.activeForeground': '#0b216f',
+				'editor.selectionBackground': '#add6ff',
+				'editor.inactiveSelectionBackground': '#e5ebf1',
+				// VS Code style diff colors
+				'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.35)',
+				'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.20)',
+				'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.28)',
+				'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.14)',
+				'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.50)',
+				'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.45)',
+				'diffEditor.diagonalFill': '#efefef',
+			},
+		});
+
+		// Dark theme
+		monaco.editor.defineTheme('vector-dark', {
+			base: 'vs-dark',
+			inherit: true,
+			rules: [
+				{ token: 'keyword.routing', foreground: '4EC9B0', fontStyle: 'bold' },
+				{ token: 'keyword.other.http', foreground: 'DCDCAA', fontStyle: 'bold' },
+				{ token: 'variable.name', foreground: '9CDCFE' },
+				{ token: 'support.function', foreground: 'DCDCAA' },
+				{ token: 'keyword', foreground: 'C586C0' },
+				{ token: 'storage.type', foreground: '569CD6' },
+				{ token: 'string', foreground: 'CE9178' },
+				{ token: 'number', foreground: 'B5CEA8' },
+				{ token: 'comment', foreground: '6A9955', fontStyle: 'italic' },
+			],
+			colors: {
+				'editor.background': '#1e1e1e',
+				'editor.foreground': '#d4d4d4',
+				'editorCursor.foreground': '#aeafad',
+				'editor.lineHighlightBackground': '#2a2d2e',
+				'editorLineNumber.foreground': '#858585',
+				'editorLineNumber.activeForeground': '#c6c6c6',
+				'editor.selectionBackground': '#264f78',
+				'editor.inactiveSelectionBackground': '#3a3d41',
+				// VS Code style diff colors
+				'diffEditor.insertedTextBackground': 'rgba(46, 160, 67, 0.35)',
+				'diffEditor.insertedLineBackground': 'rgba(46, 160, 67, 0.20)',
+				'diffEditor.removedTextBackground': 'rgba(248, 81, 73, 0.30)',
+				'diffEditor.removedLineBackground': 'rgba(248, 81, 73, 0.15)',
+				'diffEditorGutter.insertedLineGutterBackground': 'rgba(46, 160, 67, 0.50)',
+				'diffEditorGutter.removedLineGutterBackground': 'rgba(248, 81, 73, 0.45)',
+				'diffEditor.diagonalFill': '#2a2d2e',
+			},
+		});
+	}
+
+	private createEditor(): void {
+		const active = this.workspaceService.activeFile();
+		const initialModel = active ? this.getOrCreateModel(active) : null;
+		this.currentActiveFileId = active ? active.id : null;
+
+		const initialMonacoTheme =
+			this.themeService.currentTheme() === 'light' ? 'vector-light' : 'vector-dark';
+
+		this.editorInstance = monaco.editor.create(this.editorContainer.nativeElement, {
+			model: initialModel,
+			theme: initialMonacoTheme,
+			fontSize: this.zoomService.editorFontSize(),
+			fontWeight: '500',
+			lineHeight: Math.round(this.zoomService.editorFontSize() * 1.5),
+			mouseWheelZoom: true,
+			wordWrap: 'on',
+			tabSize: 4,
+			insertSpaces: false,
+			detectIndentation: true,
+			fontFamily:
+				"'Consolas', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Noto Sans Hebrew', 'Courier New', monospace",
+			fontLigatures: true,
+			lineNumbers: 'on',
+			roundedSelection: false,
+			scrollBeyondLastLine: false,
+			readOnly: false,
+			cursorBlinking: 'smooth',
+			smoothScrolling: true,
+			contextmenu: true,
+			minimap: { enabled: true },
+			automaticLayout: false,
+			inlineSuggest: {
+				enabled: true,
+				mode: 'subwordSmart',
+				showToolbar: 'always',
+			},
+			suggest: {
+				preview: true,
+				showIcons: true,
+				snippetsPreventQuickSuggestions: false,
+			},
+			quickSuggestions: {
+				other: true,
+				comments: true,
+				strings: true,
+			},
+			suggestOnTriggerCharacters: true,
+			tabCompletion: 'on',
+			acceptSuggestionOnEnter: 'smart',
+			wordBasedSuggestions: 'allDocuments',
+			snippetSuggestions: 'top',
+			stickyScroll: {
+				enabled: true,
+				maxLineCount: 5,
+				defaultModel: 'foldingProviderModel',
+			},
+		});
+
+		// Floating AI Thinking widget above cursor
+		this.aiThinkingWidget = new AiThinkingWidget(this.editorInstance, () =>
+			this.aiService.isGenerating(),
+		);
+		this.editorInstance.addContentWidget(this.aiThinkingWidget);
+
+		// Listen to cursor position changes
+		this.editorInstance.onDidChangeCursorPosition((e) => {
+			if (this.isProgrammaticUpdate) return;
+			this.cursorChange.emit({
+				line: e.position.lineNumber,
+				column: e.position.column,
+			});
+			const active = this.workspaceService.activeFile();
+			if (active) {
+				active.cursor = { line: e.position.lineNumber, column: e.position.column };
+				this.workspaceService.updateFileCursor(active.id, {
+					line: e.position.lineNumber,
+					column: e.position.column,
+				});
+			}
+			if (this.aiThinkingWidget && this.aiService.isGenerating()) {
+				this.editorInstance?.layoutContentWidget(this.aiThinkingWidget);
+			}
+			this.updateDefinitionContext(e.position);
+			this.queueSaveCurrentViewState();
+		});
+
+		// Listen to scroll changes to persist scroll position
+		this.editorInstance.onDidScrollChange(() => {
+			if (this.isProgrammaticUpdate) return;
+			this.queueSaveCurrentViewState();
+		});
+
+		// Listen to content changes
+		this.editorInstance.onDidChangeModelContent(() => {
+			if (this.isProgrammaticUpdate) return;
+			this.clearHighlight();
+			const activeFile = this.workspaceService.activeFile();
+			if (activeFile && this.editorInstance) {
+				const val = this.editorInstance.getValue();
+				this.workspaceService.updateContent(activeFile.id, val);
+				const model = this.editorInstance.getModel();
+				if (
+					model &&
+					(!activeFile.language || activeFile.language === 'plaintext') &&
+					val.length < 50000
+				) {
+					const detected = detectLanguage(activeFile.name, val);
+					if (detected !== 'plaintext' && detected !== activeFile.language) {
+						activeFile.language = detected;
+						monaco.editor.setModelLanguage(model, detected);
+						this.workspaceService.updateFileLanguage(activeFile.id, detected);
+					}
+				}
+			}
+		});
+
+		// Keyboard shortcut: Escape to dismiss/clear highlight decorations
+		this.editorInstance.addCommand(monaco.KeyCode.Escape, () => {
+			this.clearHighlight();
+		});
+
+		// Keyboard shortcut: Ctrl+S (Cmd+S) to save active file
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+			this.workspaceService.saveCurrentFile();
+		});
+
+		// Keyboard shortcut: Ctrl+P / Cmd+P to open file search
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+			this.workspaceService.openModal('file-search');
+		});
+
+		// Keyboard shortcut: Ctrl+Shift+P / Cmd+Shift+P to open file search / command palette
+		this.editorInstance.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP,
+			() => {
+				this.workspaceService.openModal('file-search');
+			},
+		);
+
+		// Keyboard shortcut: Ctrl+B to toggle sidebar
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
+			this.workspaceService.toggleSidebar();
+		});
+
+		// Keyboard shortcut: Ctrl+Shift+F to open global search
+		this.editorInstance.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+			() => {
+				this.workspaceService.setSidebarView('search');
+			},
+		);
+
+		// Keyboard shortcut: Ctrl+O to open folder
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO, () => {
+			this.workspaceService.openDirectoryFromDisk();
+		});
+
+		// Keyboard shortcut: Ctrl+N to create new file
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, () => {
+			this.workspaceService.openModal('new-file');
+		});
+
+		// Keyboard shortcuts for Zoom In / Out / Reset
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Equal, () => {
+			this.zoomService.zoomIn();
+		});
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => {
+			this.zoomService.zoomOut();
+		});
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Digit0, () => {
+			this.zoomService.resetZoom();
+		});
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.NumpadAdd, () => {
+			this.zoomService.zoomIn();
+		});
+		this.editorInstance.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyCode.NumpadSubtract,
+			() => {
+				this.zoomService.zoomOut();
+			},
+		);
+		this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Numpad0, () => {
+			this.zoomService.resetZoom();
+		});
+
+		// Keyboard shortcut: Ctrl+Shift+V to toggle preview if active file is previewable
+		this.editorInstance.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyV,
+			() => {
+				if (this.isCurrentPreviewable()) {
+					this.workspaceService.togglePreview();
+				}
+			},
+		);
+
+		// Keyboard shortcut: Shift+Alt+F / Ctrl+Shift+I to Format Document
+		this.editorInstance.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+			() => {
+				this.editorInstance?.getAction('editor.action.formatDocument')?.run();
+			},
+		);
+		this.editorInstance.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI,
+			() => {
+				this.editorInstance?.getAction('editor.action.formatDocument')?.run();
+			},
+		);
+
+		// Keyboard shortcut / Command: Ctrl+Alt+P (Cmd+Alt+P) to propagate edit pattern to following lines
+		this.editorInstance.addAction({
+			id: 'vide.ai.propagatePattern',
+			label: '✨ AI: Propagate Edit Pattern to Following Lines',
+			keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyP],
+			contextMenuGroupId: 'modification',
+			contextMenuOrder: 1.5,
+			run: async (ed) => {
+				await this.propagateEditPattern(ed);
+			},
+		});
+
+		// Action & Shortcut: Shift+F12 to Find References (at top of context menu)
+		this.editorInstance.addAction({
+			id: 'vide.findReferences',
+			label: 'Find References',
+			keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.F12],
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 0.1,
+			run: async (ed) => {
+				const pos = ed.getPosition();
+				const model = ed.getModel();
+				if (pos && model) {
+					await this.symbolNavigationService.triggerFindReferences(model, pos);
+				}
+			},
+		});
+
+		// Action & Shortcut: Alt+Left for Navigation History: Go Back
+		this.editorInstance.addAction({
+			id: 'vide.navigateBack',
+			label: 'Go Back (Alt+←)',
+			keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow],
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 0.2,
+			run: async () => {
+				await this.navigationHistoryService.navigateBack();
+			},
+		});
+
+		// Action & Shortcut: Alt+Right for Navigation History: Go Forward
+		this.editorInstance.addAction({
+			id: 'vide.navigateForward',
+			label: 'Go Forward (Alt+→)',
+			keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.RightArrow],
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 0.3,
+			run: async () => {
+				await this.navigationHistoryService.navigateForward();
+			},
+		});
+
+		// Action: Show Navigation Stack (Recent 30 Locations)
+		this.editorInstance.addAction({
+			id: 'vide.showNavigationStack',
+			label: 'Navigation Stack (Recent 30 Locations)',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 0.4,
+			run: () => {
+				this.navigationHistoryService.openDropdown();
+			},
+		});
+
+		// Action & Shortcut: Alt+A to manually bookmark/save position in navigation stack
+		this.editorInstance.addAction({
+			id: 'vide.addToStack',
+			label: 'Add to Stack',
+			keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyA],
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 1.25,
+			run: (ed) => {
+				const pos = ed.getPosition();
+				const active = this.workspaceService.activeFile();
+				if (pos && active) {
+					this.navigationHistoryService.addManualLocation(
+						active,
+						pos.lineNumber,
+						pos.column,
+					);
+				}
+			},
+		});
+
+		// Reconfigure Monaco MenuRegistry: Move "Go to Symbol..." (editor.action.quickOutline)
+		// from 'navigation' group (where order was 3) into '1_modification' with order 1.05
+		// so it appears immediately above "Rename Symbol" (which has group '1_modification' and order 1.1)
+		try {
+			const menuItems = (MenuRegistry as any).getMenuItems(MenuId.EditorContext);
+			if (Array.isArray(menuItems)) {
+				for (const item of menuItems) {
+					if (item?.command?.id === 'editor.action.quickOutline') {
+						item.group = '1_modification';
+						item.order = 1.05;
+					}
+				}
+			}
+		} catch (e) {
+			console.warn('Could not reorder Go to Symbol action in MenuRegistry', e);
+		}
+
+		// Hide "Go to Definition" when on definition, and always unify references
+		this.editorInstance.onContextMenu((e) => {
+			const pos = e.target?.position || this.editorInstance?.getPosition();
+			this.updateDefinitionContext(pos);
+			this.purgeDefinitionMenuItems();
+		});
+
+		// Precision resize handling for both standard and diff editor
+		this.resizeObserver = new ResizeObserver(() => {
+			this.editorInstance?.layout();
+			this.diffEditorInstance?.layout();
+		});
+		this.resizeObserver.observe(this.editorContainer.nativeElement);
+		this.resizeObserver.observe(this.diffContainer.nativeElement);
+
+		const isBin =
+			active &&
+			(active.isBinary || active.language === 'binary' || isBinaryFile(active.name));
+		if (active && !active.isImage && !isBin) {
+			this.switchToFile(active);
+		}
+	}
+
+	private updateDefinitionContext(targetPos?: monaco.IPosition | null): void {
+		if (!this.editorInstance) return;
+		const model = this.editorInstance.getModel();
+		const pos = targetPos || this.editorInstance.getPosition();
+		if (!model || !pos) return;
+
+		const atDef = this.symbolNavigationService.isCursorOnDefinition(model, pos);
+
+		// 1. Update Monaco internal context key so Monaco natively omits Go to Definition, Peek Definition, and redundant Go to References
+		try {
+			const contextKeyService = (this.editorInstance as any)._contextKeyService;
+			if (contextKeyService?.setContext) {
+				contextKeyService.setContext('editorHasDefinitionProvider', !atDef);
+				contextKeyService.setContext('editorHasReferenceProvider', false);
+			}
+		} catch {
+			// Fallback if Monaco internals change
+		}
+
+		// 2. Toggle body class for instant CSS rule
+		document.body.classList.toggle('vide-hide-goto-def', atDef);
+
+		// 3. Proactively cleanse context menu DOM
+		this.purgeDefinitionMenuItems();
+	}
+
+	private purgeDefinitionMenuItems(): void {
+		const isAtDef = document.body.classList.contains('vide-hide-goto-def');
+		const purge = () => {
+			document
+				.querySelectorAll('.monaco-menu .action-item, .context-view .action-item')
+				.forEach((item) => {
+					const text = (item.textContent || '').trim();
+					const aria =
+						item.querySelector('[aria-label]')?.getAttribute('aria-label') || '';
+					const title = item.getAttribute('title') || '';
+
+					// Purge redundant built-in reference actions (unified to our Find References)
+					const isRedundantRef =
+						(text.toLowerCase().includes('reference') ||
+							aria.toLowerCase().includes('reference') ||
+							title.toLowerCase().includes('reference')) &&
+						!text.includes('Find References') &&
+						!aria.includes('Find References') &&
+						!text.includes('Navigation Stack') &&
+						!aria.includes('Navigation Stack');
+
+					if (isRedundantRef) {
+						(item as HTMLElement).style.display = 'none';
+					}
+
+					// Purge definition actions when cursor is already on definition line
+					if (isAtDef) {
+						if (
+							text.includes('Go to Definition') ||
+							text.includes('Peek Definition') ||
+							aria.includes('Go to Definition') ||
+							aria.includes('Peek Definition')
+						) {
+							(item as HTMLElement).style.display = 'none';
+						}
+					}
+				});
+
+			// Ensure "Go to Symbol..." is visually positioned directly above "Rename Symbol" in DOM
+			const allItems = Array.from(
+				document.querySelectorAll<HTMLElement>(
+					'.monaco-menu .action-item, .context-view .action-item',
+				),
+			);
+			const gotoSymbolEl = allItems.find((item) => {
+				const t = (item.textContent || '').trim().toLowerCase();
+				const a = (
+					item.querySelector('[aria-label]')?.getAttribute('aria-label') || ''
+				).toLowerCase();
+				return t.includes('go to symbol') || a.includes('go to symbol');
+			});
+			const renameSymbolEl = allItems.find((item) => {
+				const t = (item.textContent || '').trim().toLowerCase();
+				const a = (
+					item.querySelector('[aria-label]')?.getAttribute('aria-label') || ''
+				).toLowerCase();
+				return t.includes('rename symbol') || a.includes('rename symbol');
+			});
+
+			if (
+				gotoSymbolEl &&
+				renameSymbolEl &&
+				gotoSymbolEl.parentElement &&
+				gotoSymbolEl.parentElement === renameSymbolEl.parentElement
+			) {
+				if (gotoSymbolEl.nextElementSibling !== renameSymbolEl) {
+					renameSymbolEl.parentElement.insertBefore(gotoSymbolEl, renameSymbolEl);
+				}
+			}
+
+			// Ensure "Add to Stack" is visually positioned directly after "Peek Definition" / "Peek"
+			const addToStackEl = allItems.find((item) => {
+				const t = (item.textContent || '').trim().toLowerCase();
+				const a = (
+					item.querySelector('[aria-label]')?.getAttribute('aria-label') || ''
+				).toLowerCase();
+				return t.includes('add to stack') || a.includes('add to stack');
+			});
+			const peekEl = allItems.find((item) => {
+				if (item.style.display === 'none') return false;
+				const t = (item.textContent || '').trim().toLowerCase();
+				const a = (
+					item.querySelector('[aria-label]')?.getAttribute('aria-label') || ''
+				).toLowerCase();
+				return t.startsWith('peek') || a.startsWith('peek');
+			});
+
+			if (
+				addToStackEl &&
+				peekEl &&
+				addToStackEl.parentElement &&
+				addToStackEl.parentElement === peekEl.parentElement
+			) {
+				if (peekEl.nextElementSibling !== addToStackEl) {
+					peekEl.parentElement.insertBefore(addToStackEl, peekEl.nextSibling);
+				}
+			}
+
+			// Clean up any redundant consecutive separators in the menu
+			const containers = Array.from(
+				document.querySelectorAll<HTMLElement>(
+					'.monaco-menu .actions-container, .context-view .actions-container',
+				),
+			);
+			for (const container of containers) {
+				const children = Array.from(container.children) as HTMLElement[];
+				let prevWasSeparator = false;
+				for (const child of children) {
+					if (child.style.display === 'none') continue;
+					const isSep =
+						child.classList.contains('separator') ||
+						child.getAttribute('role') === 'presentation';
+					if (isSep && prevWasSeparator) {
+						child.style.display = 'none';
+					} else if (isSep) {
+						prevWasSeparator = true;
+					} else {
+						prevWasSeparator = false;
+					}
+				}
+			}
+		};
+
+		purge();
+		requestAnimationFrame(purge);
+		setTimeout(purge, 20);
+		setTimeout(purge, 60);
+		setTimeout(purge, 150);
+	}
+
+	private getViewStateStorageKey(): string {
+		let ws =
+			this.workspaceService.nativeWorkspacePath() ||
+			(typeof localStorage !== 'undefined'
+				? localStorage.getItem('vector_last_native_path')
+				: null) ||
+			(typeof localStorage !== 'undefined'
+				? localStorage.getItem('vector_last_workspace_name')
+				: null) ||
+			'default';
+		ws = ws.replace(/\/+$/, '');
+		return `vide_file_view_states_${ws}`;
+	}
+
+	private getSavedViewState(file: WorkspaceFile): monaco.editor.ICodeEditorViewState | null {
+		const memVs =
+			this.fileViewStates.get(file.id) ||
+			(file.path ? this.fileViewStates.get(file.path) : null);
+		if (memVs) return memVs;
+
+		if (typeof localStorage === 'undefined') return null;
+		try {
+			const storageKey = this.getViewStateStorageKey();
+			const raw = localStorage.getItem(storageKey);
+			if (raw) {
+				const allStates = JSON.parse(raw);
+				const stored = (file.path && allStates[file.path]) || allStates[file.id];
+				if (stored) {
+					const vs = stored.viewState || stored;
+					this.fileViewStates.set(file.id, vs);
+					if (file.path) this.fileViewStates.set(file.path, vs);
+					return vs;
+				}
+			}
+		} catch (e) {
+			console.warn('Failed to load view state from localStorage:', e);
+		}
+		return null;
+	}
+
+	private restoreFileViewState(file: WorkspaceFile): void {
+		if (!this.editorInstance) return;
+		const vs = this.getSavedViewState(file);
+		if (vs) {
+			this.editorInstance.restoreViewState(vs);
+			const vsPos = vs.cursorState?.[0]?.position;
+			const targetPos =
+				file.cursor &&
+				(file.cursor.line > 1 || file.cursor.column > 1) &&
+				(!vsPos || vsPos.lineNumber <= 1)
+					? { lineNumber: file.cursor.line, column: file.cursor.column || 1 }
+					: vsPos ||
+						(file.cursor
+							? { lineNumber: file.cursor.line, column: file.cursor.column || 1 }
+							: null);
+
+			if (targetPos) {
+				if (targetPos.lineNumber > 1 || targetPos.column > 1) {
+					this.editorInstance.setPosition(targetPos);
+					requestAnimationFrame(() => {
+						if (this.currentActiveFileId === file.id && this.editorInstance) {
+							this.editorInstance.revealPositionInCenterIfOutsideViewport(targetPos);
+						}
+					});
+				}
+			}
+		} else if (file.cursor && (file.cursor.line > 1 || file.cursor.column > 1)) {
+			const pos = { lineNumber: file.cursor.line, column: file.cursor.column || 1 };
+			this.editorInstance.setPosition(pos);
+			requestAnimationFrame(() => {
+				if (this.currentActiveFileId === file.id && this.editorInstance && file.cursor) {
+					this.editorInstance.revealPositionInCenterIfOutsideViewport(pos);
+				}
+			});
+		}
+	}
+
+	private saveCurrentFileViewState(targetFileId?: string): void {
+		if (!this.editorInstance) return;
+		if (this.workspaceService.isRestoringSession()) return;
+		const fileId = targetFileId || this.currentActiveFileId;
+		if (!fileId) return;
+
+		const file = this.workspaceService
+			.files()
+			.find((f) => f.id === fileId || f.path === fileId);
+		if (
+			!file ||
+			file.isImage ||
+			file.isBinary ||
+			file.language === 'binary' ||
+			isBinaryFile(file.name)
+		)
+			return;
+
+		const vs = this.editorInstance.saveViewState();
+		if (!vs) return;
+
+		this.fileViewStates.set(file.id, vs);
+		if (file.path) {
+			this.fileViewStates.set(file.path, vs);
+		}
+
+		const pos = this.editorInstance.getPosition();
+		if (pos) {
+			file.cursor = { line: pos.lineNumber, column: pos.column };
+			this.workspaceService.updateFileCursor(file.id, {
+				line: pos.lineNumber,
+				column: pos.column,
+			});
+		}
+
+		if (typeof localStorage === 'undefined') return;
+		try {
+			const storageKey = this.getViewStateStorageKey();
+			const raw = localStorage.getItem(storageKey);
+			const allStates: Record<string, any> = raw ? JSON.parse(raw) : {};
+
+			const fileKey = file.path || file.id;
+			allStates[fileKey] = {
+				viewState: vs,
+				cursor: pos ? { lineNumber: pos.lineNumber, column: pos.column } : undefined,
+				updatedAt: Date.now(),
+			};
+			if (file.id && file.id !== fileKey) {
+				allStates[file.id] = allStates[fileKey];
+			}
+
+			// Limit stored view states to 150 most recent files
+			const keys = Object.keys(allStates);
+			if (keys.length > 200) {
+				const sorted = keys.sort(
+					(a, b) => (allStates[b]?.updatedAt || 0) - (allStates[a]?.updatedAt || 0),
+				);
+				const pruned: Record<string, any> = {};
+				for (let i = 0; i < 150; i++) {
+					pruned[sorted[i]] = allStates[sorted[i]];
+				}
+				localStorage.setItem(storageKey, JSON.stringify(pruned));
+			} else {
+				localStorage.setItem(storageKey, JSON.stringify(allStates));
+			}
+		} catch (e) {
+			console.warn('Failed to save view state to localStorage:', e);
+		}
+	}
+
+	private queueSaveCurrentViewState(): void {
+		if (this.saveViewStateDebounceTimer) {
+			clearTimeout(this.saveViewStateDebounceTimer);
+		}
+		this.saveViewStateDebounceTimer = setTimeout(() => {
+			this.saveCurrentFileViewState();
+		}, 250);
+	}
+
+	private createDiffEditor(): void {
+		if (this.diffEditorInstance) return;
+
+		const initialTheme =
+			this.themeService.currentTheme() === 'light' ? 'vector-light' : 'vector-dark';
+
+		this.diffEditorInstance = monaco.editor.createDiffEditor(this.diffContainer.nativeElement, {
+			theme: initialTheme,
+			fontSize: this.zoomService.editorFontSize(),
+			fontWeight: '500',
+			lineHeight: Math.round(this.zoomService.editorFontSize() * 1.5),
+			mouseWheelZoom: true,
+			wordWrap: 'on',
+			fontFamily:
+				"'Consolas', 'Ubuntu Mono', 'DejaVu Sans Mono', 'Noto Sans Hebrew', 'Courier New', monospace",
+			fontLigatures: true,
+			lineNumbers: 'on',
+			roundedSelection: false,
+			scrollBeyondLastLine: false,
+			readOnly: false,
+			originalEditable: false,
+			renderSideBySide: this.workspaceService.diffRenderSideBySide(),
+			enableSplitViewResizing: true,
+			splitViewDefaultRatio: 0.5,
+			cursorBlinking: 'smooth',
+			smoothScrolling: true,
+			contextmenu: true,
+			automaticLayout: true,
+			diffWordWrap: 'on',
+			renderIndicators: true,
+			ignoreTrimWhitespace: false,
+			renderValidationDecorations: 'off',
+		});
+
+		const isTabs = this.workspaceService.indentType() === 'tabs';
+		const size = this.workspaceService.tabSize();
+		this.diffEditorInstance.getOriginalEditor().updateOptions({
+			insertSpaces: !isTabs,
+			tabSize: size,
+			renderValidationDecorations: 'off',
+		});
+		this.diffEditorInstance.getModifiedEditor().updateOptions({
+			insertSpaces: !isTabs,
+			tabSize: size,
+			renderValidationDecorations: 'off',
+		});
+
+		// Modified editor content changes sync back to WorkspaceService
+		this.diffEditorInstance.getModifiedEditor().onDidChangeModelContent(() => {
+			if (this.isProgrammaticUpdate) return;
+			const activeDiff = this.workspaceService.activeDiffFile();
+			if (activeDiff && this.diffEditorInstance) {
+				const val = this.diffEditorInstance.getModifiedEditor().getValue();
+				this.workspaceService.updateContent(activeDiff.id, val);
+			}
+		});
+
+		// Cursor position in modified editor
+		this.diffEditorInstance.getModifiedEditor().onDidChangeCursorPosition((e) => {
+			this.cursorChange.emit({
+				line: e.position.lineNumber,
+				column: e.position.column,
+			});
+		});
+
+		// Track diff changes count
+		this.diffEditorInstance.onDidUpdateDiff(() => {
+			const changes = this.diffEditorInstance?.getLineChanges();
+			this.diffChunkCount.set(changes ? changes.length : 0);
+		});
+
+		// Ctrl+S shortcut to save file while in diff view
+		this.diffEditorInstance
+			.getModifiedEditor()
+			.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+				this.workspaceService.saveCurrentFile();
+			});
+
+		// Zoom shortcuts for diff editor
+		this.diffEditorInstance
+			.getModifiedEditor()
+			.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Equal, () => {
+				this.zoomService.zoomIn();
+			});
+		this.diffEditorInstance
+			.getModifiedEditor()
+			.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => {
+				this.zoomService.zoomOut();
+			});
+		// Ctrl+P / Ctrl+Shift+P shortcut to open file search in diff view
+		[
+			this.diffEditorInstance.getModifiedEditor(),
+			this.diffEditorInstance.getOriginalEditor(),
+		].forEach((ed) => {
+			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+				this.workspaceService.openModal('file-search');
+			});
+			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, () => {
+				this.workspaceService.openModal('file-search');
+			});
+			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
+				this.workspaceService.toggleSidebar();
+			});
+			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+				this.workspaceService.setSidebarView('search');
+			});
+			ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
+				this.navigationHistoryService.navigateBack();
+			});
+			ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
+				this.navigationHistoryService.navigateForward();
+			});
+			ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyA, () => {
+				const pos = ed.getPosition();
+				const active =
+					this.workspaceService.activeDiffFile() || this.workspaceService.activeFile();
+				if (pos && active) {
+					this.navigationHistoryService.addManualLocation(
+						active,
+						pos.lineNumber,
+						pos.column,
+					);
+				}
+			});
+			ed.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, () => {
+				ed.getAction('editor.action.formatDocument')?.run();
+			});
+		});
+	}
+
+	private setupDiffModels(file: WorkspaceFile): void {
+		if (!this.diffEditorInstance) return;
+
+		this.isProgrammaticUpdate = true;
+		try {
+			// Modified model (Working tree)
+			const modModel = this.getOrCreateModel(file);
+			if (modModel.getValue() !== file.content) {
+				modModel.setValue(file.content);
+			}
+
+			// Original model (HEAD baseline)
+			const safeId = encodeURIComponent(file.id || file.path || file.name);
+			const origUri = monaco.Uri.parse(`inmemory://diff-original/${safeId}`);
+			let origModel = this.originalDiffModels.get(file.id);
+			const originalText =
+				file.originalContent !== undefined ? file.originalContent : file.content;
+
+			if (!origModel || origModel.isDisposed()) {
+				const existing = monaco.editor.getModel(origUri);
+				if (existing && !existing.isDisposed()) {
+					origModel = existing;
+				} else {
+					origModel = monaco.editor.createModel(originalText, file.language, origUri);
+				}
+				const modOpts = modModel.getOptions();
+				origModel.updateOptions({
+					insertSpaces: modOpts.insertSpaces,
+					tabSize: modOpts.tabSize,
+				});
+				this.originalDiffModels.set(file.id, origModel);
+			}
+
+			if (origModel.getValue() !== originalText) {
+				origModel.setValue(originalText);
+			}
+
+			this.diffEditorInstance.setModel({
+				original: origModel,
+				modified: modModel,
+			});
+
+			this.diffEditorInstance.updateOptions({
+				originalEditable: false,
+				readOnly: !!file.readOnly,
+			});
+
+			// Clear any diagnostic error markers on diff models
+			monaco.editor.setModelMarkers(origModel, 'typescript', []);
+			monaco.editor.setModelMarkers(origModel, 'javascript', []);
+
+			requestAnimationFrame(() => {
+				this.diffEditorInstance?.layout();
+				this.diffEditorInstance?.getOriginalEditor().layout();
+				this.diffEditorInstance?.getModifiedEditor().layout();
+			});
+		} finally {
+			this.isProgrammaticUpdate = false;
+		}
+	}
+
+	public discardChanges(fileId: string): void {
+		this.workspaceService.revertFile(fileId);
+		const file = this.workspaceService.files().find((f) => f.id === fileId);
+		if (file) {
+			const modModel = this.fileModels.get(fileId);
+			if (modModel && file.originalContent !== undefined) {
+				modModel.setValue(file.originalContent);
+			}
+			this.workspaceService.closeDiffView();
+		}
+	}
+
+	@HostListener('window:keydown.escape')
+	public onGlobalEscape(): void {
+		this.clearHighlight();
+	}
+
+	public applyHighlight(start: number, end: number): void {
+		if (!this.editorInstance) return;
+		this.editorInstance.revealRangeInCenter(
+			new monaco.Range(start, 1, end, 1),
+			monaco.editor.ScrollType.Smooth,
+		);
+		this.editorInstance.setPosition({ lineNumber: start, column: 1 });
+		this.editorInstance.focus();
+
+		if (this.highlightDecorations) {
+			this.highlightDecorations.clear();
+		}
+
+		this.highlightDecorations = this.editorInstance.createDecorationsCollection([
+			{
+				range: new monaco.Range(start, 1, end, 1),
+				options: {
+					isWholeLine: true,
+					className: 'vide-highlight-yellow',
+					marginClassName: 'vide-highlight-gutter',
+					overviewRuler: {
+						color: 'rgba(250, 204, 21, 0.8)',
+						position: monaco.editor.OverviewRulerLane.Full,
+					},
+					minimap: {
+						color: 'rgba(250, 204, 21, 0.8)',
+						position: monaco.editor.MinimapPosition.Inline,
+					},
+				},
+			},
+		]);
+	}
+
+	public clearHighlight(): void {
+		if (this.highlightDecorations) {
+			this.highlightDecorations.clear();
+			this.highlightDecorations = null;
+		}
+	}
+
+	private switchToFile(file: WorkspaceFile): void {
+		if (!this.editorInstance) return;
+		if (file.isBinary || file.language === 'binary' || isBinaryFile(file.name)) {
+			if (this.editorInstance.getModel()) {
+				this.editorInstance.setModel(null);
+			}
+			this.currentActiveFileId = null;
+			return;
+		}
+
+		// Save view state of outgoing file before switching
+		if (this.currentActiveFileId && this.currentActiveFileId !== file.id) {
+			this.saveCurrentFileViewState(this.currentActiveFileId);
+		}
+
+		this.isProgrammaticUpdate = true;
+		try {
+			const model = this.getOrCreateModel(file);
+			const isSwitchingModel = this.editorInstance.getModel() !== model;
+			if (isSwitchingModel) {
+				this.clearHighlight();
+				this.editorInstance.setModel(model);
+				this.currentActiveFileId = file.id;
+
+				// Restore saved view state (cursor position, scroll position, selections)
+				this.restoreFileViewState(file);
+				this.editorInstance.focus();
+			} else {
+				this.currentActiveFileId = file.id;
+			}
+			const content = file.content ?? '';
+			if (model.getValue() !== content) {
+				const wasEmpty = model.getValue().length === 0;
+				const currentVs = wasEmpty ? null : this.editorInstance.saveViewState();
+				model.setValue(content);
+				if (wasEmpty) {
+					this.restoreFileViewState(file);
+				} else if (currentVs) {
+					this.editorInstance.restoreViewState(currentVs);
+				}
+				if (!file.isIndentationCustom) {
+					const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
+					const defTabSize = this.workspaceService.defaultTabSize();
+					model.detectIndentation(defInsertSpaces, defTabSize);
+				}
+			}
+
+			// Detect language from content if currently plaintext
+			const currentContent = file.content ?? model.getValue();
+			if ((!file.language || file.language === 'plaintext') && currentContent) {
+				const detected = detectLanguage(file.name, currentContent);
+				if (detected !== 'plaintext' && detected !== file.language) {
+					file.language = detected;
+					monaco.editor.setModelLanguage(model, detected);
+					untracked(() => {
+						this.workspaceService.updateFileLanguage(file.id, detected);
+					});
+				}
+			}
+
+			this.syncIndentationFromModel(model, file);
+		} catch (err) {
+			console.error('Error switching to file in Monaco:', err);
+		} finally {
+			this.isProgrammaticUpdate = false;
+		}
+
+		const hl = untracked(() => this.workspaceService.pendingHighlight());
+		if (hl && (hl.fileId === file.id || hl.fileId === file.path)) {
+			setTimeout(() => {
+				this.applyHighlight(hl.highlightStart, hl.highlightEnd);
+				this.workspaceService.pendingHighlight.set(null);
+			}, 20);
+		}
+
+		const jump = untracked(() => this.workspaceService.pendingLineJump());
+		if (jump && (!jump.fileId || jump.fileId === file.id || jump.fileId === file.path)) {
+			setTimeout(() => {
+				if (this.editorInstance && this.currentActiveFileId === file.id) {
+					this.editorInstance.revealLineInCenter(jump.lineNumber);
+					this.editorInstance.setPosition({
+						lineNumber: jump.lineNumber,
+						column: jump.column || 1,
+					});
+					this.editorInstance.focus();
+					this.workspaceService.pendingLineJump.set(null);
+				}
+			}, 30);
+		}
+
+		this.editorInstance.layout();
+		requestAnimationFrame(() => {
+			this.editorInstance?.layout();
+		});
+		setTimeout(() => {
+			this.editorInstance?.layout();
+		}, 50);
+	}
+
+	private getOrCreateModel(file: WorkspaceFile): monaco.editor.ITextModel {
+		let model = this.fileModels.get(file.id);
+		if (!model || model.isDisposed()) {
+			const safeId = encodeURIComponent(file.id || file.path || file.name);
+			const uri = monaco.Uri.parse(`inmemory://workspace/${safeId}`);
+			const existing = monaco.editor.getModel(uri);
+
+			let initialLang = file.language || 'plaintext';
+			if (initialLang === 'plaintext' && file.content) {
+				const detected = detectLanguage(file.name, file.content);
+				if (detected !== 'plaintext') {
+					initialLang = detected;
+					file.language = detected;
+				}
+			}
+
+			const textModel: monaco.editor.ITextModel =
+				existing && !existing.isDisposed()
+					? existing
+					: monaco.editor.createModel(file.content ?? '', initialLang, uri);
+
+			if (file.isIndentationCustom && file.tabSize !== undefined) {
+				textModel.updateOptions({
+					insertSpaces: file.indentType === 'spaces',
+					tabSize: file.tabSize,
+				});
+			} else {
+				const ecRules = this.editorConfigService.getPropertiesForFile(
+					file.name || file.path,
+				);
+				const defInsertSpaces = ecRules.indentStyle
+					? ecRules.indentStyle === 'spaces'
+					: this.workspaceService.defaultIndentType() === 'spaces';
+				const defTabSize = ecRules.indentSize || this.workspaceService.defaultTabSize();
+				textModel.detectIndentation(defInsertSpaces, defTabSize);
+			}
+
+			textModel.onDidChangeOptions(() => {
+				const active = this.workspaceService.activeFile();
+				if (active && active.id === file.id) {
+					this.syncIndentationFromModel(textModel, active);
+				}
+			});
+
+			model = textModel;
+			this.fileModels.set(file.id, model);
+		}
+		return model;
+	}
+
+	private syncIndentationFromModel(model: monaco.editor.ITextModel, file: WorkspaceFile): void {
+		const opts = model.getOptions();
+		const type: 'tabs' | 'spaces' = opts.insertSpaces ? 'spaces' : 'tabs';
+		const size = opts.tabSize;
+		file.indentType = type;
+		file.tabSize = size;
+		queueMicrotask(() => {
+			this.workspaceService.syncActiveIndentation(type, size);
+		});
+	}
+
+	private detectSourceIndent(
+		model: monaco.editor.ITextModel,
+		fallbackSize = 4,
+	): { isTabs: boolean; indentSize: number; tabLines: number; spaceLines: number } {
+		let tabLines = 0;
+		let spaceLines = 0;
+		const indentCounts = new Map<number, number>();
+
+		const lineCount = Math.min(model.getLineCount(), 1000);
+		for (let i = 1; i <= lineCount; i++) {
+			const line = model.getLineContent(i);
+			const match = line.match(/^([ \t]+)/);
+			if (!match) continue;
+			const leading = match[1];
+			if (leading.startsWith('\t')) {
+				tabLines++;
+			} else if (leading.startsWith(' ')) {
+				spaceLines++;
+				const count = leading.match(/^ +/)?.[0].length || 0;
+				if (count > 0) {
+					indentCounts.set(count, (indentCounts.get(count) || 0) + 1);
+				}
+			}
+		}
+
+		if (tabLines > spaceLines) {
+			return { isTabs: true, indentSize: 1, tabLines, spaceLines };
+		}
+
+		let modulo2Only = 0;
+		let modulo4Count = 0;
+		for (const [spaces, count] of indentCounts.entries()) {
+			if (spaces % 2 === 0 && spaces % 4 !== 0) {
+				modulo2Only += count;
+			} else if (spaces % 4 === 0) {
+				modulo4Count += count;
+			}
+		}
+
+		let indentSize = fallbackSize;
+		if (modulo2Only > modulo4Count) {
+			indentSize = 2;
+		} else if (modulo4Count > 0) {
+			indentSize = 4;
+		} else if (modulo2Only > 0) {
+			indentSize = 2;
+		}
+
+		return { isTabs: false, indentSize, tabLines, spaceLines };
+	}
+
+	private convertModelIndentation(
+		model: monaco.editor.ITextModel,
+		targetType: 'tabs' | 'spaces',
+		targetTabSize: number,
+		fromType?: 'tabs' | 'spaces',
+		fromSize?: number,
+	): void {
+		const detected = this.detectSourceIndent(model, fromSize || 4);
+		let sourceIsTabs = fromType ? fromType === 'tabs' : detected.isTabs;
+		if (detected.tabLines > 0 && detected.spaceLines === 0) {
+			sourceIsTabs = true;
+		} else if (detected.spaceLines > 0 && detected.tabLines === 0) {
+			sourceIsTabs = false;
+		}
+
+		const sourceIndentSize = fromSize || detected.indentSize || 4;
+
+		const lineCount = model.getLineCount();
+		const edits: monaco.editor.ISingleEditOperation[] = [];
+
+		for (let i = 1; i <= lineCount; i++) {
+			const line = model.getLineContent(i);
+			const match = line.match(/^([ \t]+)/);
+			if (!match) continue;
+
+			const currentLeading = match[1];
+			let newLeading = '';
+
+			if (targetType === 'tabs') {
+				if (sourceIsTabs) {
+					// File was already tabs; keep leading tabs and alignment spaces
+					newLeading = currentLeading;
+				} else {
+					// File was spaces (or mixed); convert space levels into tabs
+					let tabCount = 0;
+					let spaceCount = 0;
+					for (const ch of currentLeading) {
+						if (ch === '\t') tabCount++;
+						else if (ch === ' ') spaceCount++;
+					}
+					const totalLevels = tabCount + Math.floor(spaceCount / sourceIndentSize);
+					const leftoverSpaces = spaceCount % sourceIndentSize;
+					newLeading = '\t'.repeat(totalLevels) + ' '.repeat(leftoverSpaces);
+				}
+			} else {
+				// targetType === 'spaces'
+				if (sourceIsTabs) {
+					// Convert leading tabs to targetTabSize spaces
+					let tabCount = 0;
+					let idx = 0;
+					while (idx < currentLeading.length && currentLeading[idx] === '\t') {
+						tabCount++;
+						idx++;
+					}
+					const trailing = currentLeading.substring(idx);
+					newLeading = ' '.repeat(tabCount * targetTabSize) + trailing;
+				} else {
+					// Re-indent from sourceIndentSize to targetTabSize
+					let tabCount = 0;
+					let spaceCount = 0;
+					for (const ch of currentLeading) {
+						if (ch === '\t') tabCount++;
+						else if (ch === ' ') spaceCount++;
+					}
+					const totalLevels = tabCount + Math.floor(spaceCount / sourceIndentSize);
+					const leftoverSpaces = spaceCount % sourceIndentSize;
+					newLeading = ' '.repeat(totalLevels * targetTabSize + leftoverSpaces);
+				}
+			}
+
+			if (newLeading !== currentLeading) {
+				edits.push({
+					range: new monaco.Range(i, 1, i, currentLeading.length + 1),
+					text: newLeading,
+				});
+			}
+		}
+
+		if (edits.length > 0) {
+			model.pushEditOperations([], edits, () => null);
+			const newContent = model.getValue();
+			const active = this.workspaceService.activeFile();
+			if (active) {
+				active.content = newContent;
+				active.isModified = true;
+				this.workspaceService.updateContent(active.id, newContent);
+			}
+			const fromLabel = sourceIsTabs ? 'Tabs' : `${sourceIndentSize} Spaces`;
+			const toLabel = targetType === 'tabs' ? 'Tabs' : `${targetTabSize} Spaces`;
+			this.workspaceService.showNotification(
+				`✓ Converted ${edits.length} line(s) from ${fromLabel} to ${toLabel}`,
+			);
+		} else {
+			const toLabel =
+				targetType === 'tabs' ? `Tabs (size ${targetTabSize})` : `${targetTabSize} Spaces`;
+			this.workspaceService.showNotification(`Indentation set to ${toLabel}`);
+		}
+
+		model.updateOptions({
+			insertSpaces: targetType === 'spaces',
+			tabSize: targetTabSize,
+		});
+		this.editorInstance?.updateOptions({
+			insertSpaces: targetType === 'spaces',
+			tabSize: targetTabSize,
+		});
+
+		const active = this.workspaceService.activeFile();
+		if (active) {
+			active.indentType = targetType;
+			active.tabSize = targetTabSize;
+			active.isIndentationCustom = true;
+		}
+		this.workspaceService.syncActiveIndentation(targetType, targetTabSize);
+	}
+
+	public zoomImgIn(): void {
+		const next = Math.min(5.0, Math.round((this.imageZoom() + 0.2) * 10) / 10);
+		this.imageZoom.set(next);
+	}
+
+	public zoomImgOut(): void {
+		const next = Math.max(0.2, Math.round((this.imageZoom() - 0.2) * 10) / 10);
+		this.imageZoom.set(next);
+	}
+
+	public resetImgZoom(): void {
+		this.imageZoom.set(1.0);
+	}
+
+	public fitImgToWindow(): void {
+		this.imageZoom.set(0.85);
+	}
+
+	public onImgWheel(event: WheelEvent): void {
+		event.preventDefault();
+		if (event.deltaY < 0) {
+			this.zoomImgIn();
+		} else {
+			this.zoomImgOut();
+		}
+	}
+
+	public onImgLoad(event: Event): void {
+		const img = event.target as HTMLImageElement;
+		if (img) {
+			this.imageDimensions.set({
+				width: img.naturalWidth,
+				height: img.naturalHeight,
+			});
+		}
+	}
+
+	public formatFileSize(bytes?: number): string {
+		if (!bytes) return '';
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+	}
+
+	public loadMoreHex(file: WorkspaceFile): void {
+		this.workspaceService.loadMoreHex(file);
+	}
+
+	public onStartResizePreview(event: MouseEvent): void {
+		event.preventDefault();
+		this.isResizingPreview.set(true);
+
+		const stageEl = this.editorContainer.nativeElement.parentElement;
+		if (!stageEl) return;
+
+		const onMouseMove = (e: MouseEvent) => {
+			const rect = stageEl.getBoundingClientRect();
+			if (rect.width <= 0) return;
+			const offsetX = e.clientX - rect.left;
+			let percent = (offsetX / rect.width) * 100;
+			percent = Math.max(20, Math.min(80, percent));
+			this.previewSplitPercent.set(Math.round(percent * 10) / 10);
+		};
+
+		const onMouseUp = () => {
+			this.isResizingPreview.set(false);
+			window.removeEventListener('mousemove', onMouseMove);
+			window.removeEventListener('mouseup', onMouseUp);
+			this.editorInstance?.layout();
+		};
+
+		window.addEventListener('mousemove', onMouseMove);
+		window.addEventListener('mouseup', onMouseUp);
+	}
+
+	private registerAiCodeActions(): void {
+		const supportedLanguages = [
+			'omniflux',
+			'php',
+			'typescript',
+			'javascript',
+			'c',
+			'cpp',
+			'python',
+			'rust',
+			'json',
+			'html',
+			'css',
+			'shell',
+			'perl',
+		];
+
+		// Register global handler for AI syntax quick-fix command
+		monaco.editor.registerCommand(
+			'vide.ai.applySyntaxFix',
+			async (
+				_accessor: any,
+				uri: monaco.Uri,
+				range: monaco.IRange,
+				message: string,
+				lang: string,
+			) => {
+				const model = monaco.editor.getModel(uri);
+				if (!model) return;
+
+				const snippet = model.getValueInRange(range);
+				this.workspaceService.showNotification('✨ AI is repairing syntax error...');
+				const fixed = await this.aiService.fixSyntaxError(snippet, message, lang);
+				if (fixed && fixed.trim().length > 0) {
+					model.pushEditOperations(
+						[],
+						[
+							{
+								range: range,
+								text: fixed,
+								forceMoveMarkers: true,
+							},
+						],
+						() => null,
+					);
+					this.workspaceService.showNotification('✓ Syntax error fixed by AI');
+				} else {
+					this.workspaceService.showNotification('Could not generate syntax fix');
+				}
+			},
+		);
+
+		for (const lang of supportedLanguages) {
+			monaco.languages.registerCodeActionProvider(lang, {
+				provideCodeActions: (model, _range, context) => {
+					if (!this.aiService.isEnabled() || !this.aiService.isServerOnline()) {
+						return { actions: [], dispose: () => {} };
+					}
+
+					const markers = context.markers.filter(
+						(m) =>
+							m.severity === monaco.MarkerSeverity.Error ||
+							m.severity === monaco.MarkerSeverity.Warning,
+					);
+
+					if (markers.length === 0) {
+						return { actions: [], dispose: () => {} };
+					}
+
+					const actions: monaco.languages.CodeAction[] = [];
+
+					for (const marker of markers) {
+						const startLine = Math.max(1, marker.startLineNumber - 2);
+						const endLine = Math.min(model.getLineCount(), marker.endLineNumber + 2);
+						const snippetRange = new monaco.Range(
+							startLine,
+							1,
+							endLine,
+							model.getLineMaxColumn(endLine),
+						);
+
+						actions.push({
+							title: `✨ AI Fix: ${marker.message.substring(0, 55)}`,
+							kind: 'quickfix',
+							isPreferred: true,
+							isAI: true,
+							diagnostics: [marker],
+							command: {
+								id: 'vide.ai.applySyntaxFix',
+								title: 'Apply AI Syntax Fix',
+								arguments: [model.uri, snippetRange, marker.message, lang],
+							},
+						});
+					}
+
+					return {
+						actions,
+						dispose: () => {},
+					};
+				},
+			});
+		}
+	}
+
+	private async propagateEditPattern(ed: monaco.editor.ICodeEditor): Promise<void> {
+		if (!this.aiService.isEnabled() || !this.aiService.isServerOnline()) {
+			this.workspaceService.showNotification('AI server is offline. Check AI Settings.');
+			return;
+		}
+
+		const model = ed.getModel();
+		const selection = ed.getSelection();
+		if (!model || !selection) return;
+
+		let originalLine = '';
+		let editedLine = '';
+		let targetRange: monaco.Range | null = null;
+		let targetLines: string[] = [];
+
+		// Case 1: Multi-line selection. Line 1 is the template/edited line, remainder are targets.
+		if (selection.startLineNumber < selection.endLineNumber) {
+			const startLine = selection.startLineNumber;
+			const endLine = selection.endLineNumber;
+			editedLine = model.getLineContent(startLine);
+
+			// Try to find originalLine from savedContent if available
+			const activeFile = this.workspaceService.activeFile();
+			const savedLines = activeFile?.savedContent ? activeFile.savedContent.split('\n') : [];
+			originalLine = savedLines[startLine - 1] || editedLine;
+
+			for (let ln = startLine + 1; ln <= endLine; ln++) {
+				targetLines.push(model.getLineContent(ln));
+			}
+			targetRange = new monaco.Range(
+				startLine + 1,
+				1,
+				endLine,
+				model.getLineMaxColumn(endLine),
+			);
+		} else {
+			// Case 2: Cursor on a single line.
+			const currentLineNum = selection.positionLineNumber;
+			editedLine = model.getLineContent(currentLineNum);
+
+			const activeFile = this.workspaceService.activeFile();
+			const savedLines = activeFile?.savedContent ? activeFile.savedContent.split('\n') : [];
+			originalLine = savedLines[currentLineNum - 1] || '';
+
+			if (!originalLine || originalLine === editedLine) {
+				this.workspaceService.showNotification(
+					'Select the edited line and target lines, or edit a saved line to propagate pattern.',
+				);
+				return;
+			}
+
+			// Collect next 1 to 5 non-empty lines as targets
+			const maxLine = Math.min(model.getLineCount(), currentLineNum + 5);
+			for (let ln = currentLineNum + 1; ln <= maxLine; ln++) {
+				const content = model.getLineContent(ln);
+				if (content.trim().length > 0) {
+					targetLines.push(content);
+				} else {
+					break; // Stop at empty lines
+				}
+			}
+
+			if (targetLines.length === 0) {
+				this.workspaceService.showNotification(
+					'No following lines found to propagate pattern.',
+				);
+				return;
+			}
+
+			const endTargetLine = currentLineNum + targetLines.length;
+			targetRange = new monaco.Range(
+				currentLineNum + 1,
+				1,
+				endTargetLine,
+				model.getLineMaxColumn(endTargetLine),
+			);
+		}
+
+		this.workspaceService.showNotification('✨ AI is propagating edit pattern...');
+		const transformed = await this.aiService.suggestPatternEdits(
+			originalLine,
+			editedLine,
+			targetLines,
+		);
+
+		if (transformed && transformed.length === targetLines.length && targetRange) {
+			model.pushEditOperations(
+				[],
+				[
+					{
+						range: targetRange,
+						text: transformed.join('\n'),
+						forceMoveMarkers: true,
+					},
+				],
+				() => null,
+			);
+			this.workspaceService.showNotification(
+				`✓ AI pattern applied to ${transformed.length} line(s)`,
+			);
+		} else {
+			this.workspaceService.showNotification('Could not propagate edit pattern');
+		}
+	}
 }
 
 class AiThinkingWidget implements monaco.editor.IContentWidget {
-  public static readonly ID = 'vide.ai.thinking.widget';
-  private readonly domNode: HTMLElement;
+	public static readonly ID = 'vide.ai.thinking.widget';
+	private readonly domNode: HTMLElement;
 
-  constructor(
-    private readonly editor: monaco.editor.IStandaloneCodeEditor,
-    private readonly isGeneratingFn: () => boolean
-  ) {
-    this.domNode = document.createElement('div');
-    this.domNode.className = 'monaco-ai-thinking-widget';
-    this.domNode.innerHTML = `
+	constructor(
+		private readonly editor: monaco.editor.IStandaloneCodeEditor,
+		private readonly isGeneratingFn: () => boolean,
+	) {
+		this.domNode = document.createElement('div');
+		this.domNode.className = 'monaco-ai-thinking-widget';
+		this.domNode.innerHTML = `
       <div class="monaco-ai-thinking-pill" title="AI is thinking...">
         <span class="ai-widget-sparkle">✨</span>
         <span class="ai-widget-text">Thinking...</span>
       </div>
     `;
-  }
+	}
 
-  getId(): string {
-    return AiThinkingWidget.ID;
-  }
+	getId(): string {
+		return AiThinkingWidget.ID;
+	}
 
-  getDomNode(): HTMLElement {
-    return this.domNode;
-  }
+	getDomNode(): HTMLElement {
+		return this.domNode;
+	}
 
-  getPosition(): monaco.editor.IContentWidgetPosition | null {
-    if (!this.isGeneratingFn()) {
-      this.domNode.style.display = 'none';
-      return null;
-    }
+	getPosition(): monaco.editor.IContentWidgetPosition | null {
+		if (!this.isGeneratingFn()) {
+			this.domNode.style.display = 'none';
+			return null;
+		}
 
-    const pos = this.editor.getPosition();
-    if (!pos) {
-      this.domNode.style.display = 'none';
-      return null;
-    }
+		const pos = this.editor.getPosition();
+		if (!pos) {
+			this.domNode.style.display = 'none';
+			return null;
+		}
 
-    this.domNode.style.display = '';
-    return {
-      position: pos,
-      preference: [
-        monaco.editor.ContentWidgetPositionPreference.ABOVE,
-        monaco.editor.ContentWidgetPositionPreference.BELOW,
-      ],
-    };
-  }
+		this.domNode.style.display = '';
+		return {
+			position: pos,
+			preference: [
+				monaco.editor.ContentWidgetPositionPreference.ABOVE,
+				monaco.editor.ContentWidgetPositionPreference.BELOW,
+			],
+		};
+	}
 }
-

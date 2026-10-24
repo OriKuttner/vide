@@ -10,13 +10,13 @@ import { WorkspaceService } from '../../services/workspace.service';
 import { ThemeService } from '../../services/theme.service';
 
 @Component({
-  selector: 'app-header',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './header.component.html',
-  styleUrl: './header.component.scss',
+	selector: 'app-header',
+	standalone: true,
+	imports: [CommonModule],
+	templateUrl: './header.component.html',
+	styleUrl: './header.component.scss',
 })
 export class HeaderComponent {
-  public workspaceService = inject(WorkspaceService);
-  public themeService = inject(ThemeService);
+	public workspaceService = inject(WorkspaceService);
+	public themeService = inject(ThemeService);
 }

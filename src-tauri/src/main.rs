@@ -6,5 +6,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    vide_lib::run();
+	vide_lib::run();
 }

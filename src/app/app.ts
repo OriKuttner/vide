@@ -84,9 +84,14 @@ export class App {
 
 				import('@tauri-apps/api/window')
 					.then(({ getCurrentWindow }) => {
-						getCurrentWindow().setTitle(windowTitle).catch((err) => {
-							console.warn('Failed to set Tauri window title via window API:', err);
-						});
+						getCurrentWindow()
+							.setTitle(windowTitle)
+							.catch((err) => {
+								console.warn(
+									'Failed to set Tauri window title via window API:',
+									err,
+								);
+							});
 					})
 					.catch(() => {});
 			}
@@ -164,18 +169,12 @@ export class App {
 		} else if (isCtrlOrCmd && !isShift && (key === 'h' || code === 'KeyH')) {
 			event.preventDefault();
 			this.workspaceService.toggleHiddenFiles();
-		} else if (
-			event.key === 'F5' ||
-			(isCtrlOrCmd && (key === 'r' || code === 'KeyR'))
-		) {
+		} else if (event.key === 'F5' || (isCtrlOrCmd && (key === 'r' || code === 'KeyR'))) {
 			event.preventDefault();
 			this.workspaceService.refreshAll();
 		} else if (
 			isCtrlOrCmd &&
-			(event.key === '+' ||
-				event.key === '=' ||
-				code === 'Equal' ||
-				code === 'NumpadAdd')
+			(event.key === '+' || event.key === '=' || code === 'Equal' || code === 'NumpadAdd')
 		) {
 			event.preventDefault();
 			this.zoomService.zoomIn();
@@ -188,10 +187,7 @@ export class App {
 		) {
 			event.preventDefault();
 			this.zoomService.zoomOut();
-		} else if (
-			isCtrlOrCmd &&
-			(event.key === '0' || code === 'Digit0' || code === 'Numpad0')
-		) {
+		} else if (isCtrlOrCmd && (event.key === '0' || code === 'Digit0' || code === 'Numpad0')) {
 			event.preventDefault();
 			this.zoomService.resetZoom();
 		}

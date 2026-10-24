@@ -5,233 +5,311 @@
 -->
 
 <div class="tabs-header-bar">
-  @if (!workspaceService.sidebarVisible()) {
-    <button
-      class="open-sidebar-btn"
-      (click)="workspaceService.toggleSidebar()"
-      title="Show Primary Side Bar (Ctrl+B)"
-    >
-      <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm5-1v12h9a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H5zM4 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2V2z"/>
-      </svg>
-    </button>
-  }
+	@if (!workspaceService.sidebarVisible()) {
+		<button
+			class="open-sidebar-btn"
+			(click)="workspaceService.toggleSidebar()"
+			title="Show Primary Side Bar (Ctrl+B)"
+		>
+			<svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+				<path
+					d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm5-1v12h9a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H5zM4 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2V2z"
+				/>
+			</svg>
+		</button>
+	}
 
-  <div class="tabs-scroll-area" #scrollArea (wheel)="onTabsWheel($event)">
-    @for (tab of workspaceService.openTabs(); track tab.id) {
-      <div
-        class="tab"
-        [class.active]="tab.id === workspaceService.activeFileId()"
-        [title]="getTabTooltip(tab)"
-        (click)="workspaceService.openFile(tab)"
-      >
-        <span class="tab-title">
-          @if (workspaceService.diffModeActive() && workspaceService.activeDiffFile()?.id === tab.id) {
-            <span class="tab-diff-icon">◫</span>
-          } @else if (isBinary(tab)) {
-            <span class="tab-bin-badge">BIN</span>
-          } @else if (isImage(tab)) {
-            <svg class="tab-img-icon" viewBox="0 0 16 16" fill="currentColor">
-              <path fill-rule="evenodd" clip-rule="evenodd" d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"/>
-            </svg>
-          } @else if (isOmniFlux(tab)) {
-            <img src="omniflux-icon-16.png" class="tab-lang-img" alt="OmniFlux" />
-          } @else if (isPhp(tab)) {
-            <img src="php-elephant.svg" class="tab-lang-img" alt="PHP" />
-          } @else if (isPerl(tab)) {
-            <img src="perl-onion.svg" class="tab-lang-img" alt="Perl" />
-          }
-          {{ tab.name }}
-        </span>
-        @if (isPreviewable(tab)) {
-          <button
-            type="button"
-            class="tab-preview-btn"
-            [class.active]="tab.id === workspaceService.activeFileId() && workspaceService.previewMode() !== 'none'"
-            [title]="(tab.id === workspaceService.activeFileId() && workspaceService.previewMode() !== 'none') ? 'Close Preview (Ctrl+Shift+V)' : 'Open Live Preview (Ctrl+Shift+V)'"
-            (click)="onToggleTabPreview(tab, $event)"
-          >
-            <svg class="svg-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-        }
-        @if (workspaceService.hasGitChanges(tab)) {
-          <button
-            type="button"
-            class="tab-git-btn"
-            title="View Git Diff"
-            (click)="onOpenDiff(tab, $event)"
-          >
-            <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
-              <path fill-rule="evenodd" d="M11.75 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm-7.5 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.25 10.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM3.5 3.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm7.5 0a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm-7.5 8.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"/>
-              <path fill-rule="evenodd" d="M5 5.5V11h-1.5V5.5H5zm2.75 2a3.75 3.75 0 0 1 3.75-3.75h.5V5.25h-.5A2.25 2.25 0 0 0 9.25 7.5v.75H7.75V7.5z"/>
-            </svg>
-          </button>
-        }
-        @if (workspaceService.isFileModified(tab)) {
-          <span class="modified-dot" title="Unsaved changes">●</span>
-        }
-        <button
-          class="close-btn"
-          title="Close (Ctrl+W)"
-          (click)="workspaceService.closeTab(tab.id, $event)"
-        >
-          ×
-        </button>
-      </div>
-    }
-  </div>
+	<div class="tabs-scroll-area" #scrollArea (wheel)="onTabsWheel($event)">
+		@for (tab of workspaceService.openTabs(); track tab.id) {
+			<div
+				class="tab"
+				[class.active]="tab.id === workspaceService.activeFileId()"
+				[title]="getTabTooltip(tab)"
+				(click)="workspaceService.openFile(tab)"
+			>
+				<span class="tab-title">
+					@if (
+						workspaceService.diffModeActive() &&
+						workspaceService.activeDiffFile()?.id === tab.id
+					) {
+						<span class="tab-diff-icon">◫</span>
+					} @else if (isBinary(tab)) {
+						<span class="tab-bin-badge">BIN</span>
+					} @else if (isImage(tab)) {
+						<svg class="tab-img-icon" viewBox="0 0 16 16" fill="currentColor">
+							<path
+								fill-rule="evenodd"
+								clip-rule="evenodd"
+								d="M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zm-.5 11H2V3h12v10zm-3.5-7a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm1 6.5l-3-4-2.5 3.2-1.5-1.7-2 2.5h9z"
+							/>
+						</svg>
+					} @else if (isOmniFlux(tab)) {
+						<img src="omniflux-icon-16.png" class="tab-lang-img" alt="OmniFlux" />
+					} @else if (isPhp(tab)) {
+						<img src="php-elephant.svg" class="tab-lang-img" alt="PHP" />
+					} @else if (isPerl(tab)) {
+						<img src="perl-onion.svg" class="tab-lang-img" alt="Perl" />
+					}
+					{{ tab.name }}
+				</span>
+				@if (isPreviewable(tab)) {
+					<button
+						type="button"
+						class="tab-preview-btn"
+						[class.active]="
+							tab.id === workspaceService.activeFileId() &&
+							workspaceService.previewMode() !== 'none'
+						"
+						[title]="
+							tab.id === workspaceService.activeFileId() &&
+							workspaceService.previewMode() !== 'none'
+								? 'Close Preview (Ctrl+Shift+V)'
+								: 'Open Live Preview (Ctrl+Shift+V)'
+						"
+						(click)="onToggleTabPreview(tab, $event)"
+					>
+						<svg
+							class="svg-icon"
+							width="13"
+							height="13"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+							<circle cx="12" cy="12" r="3" />
+						</svg>
+					</button>
+				}
+				@if (workspaceService.hasGitChanges(tab)) {
+					<button
+						type="button"
+						class="tab-git-btn"
+						title="View Git Diff"
+						(click)="onOpenDiff(tab, $event)"
+					>
+						<svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+							<path
+								fill-rule="evenodd"
+								d="M11.75 2a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm-7.5 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM4.25 10.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM3.5 3.75a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm7.5 0a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm-7.5 8.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z"
+							/>
+							<path
+								fill-rule="evenodd"
+								d="M5 5.5V11h-1.5V5.5H5zm2.75 2a3.75 3.75 0 0 1 3.75-3.75h.5V5.25h-.5A2.25 2.25 0 0 0 9.25 7.5v.75H7.75V7.5z"
+							/>
+						</svg>
+					</button>
+				}
+				@if (workspaceService.isFileModified(tab)) {
+					<span class="modified-dot" title="Unsaved changes">●</span>
+				}
+				<button
+					class="close-btn"
+					title="Close (Ctrl+W)"
+					(click)="workspaceService.closeTab(tab.id, $event)"
+				>
+					×
+				</button>
+			</div>
+		}
+	</div>
 
-  <div class="tabs-actions">
-    <button
-      class="action-btn sticky-btn"
-      [class.active]="workspaceService.stickyScrollEnabled()"
-      (click)="workspaceService.toggleStickyScroll()"
-      [title]="'Sticky Scroll: ' + (workspaceService.stickyScrollEnabled() ? 'Enabled (Click to disable)' : 'Disabled (Click to enable)')"
-    >
-      <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.98-1.767.432-.548-.548.237-1.572.432-1.768l3.182-3.182-2.828-2.828a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.109-1.022.589-1.503a.5.5 0 0 1 .353-.146z"/>
-      </svg>
-    </button>
+	<div class="tabs-actions">
+		<button
+			class="action-btn sticky-btn"
+			[class.active]="workspaceService.stickyScrollEnabled()"
+			(click)="workspaceService.toggleStickyScroll()"
+			[title]="
+				'Sticky Scroll: ' +
+				(workspaceService.stickyScrollEnabled()
+					? 'Enabled (Click to disable)'
+					: 'Disabled (Click to enable)')
+			"
+		>
+			<svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+				<path
+					d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.98-1.767.432-.548-.548.237-1.572.432-1.768l3.182-3.182-2.828-2.828a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.109-1.022.589-1.503a.5.5 0 0 1 .353-.146z"
+				/>
+			</svg>
+		</button>
 
-    <div class="nav-stack-wrapper">
-      <button
-        class="action-btn stack-btn"
-        [class.active]="navigationHistoryService.isDropdownOpen()"
-        (click)="navigationHistoryService.toggleDropdown()"
-        title="Navigation Stack (Recent 30 locations)"
-      >
-        <svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8.211 2.047a.5.5 0 0 0-.422 0l-7.5 3.5a.5.5 0 0 0 0 .906l7.5 3.5a.5.5 0 0 0 .422 0l7.5-3.5a.5.5 0 0 0 0-.906l-7.5-3.5z"/>
-          <path d="M15.5 8.5l-7.289 3.401a.5.5 0 0 1-.422 0L.5 8.5v1.2a.5.5 0 0 0 .289.453l7 3.267a.5.5 0 0 0 .422 0l7-3.267a.5.5 0 0 0 .289-.453V8.5z"/>
-          <path d="M15.5 12l-7.289 3.401a.5.5 0 0 1-.422 0L.5 12v1.2a.5.5 0 0 0 .289.453l7 3.267a.5.5 0 0 0 .422 0l7-3.267a.5.5 0 0 0 .289-.453V12z"/>
-        </svg>
-        @if (navigationHistoryService.history().length > 0) {
-          <span class="stack-badge">{{ navigationHistoryService.history().length > 99 ? '99+' : navigationHistoryService.history().length }}</span>
-        }
-      </button>
+		<div class="nav-stack-wrapper">
+			<button
+				class="action-btn stack-btn"
+				[class.active]="navigationHistoryService.isDropdownOpen()"
+				(click)="navigationHistoryService.toggleDropdown()"
+				title="Navigation Stack (Recent 30 locations)"
+			>
+				<svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+					<path
+						d="M8.211 2.047a.5.5 0 0 0-.422 0l-7.5 3.5a.5.5 0 0 0 0 .906l7.5 3.5a.5.5 0 0 0 .422 0l7.5-3.5a.5.5 0 0 0 0-.906l-7.5-3.5z"
+					/>
+					<path
+						d="M15.5 8.5l-7.289 3.401a.5.5 0 0 1-.422 0L.5 8.5v1.2a.5.5 0 0 0 .289.453l7 3.267a.5.5 0 0 0 .422 0l7-3.267a.5.5 0 0 0 .289-.453V8.5z"
+					/>
+					<path
+						d="M15.5 12l-7.289 3.401a.5.5 0 0 1-.422 0L.5 12v1.2a.5.5 0 0 0 .289.453l7 3.267a.5.5 0 0 0 .422 0l7-3.267a.5.5 0 0 0 .289-.453V12z"
+					/>
+				</svg>
+				@if (navigationHistoryService.history().length > 0) {
+					<span class="stack-badge">{{
+						navigationHistoryService.history().length > 99
+							? '99+'
+							: navigationHistoryService.history().length
+					}}</span>
+				}
+			</button>
 
-      @if (navigationHistoryService.isDropdownOpen()) {
-        <div class="nav-stack-dropdown" (click)="$event.stopPropagation()">
-          <div class="nav-stack-header">
-            <div class="nav-stack-title-group">
-              <span class="nav-stack-title">Navigation Stack</span>
-              <span class="nav-stack-subtitle">
-                {{ navigationHistoryService.recent30Entries().length }} recent
-                @if (navigationHistoryService.history().length > 30) {
-                  ({{ navigationHistoryService.history().length }} total)
-                }
-              </span>
-            </div>
-            <div class="nav-stack-controls">
-              <button
-                class="stack-nav-btn"
-                [disabled]="!navigationHistoryService.canNavigateBack()"
-                (click)="navigationHistoryService.navigateBack()"
-                title="Go Back (Alt+←)"
-              >
-                ← Back
-              </button>
-              <button
-                class="stack-nav-btn"
-                [disabled]="!navigationHistoryService.canNavigateForward()"
-                (click)="navigationHistoryService.navigateForward()"
-                title="Go Forward (Alt+→)"
-              >
-                Forward →
-              </button>
-              <button
-                class="stack-nav-btn clear-btn"
-                (click)="navigationHistoryService.clearHistory()"
-                title="Clear Navigation Stack"
-              >
-                Clear
-              </button>
-              <button
-                class="stack-nav-btn close-header-btn"
-                (click)="navigationHistoryService.closeDropdown()"
-                title="Close Navigation Stack (Esc)"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
+			@if (navigationHistoryService.isDropdownOpen()) {
+				<div class="nav-stack-dropdown" (click)="$event.stopPropagation()">
+					<div class="nav-stack-header">
+						<div class="nav-stack-title-group">
+							<span class="nav-stack-title">Navigation Stack</span>
+							<span class="nav-stack-subtitle">
+								{{ navigationHistoryService.recent30Entries().length }} recent
+								@if (navigationHistoryService.history().length > 30) {
+									({{ navigationHistoryService.history().length }} total)
+								}
+							</span>
+						</div>
+						<div class="nav-stack-controls">
+							<button
+								class="stack-nav-btn"
+								[disabled]="!navigationHistoryService.canNavigateBack()"
+								(click)="navigationHistoryService.navigateBack()"
+								title="Go Back (Alt+←)"
+							>
+								← Back
+							</button>
+							<button
+								class="stack-nav-btn"
+								[disabled]="!navigationHistoryService.canNavigateForward()"
+								(click)="navigationHistoryService.navigateForward()"
+								title="Go Forward (Alt+→)"
+							>
+								Forward →
+							</button>
+							<button
+								class="stack-nav-btn clear-btn"
+								(click)="navigationHistoryService.clearHistory()"
+								title="Clear Navigation Stack"
+							>
+								Clear
+							</button>
+							<button
+								class="stack-nav-btn close-header-btn"
+								(click)="navigationHistoryService.closeDropdown()"
+								title="Close Navigation Stack (Esc)"
+							>
+								✕
+							</button>
+						</div>
+					</div>
 
-          <div class="nav-stack-list">
-            @if (navigationHistoryService.recent30Entries().length === 0) {
-              <div class="nav-stack-empty">
-                <span class="empty-icon">📍</span>
-                <span class="empty-text">No navigation history yet.</span>
-                <span class="empty-sub">Jumping to references, definitions, or files will build your stack.</span>
-              </div>
-            } @else {
-              @for (item of navigationHistoryService.recent30Entries(); track item.entry.filePath + ':' + item.entry.lineNumber + ':' + item.entry.timestamp) {
-                <div
-                  class="nav-stack-item"
-                  [class.current-pos]="item.isCurrent"
-                  (click)="onSelectNavigationEntry(item.entry, item.originalIndex)"
-                  [title]="item.entry.filePath + ':' + item.entry.lineNumber"
-                >
-                  <div class="item-header">
-                    <span class="item-file-name">{{ item.entry.fileName }}</span>
-                    <span class="item-line-badge">:{{ item.entry.lineNumber }}</span>
-                    @if (item.entry.isManual) {
-                      <span class="manual-badge" title="Manually saved point (Alt+A)">📍 PIN</span>
-                    }
-                    @if (item.isCurrent) {
-                      <span class="current-badge">CURRENT</span>
-                    }
-                    <span class="item-time">{{ formatTimeAgo(item.entry.timestamp) }}</span>
-                    <button
-                      type="button"
-                      class="remove-entry-btn"
-                      (click)="onRemoveNavigationEntry($event, item.originalIndex)"
-                      title="Remove from stack"
-                    >✕</button>
-                  </div>
-                  @if (getDirectoryPath(item.entry.filePath); as dir) {
-                    <div class="item-path">{{ dir }}</div>
-                  }
-                  @if (item.entry.linePreview) {
-                    <div class="item-code-preview">{{ item.entry.linePreview }}</div>
-                  }
-                </div>
-              }
-            }
-          </div>
+					<div class="nav-stack-list">
+						@if (navigationHistoryService.recent30Entries().length === 0) {
+							<div class="nav-stack-empty">
+								<span class="empty-icon">📍</span>
+								<span class="empty-text">No navigation history yet.</span>
+								<span class="empty-sub"
+									>Jumping to references, definitions, or files will build your
+									stack.</span
+								>
+							</div>
+						} @else {
+							@for (
+								item of navigationHistoryService.recent30Entries();
+								track item.entry.filePath +
+									':' +
+									item.entry.lineNumber +
+									':' +
+									item.entry.timestamp
+							) {
+								<div
+									class="nav-stack-item"
+									[class.current-pos]="item.isCurrent"
+									(click)="
+										onSelectNavigationEntry(item.entry, item.originalIndex)
+									"
+									[title]="item.entry.filePath + ':' + item.entry.lineNumber"
+								>
+									<div class="item-header">
+										<span class="item-file-name">{{
+											item.entry.fileName
+										}}</span>
+										<span class="item-line-badge"
+											>:{{ item.entry.lineNumber }}</span
+										>
+										@if (item.entry.isManual) {
+											<span
+												class="manual-badge"
+												title="Manually saved point (Alt+A)"
+												>📍 PIN</span
+											>
+										}
+										@if (item.isCurrent) {
+											<span class="current-badge">CURRENT</span>
+										}
+										<span class="item-time">{{
+											formatTimeAgo(item.entry.timestamp)
+										}}</span>
+										<button
+											type="button"
+											class="remove-entry-btn"
+											(click)="
+												onRemoveNavigationEntry($event, item.originalIndex)
+											"
+											title="Remove from stack"
+										>
+											✕
+										</button>
+									</div>
+									@if (getDirectoryPath(item.entry.filePath); as dir) {
+										<div class="item-path">{{ dir }}</div>
+									}
+									@if (item.entry.linePreview) {
+										<div class="item-code-preview">
+											{{ item.entry.linePreview }}
+										</div>
+									}
+								</div>
+							}
+						}
+					</div>
 
-          <div class="nav-stack-footer">
-            <button
-              type="button"
-              class="footer-action-btn"
-              [disabled]="!navigationHistoryService.canNavigateBack()"
-              (click)="navigationHistoryService.navigateBack()"
-              title="Go Back (Alt+←)"
-            >
-              <kbd>Alt+←</kbd> Back
-            </button>
-            <button
-              type="button"
-              class="footer-action-btn"
-              [disabled]="!navigationHistoryService.canNavigateForward()"
-              (click)="navigationHistoryService.navigateForward()"
-              title="Go Forward (Alt+→)"
-            >
-              <kbd>Alt+→</kbd> Forward
-            </button>
-            <button
-              type="button"
-              class="footer-action-btn close-action-btn"
-              (click)="navigationHistoryService.closeDropdown()"
-              title="Close Navigation Stack (Esc)"
-            >
-              <kbd>Esc</kbd> Close
-            </button>
-          </div>
-        </div>
-      }
-    </div>
-  </div>
+					<div class="nav-stack-footer">
+						<button
+							type="button"
+							class="footer-action-btn"
+							[disabled]="!navigationHistoryService.canNavigateBack()"
+							(click)="navigationHistoryService.navigateBack()"
+							title="Go Back (Alt+←)"
+						>
+							<kbd>Alt+←</kbd> Back
+						</button>
+						<button
+							type="button"
+							class="footer-action-btn"
+							[disabled]="!navigationHistoryService.canNavigateForward()"
+							(click)="navigationHistoryService.navigateForward()"
+							title="Go Forward (Alt+→)"
+						>
+							<kbd>Alt+→</kbd> Forward
+						</button>
+						<button
+							type="button"
+							class="footer-action-btn close-action-btn"
+							(click)="navigationHistoryService.closeDropdown()"
+							title="Close Navigation Stack (Esc)"
+						>
+							<kbd>Esc</kbd> Close
+						</button>
+					</div>
+				</div>
+			}
+		</div>
+	</div>
 </div>

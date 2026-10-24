@@ -7,454 +7,460 @@
 *,
 *::before,
 *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
 }
 
 /* Light Theme Variables (Default) */
 :root,
 body.theme-light {
-  --bg-container: #f3f3f3;
-  --bg-header: #f3f3f3;
-  --bg-search: #ffffff;
-  --bg-sidebar: #f8f8f8;
-  --bg-badge: #e8e8e8;
-  --bg-item-hover: #ececec;
-  --bg-item-active: #e2effd;
-  --bg-tabs-bar: #ececec;
-  --bg-tab-inactive: #dedede;
-  --bg-tab-hover: #e6e6e6;
-  --bg-editor: #ffffff;
-  --bg-btn: #e6e6e6;
-  --bg-btn-hover: #dcdcdc;
-  --border-color: #e5e5e5;
-  --text-primary: #1e1e1e;
-  --text-secondary: #424242;
-  --text-muted: #717171;
-  --text-tab-inactive: #555555;
-  --text-tab-active: #007acc;
-  --text-badge: #00599c;
-  --text-item-active: #005fb8;
-  --scrollbar-bg: #f8f8f8;
-  --scrollbar-thumb: #c8c8c8;
-  --scrollbar-thumb-hover: #a8a8a8;
+	--bg-container: #f3f3f3;
+	--bg-header: #f3f3f3;
+	--bg-search: #ffffff;
+	--bg-sidebar: #f8f8f8;
+	--bg-badge: #e8e8e8;
+	--bg-item-hover: #ececec;
+	--bg-item-active: #e2effd;
+	--bg-tabs-bar: #ececec;
+	--bg-tab-inactive: #dedede;
+	--bg-tab-hover: #e6e6e6;
+	--bg-editor: #ffffff;
+	--bg-btn: #e6e6e6;
+	--bg-btn-hover: #dcdcdc;
+	--border-color: #e5e5e5;
+	--text-primary: #1e1e1e;
+	--text-secondary: #424242;
+	--text-muted: #717171;
+	--text-tab-inactive: #555555;
+	--text-tab-active: #007acc;
+	--text-badge: #00599c;
+	--text-item-active: #005fb8;
+	--scrollbar-bg: #f8f8f8;
+	--scrollbar-thumb: #c8c8c8;
+	--scrollbar-thumb-hover: #a8a8a8;
 
-  /* Chat & Markdown Variables (Light) */
-  --bg-chat-card: #ffffff;
-  --border-chat-card: #e2e8f0;
-  --color-inline-code: #be123c;
-  --bg-inline-code: #f1f5f9;
-  --border-inline-code: #cbd5e1;
+	/* Chat & Markdown Variables (Light) */
+	--bg-chat-card: #ffffff;
+	--border-chat-card: #e2e8f0;
+	--color-inline-code: #be123c;
+	--bg-inline-code: #f1f5f9;
+	--border-inline-code: #cbd5e1;
 
-  /* Action Buttons Colors (Light) */
-  --color-icon-save: #16a34a;
-  --color-icon-save-accent: #86efac;
-  --color-icon-folder: #d97706;
-  --color-icon-file: #0284c7;
-  --color-icon-plus: #16a34a;
-  --color-icon-grep-lens: #7c3aed;
-  --color-icon-grep-lines: #e11d48;
-  --color-icon-find-file: #0d9488;
-  --color-icon-find-lens: #ea580c;
+	/* Action Buttons Colors (Light) */
+	--color-icon-save: #16a34a;
+	--color-icon-save-accent: #86efac;
+	--color-icon-folder: #d97706;
+	--color-icon-file: #0284c7;
+	--color-icon-plus: #16a34a;
+	--color-icon-grep-lens: #7c3aed;
+	--color-icon-grep-lines: #e11d48;
+	--color-icon-find-file: #0d9488;
+	--color-icon-find-lens: #ea580c;
 }
 
 /* Dark Theme Variables */
 body.theme-dark {
-  --bg-container: #1e1e1e;
-  --bg-header: #323233;
-  --bg-search: #1e1e1e;
-  --bg-sidebar: #252526;
-  --bg-badge: #333333;
-  --bg-item-hover: #2a2d2e;
-  --bg-item-active: #37373d;
-  --bg-tabs-bar: #252526;
-  --bg-tab-inactive: #2d2d2d;
-  --bg-tab-hover: #2a2d2e;
-  --bg-editor: #1e1e1e;
-  --bg-btn: #3a3d41;
-  --bg-btn-hover: #45494e;
-  --border-color: #2b2b2b;
-  --text-primary: #cccccc;
-  --text-secondary: #bbbbbb;
-  --text-muted: #8c8c8c;
-  --text-tab-inactive: #969696;
-  --text-tab-active: #ffffff;
-  --text-badge: #9cdcfe;
-  --text-item-active: #ffffff;
-  --scrollbar-bg: #1e1e1e;
-  --scrollbar-thumb: #424242;
-  --scrollbar-thumb-hover: #4f4f4f;
+	--bg-container: #1e1e1e;
+	--bg-header: #323233;
+	--bg-search: #1e1e1e;
+	--bg-sidebar: #252526;
+	--bg-badge: #333333;
+	--bg-item-hover: #2a2d2e;
+	--bg-item-active: #37373d;
+	--bg-tabs-bar: #252526;
+	--bg-tab-inactive: #2d2d2d;
+	--bg-tab-hover: #2a2d2e;
+	--bg-editor: #1e1e1e;
+	--bg-btn: #3a3d41;
+	--bg-btn-hover: #45494e;
+	--border-color: #2b2b2b;
+	--text-primary: #cccccc;
+	--text-secondary: #bbbbbb;
+	--text-muted: #8c8c8c;
+	--text-tab-inactive: #969696;
+	--text-tab-active: #ffffff;
+	--text-badge: #9cdcfe;
+	--text-item-active: #ffffff;
+	--scrollbar-bg: #1e1e1e;
+	--scrollbar-thumb: #424242;
+	--scrollbar-thumb-hover: #4f4f4f;
 
-  /* Chat & Markdown Variables (Dark) */
-  --bg-chat-card: #252526;
-  --border-chat-card: #383838;
-  --color-inline-code: #fb7185;
-  --bg-inline-code: rgba(148, 163, 184, 0.16);
-  --border-inline-code: rgba(148, 163, 184, 0.28);
+	/* Chat & Markdown Variables (Dark) */
+	--bg-chat-card: #252526;
+	--border-chat-card: #383838;
+	--color-inline-code: #fb7185;
+	--bg-inline-code: rgba(148, 163, 184, 0.16);
+	--border-inline-code: rgba(148, 163, 184, 0.28);
 
-  /* Action Buttons Colors (Dark) */
-  --color-icon-save: #4ade80;
-  --color-icon-save-accent: #bbf7d0;
-  --color-icon-folder: #facc15;
-  --color-icon-file: #38bdf8;
-  --color-icon-plus: #4ade80;
-  --color-icon-grep-lens: #a78bfa;
-  --color-icon-grep-lines: #fb7185;
-  --color-icon-find-file: #2dd4bf;
-  --color-icon-find-lens: #fb923c;
+	/* Action Buttons Colors (Dark) */
+	--color-icon-save: #4ade80;
+	--color-icon-save-accent: #bbf7d0;
+	--color-icon-folder: #facc15;
+	--color-icon-file: #38bdf8;
+	--color-icon-plus: #4ade80;
+	--color-icon-grep-lens: #a78bfa;
+	--color-icon-grep-lines: #fb7185;
+	--color-icon-find-file: #2dd4bf;
+	--color-icon-find-lens: #fb923c;
 }
 
 html,
 body {
-  height: 100%;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  font-size: 15px;
-  line-height: 1.5;
-  background-color: var(--bg-container);
-  color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+	height: 100%;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	font-size: 15px;
+	line-height: 1.5;
+	background-color: var(--bg-container);
+	color: var(--text-primary);
+	font-family:
+		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
 /* Dynamic scrollbars matching active theme */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+	width: 10px;
+	height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--scrollbar-bg);
+	background: var(--scrollbar-bg);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 4px;
+	background: var(--scrollbar-thumb);
+	border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+	background: var(--scrollbar-thumb-hover);
 }
 
 /* VS Code Diff View Highlights */
 .monaco-diff-editor,
 .monaco-editor {
-  .line-insert {
-    background-color: rgba(46, 160, 67, 0.20) !important;
-  }
-  .char-insert {
-    background-color: rgba(46, 160, 67, 0.35) !important;
-  }
-  .gutter-insert {
-    background-color: rgba(46, 160, 67, 0.50) !important;
-  }
-  .line-delete {
-    background-color: rgba(248, 81, 73, 0.14) !important;
-  }
-  .char-delete,
-  .inline-deleted-text {
-    background-color: rgba(248, 81, 73, 0.28) !important;
-  }
-  .gutter-delete {
-    background-color: rgba(248, 81, 73, 0.45) !important;
-  }
+	.line-insert {
+		background-color: rgba(46, 160, 67, 0.2) !important;
+	}
+	.char-insert {
+		background-color: rgba(46, 160, 67, 0.35) !important;
+	}
+	.gutter-insert {
+		background-color: rgba(46, 160, 67, 0.5) !important;
+	}
+	.line-delete {
+		background-color: rgba(248, 81, 73, 0.14) !important;
+	}
+	.char-delete,
+	.inline-deleted-text {
+		background-color: rgba(248, 81, 73, 0.28) !important;
+	}
+	.gutter-delete {
+		background-color: rgba(248, 81, 73, 0.45) !important;
+	}
 }
 
 /* Monaco AI Thinking Floating Cursor Widget */
 .monaco-ai-thinking-widget {
-  pointer-events: none !important;
-  user-select: none !important;
-  z-index: 50 !important;
+	pointer-events: none !important;
+	user-select: none !important;
+	z-index: 50 !important;
 
-  .monaco-ai-thinking-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.2;
-    white-space: nowrap;
-    transform: translateY(-4px); /* Hover slightly above the cursor line */
-    background: rgba(28, 18, 46, 0.70);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(168, 85, 247, 0.45);
-    color: #f3e8ff;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3), 0 0 8px rgba(168, 85, 247, 0.25);
-    animation: aiWidgetFadeIn 0.15s ease-out;
+	.monaco-ai-thinking-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 2px 8px;
+		border-radius: 12px;
+		font-family:
+			-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1.2;
+		white-space: nowrap;
+		transform: translateY(-4px); /* Hover slightly above the cursor line */
+		background: rgba(28, 18, 46, 0.7);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		border: 1px solid rgba(168, 85, 247, 0.45);
+		color: #f3e8ff;
+		box-shadow:
+			0 2px 10px rgba(0, 0, 0, 0.3),
+			0 0 8px rgba(168, 85, 247, 0.25);
+		animation: aiWidgetFadeIn 0.15s ease-out;
 
-    .ai-widget-sparkle {
-      display: inline-block;
-      font-size: 11px;
-      animation: sparkle-spin 1.2s linear infinite;
-    }
+		.ai-widget-sparkle {
+			display: inline-block;
+			font-size: 11px;
+			animation: sparkle-spin 1.2s linear infinite;
+		}
 
-    .ai-widget-text {
-      opacity: 0.95;
-      letter-spacing: 0.2px;
-    }
-  }
+		.ai-widget-text {
+			opacity: 0.95;
+			letter-spacing: 0.2px;
+		}
+	}
 }
 
 body.theme-light .monaco-ai-thinking-widget .monaco-ai-thinking-pill {
-  background: rgba(248, 240, 255, 0.75);
-  border: 1px solid rgba(147, 51, 234, 0.35);
-  color: #6b21a8;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 6px rgba(168, 85, 247, 0.2);
+	background: rgba(248, 240, 255, 0.75);
+	border: 1px solid rgba(147, 51, 234, 0.35);
+	color: #6b21a8;
+	box-shadow:
+		0 2px 8px rgba(0, 0, 0, 0.08),
+		0 0 6px rgba(168, 85, 247, 0.2);
 }
 
 @keyframes aiWidgetFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(-4px);
-  }
+	from {
+		opacity: 0;
+		transform: translateY(0);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(-4px);
+	}
 }
 
 @keyframes sparkle-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 /* Ada CLI Goto Yellow Highlight Range */
 .monaco-editor .vide-highlight-yellow {
-  background-color: rgba(254, 240, 138, 0.40) !important;
-  border-left: 3px solid #eab308 !important;
+	background-color: rgba(254, 240, 138, 0.4) !important;
+	border-left: 3px solid #eab308 !important;
 }
 
 body.theme-dark .monaco-editor .vide-highlight-yellow {
-  background-color: rgba(234, 179, 8, 0.28) !important;
-  border-left: 3px solid #facc15 !important;
+	background-color: rgba(234, 179, 8, 0.28) !important;
+	border-left: 3px solid #facc15 !important;
 }
 
 .monaco-editor .vide-highlight-gutter {
-  background-color: #facc15 !important;
-  width: 5px !important;
+	background-color: #facc15 !important;
+	width: 5px !important;
 }
 
 /* Monaco Editor Find Widget (Ctrl+F) Font & Size Scaling */
 .monaco-editor .find-widget,
 .find-widget {
-  height: auto !important;
-  min-height: 44px !important;
-  min-width: 440px !important;
-  padding: 4px 6px !important;
+	height: auto !important;
+	min-height: 44px !important;
+	min-width: 440px !important;
+	padding: 4px 6px !important;
 
-  > .find-part,
-  > .replace-part {
-    margin: 3px 28px 3px 18px !important;
-    font-size: 21px !important;
-    align-items: center !important;
-  }
+	> .find-part,
+	> .replace-part {
+		margin: 3px 28px 3px 18px !important;
+		font-size: 21px !important;
+		align-items: center !important;
+	}
 
-  .monaco-findInput,
-  .monaco-replaceInput {
-    .monaco-inputbox {
-      min-height: 34px !important;
-      font-size: 21px !important;
+	.monaco-findInput,
+	.monaco-replaceInput {
+		.monaco-inputbox {
+			min-height: 34px !important;
+			font-size: 21px !important;
 
-      .input {
-        font-size: 21px !important;
-        line-height: 26px !important;
-        min-height: 26px !important;
-        padding: 2px 6px !important;
-      }
+			.input {
+				font-size: 21px !important;
+				line-height: 26px !important;
+				min-height: 26px !important;
+				padding: 2px 6px !important;
+			}
 
-      input::placeholder {
-        font-size: inherit;
-      }
-    }
+			input::placeholder {
+				font-size: inherit;
+			}
+		}
 
-    > .controls {
-      top: 5px !important;
-    }
-  }
+		> .controls {
+			top: 5px !important;
+		}
+	}
 
-  .matchesCount {
-    font-size: 15px !important;
-    height: 34px !important;
-    line-height: 34px !important;
-    display: flex !important;
-    align-items: center !important;
-    padding: 0 4px !important;
-  }
+	.matchesCount {
+		font-size: 15px !important;
+		height: 34px !important;
+		line-height: 34px !important;
+		display: flex !important;
+		align-items: center !important;
+		padding: 0 4px !important;
+	}
 
-  .find-actions,
-  .replace-actions {
-    height: 34px !important;
-    display: flex !important;
-    align-items: center !important;
-  }
+	.find-actions,
+	.replace-actions {
+		height: 34px !important;
+		display: flex !important;
+		align-items: center !important;
+	}
 
-  .button {
-    width: 22px !important;
-    height: 22px !important;
-    margin-left: 4px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+	.button {
+		width: 22px !important;
+		height: 22px !important;
+		margin-left: 4px !important;
+		display: flex !important;
+		align-items: center !important;
+		justify-content: center !important;
 
-    &.toggle {
-      width: 20px !important;
-      height: 100% !important;
-    }
+		&.toggle {
+			width: 20px !important;
+			height: 100% !important;
+		}
 
-    &.wide {
-      width: auto !important;
-      font-size: 13px !important;
-      height: 26px !important;
-      line-height: 26px !important;
-      padding: 0 6px !important;
-    }
-  }
+		&.wide {
+			width: auto !important;
+			font-size: 13px !important;
+			height: 26px !important;
+			line-height: 26px !important;
+			padding: 0 6px !important;
+		}
+	}
 
-  > .button.codicon-widget-close {
-    top: 8px !important;
-    right: 4px !important;
-    width: 22px !important;
-    height: 22px !important;
-  }
+	> .button.codicon-widget-close {
+		top: 8px !important;
+		right: 4px !important;
+		width: 22px !important;
+		height: 22px !important;
+	}
 }
 
 /* Monaco Editor Go to Line / Quick Input Widget (Ctrl+G) Font & Size Scaling */
 .quick-input-widget,
 .monaco-editor .quick-input-widget {
-  font-size: 18px !important;
+	font-size: 18px !important;
 
-  .quick-input-header {
-    padding: 8px 10px 6px 10px !important;
-  }
+	.quick-input-header {
+		padding: 8px 10px 6px 10px !important;
+	}
 
-  .quick-input-box {
-    .monaco-findInput .monaco-inputbox,
-    .monaco-inputbox {
-      min-height: 36px !important;
-      font-size: 22px !important;
-      border-radius: 4px;
+	.quick-input-box {
+		.monaco-findInput .monaco-inputbox,
+		.monaco-inputbox {
+			min-height: 36px !important;
+			font-size: 22px !important;
+			border-radius: 4px;
 
-      .input {
-        font-size: 22px !important;
-        line-height: 28px !important;
-        height: 32px !important;
-        padding: 2px 8px !important;
-      }
+			.input {
+				font-size: 22px !important;
+				line-height: 28px !important;
+				height: 32px !important;
+				padding: 2px 8px !important;
+			}
 
-      input::placeholder {
-        font-size: inherit;
-      }
-    }
-  }
+			input::placeholder {
+				font-size: inherit;
+			}
+		}
+	}
 
-  .quick-input-title {
-    font-size: 16px !important;
-    line-height: 24px !important;
-  }
+	.quick-input-title {
+		font-size: 16px !important;
+		line-height: 24px !important;
+	}
 
-  .quick-input-description,
-  .quick-input-message {
-    font-size: 15px !important;
-    line-height: 22px !important;
-  }
+	.quick-input-description,
+	.quick-input-message {
+		font-size: 15px !important;
+		line-height: 22px !important;
+	}
 
-  .quick-input-list {
-    .monaco-list-row {
-      font-size: 17px !important;
-      line-height: 22px !important;
-    }
+	.quick-input-list {
+		.monaco-list-row {
+			font-size: 17px !important;
+			line-height: 22px !important;
+		}
 
-    .quick-input-list-entry {
-      font-size: 17px !important;
-      line-height: 22px !important;
+		.quick-input-list-entry {
+			font-size: 17px !important;
+			line-height: 22px !important;
 
-      .monaco-highlighted-label {
-        font-size: 17px !important;
-        line-height: 22px !important;
-      }
+			.monaco-highlighted-label {
+				font-size: 17px !important;
+				line-height: 22px !important;
+			}
 
-      .quick-input-list-label {
-        font-size: 17px !important;
-        line-height: 22px !important;
-      }
-    }
-  }
+			.quick-input-list-label {
+				font-size: 17px !important;
+				line-height: 22px !important;
+			}
+		}
+	}
 }
 
 /* Hide "Go to Definition" and "Peek Definition" in Monaco context menu when cursor is on a definition */
 body.vide-hide-goto-def {
-  .monaco-menu .action-item:has([aria-label*="Definition" i]),
-  .context-view .action-item:has([aria-label*="Definition" i]),
-  .monaco-menu .action-item:has([title*="Definition" i]),
-  .context-view .action-item:has([title*="Definition" i]) {
-    display: none !important;
-  }
+	.monaco-menu .action-item:has([aria-label*='Definition' i]),
+	.context-view .action-item:has([aria-label*='Definition' i]),
+	.monaco-menu .action-item:has([title*='Definition' i]),
+	.context-view .action-item:has([title*='Definition' i]) {
+		display: none !important;
+	}
 }
 
 /* Hide redundant built-in Monaco reference actions ("Go to References" / "Peek References"), leaving our unified "Find References" */
-.monaco-menu .action-item:has([aria-label*="Go to References" i]),
-.context-view .action-item:has([aria-label*="Go to References" i]),
-.monaco-menu .action-item:has([title*="Go to References" i]),
-.context-view .action-item:has([title*="Go to References" i]),
-.monaco-menu .action-item:has([aria-label*="Goto Reference" i]),
-.context-view .action-item:has([aria-label*="Goto Reference" i]),
-.monaco-menu .action-item:has([aria-label*="Peek References" i]),
-.context-view .action-item:has([aria-label*="Peek References" i]) {
-  display: none !important;
+.monaco-menu .action-item:has([aria-label*='Go to References' i]),
+.context-view .action-item:has([aria-label*='Go to References' i]),
+.monaco-menu .action-item:has([title*='Go to References' i]),
+.context-view .action-item:has([title*='Go to References' i]),
+.monaco-menu .action-item:has([aria-label*='Goto Reference' i]),
+.context-view .action-item:has([aria-label*='Goto Reference' i]),
+.monaco-menu .action-item:has([aria-label*='Peek References' i]),
+.context-view .action-item:has([aria-label*='Peek References' i]) {
+	display: none !important;
 }
 
 /* Vector AI Assistant Markdown innerHTML Global Rules */
 .message-body {
-  ul, ol {
-    margin: 10px 0 !important;
-    padding-inline-start: 32px !important;
-    padding-inline-end: 8px !important;
-    list-style-position: outside !important;
+	ul,
+	ol {
+		margin: 10px 0 !important;
+		padding-inline-start: 32px !important;
+		padding-inline-end: 8px !important;
+		list-style-position: outside !important;
 
-    ul, ol {
-      margin: 4px 0 !important;
-      padding-inline-start: 24px !important;
-    }
-  }
+		ul,
+		ol {
+			margin: 4px 0 !important;
+			padding-inline-start: 24px !important;
+		}
+	}
 
-  ul {
-    list-style-type: disc !important;
-    ul {
-      list-style-type: circle !important;
-      ul {
-        list-style-type: square !important;
-      }
-    }
-  }
+	ul {
+		list-style-type: disc !important;
+		ul {
+			list-style-type: circle !important;
+			ul {
+				list-style-type: square !important;
+			}
+		}
+	}
 
-  ol {
-    list-style-type: decimal !important;
-    ol {
-      list-style-type: lower-alpha !important;
-    }
-  }
+	ol {
+		list-style-type: decimal !important;
+		ol {
+			list-style-type: lower-alpha !important;
+		}
+	}
 
-  li {
-    margin-bottom: 6px !important;
-    font-size: 24px !important;
-    line-height: 1.6 !important;
+	li {
+		margin-bottom: 6px !important;
+		font-size: 24px !important;
+		line-height: 1.6 !important;
 
-    p {
-      margin-bottom: 4px !important;
-    }
-  }
+		p {
+			margin-bottom: 4px !important;
+		}
+	}
 }
-

@@ -5,769 +5,1044 @@
 -->
 
 @if (workspaceService.activeModal()) {
-  <div class="modal-backdrop" (click)="close()">
-    <div class="modal-card" [class.commit-details-card]="workspaceService.activeModal() === 'git-commit-details'" (click)="$event.stopPropagation()">
-      <div class="modal-header">
-        <span class="modal-title">{{ getTitle() }}</span>
-        <button class="close-x" (click)="close()">×</button>
-      </div>
+	<div class="modal-backdrop" (click)="close()">
+		<div
+			class="modal-card"
+			[class.commit-details-card]="workspaceService.activeModal() === 'git-commit-details'"
+			(click)="$event.stopPropagation()"
+		>
+			<div class="modal-header">
+				<span class="modal-title">{{ getTitle() }}</span>
+				<button class="close-x" (click)="close()">×</button>
+			</div>
 
-      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'close-editor-confirm' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm' && workspaceService.activeModal() !== 'references' && workspaceService.activeModal() !== 'git-commit-details') {
-        <div class="input-container">
-          <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
-          <input
-            id="modal-search-input"
-            #inputField
-            type="text"
-            class="modal-input"
-            [class.input-error]="!!errorMessage()"
-            [ngModel]="inputValue()"
-            (ngModelChange)="onInputChange($event)"
-            (keydown.enter)="onEnter()"
-            (keydown.escape)="close()"
-          />
-          @if (errorMessage()) {
-            <div class="modal-error-message">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              <span>{{ errorMessage() }}</span>
-            </div>
-          }
-        </div>
-      }
+			@if (
+				workspaceService.activeModal() !== 'indentation' &&
+				workspaceService.activeModal() !== 'unsaved-changes' &&
+				workspaceService.activeModal() !== 'close-editor-confirm' &&
+				workspaceService.activeModal() !== 'ai-settings' &&
+				workspaceService.activeModal() !== 'delete-file-confirm' &&
+				workspaceService.activeModal() !== 'git-untrack-confirm' &&
+				workspaceService.activeModal() !== 'references' &&
+				workspaceService.activeModal() !== 'git-commit-details'
+			) {
+				<div class="input-container">
+					<label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
+					<input
+						id="modal-search-input"
+						#inputField
+						type="text"
+						class="modal-input"
+						[class.input-error]="!!errorMessage()"
+						[ngModel]="inputValue()"
+						(ngModelChange)="onInputChange($event)"
+						(keydown.enter)="onEnter()"
+						(keydown.escape)="close()"
+					/>
+					@if (errorMessage()) {
+						<div class="modal-error-message">
+							<svg
+								viewBox="0 0 24 24"
+								width="16"
+								height="16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+							>
+								<circle cx="12" cy="12" r="10" />
+								<line x1="12" y1="8" x2="12" y2="12" />
+								<line x1="12" y1="16" x2="12.01" y2="16" />
+							</svg>
+							<span>{{ errorMessage() }}</span>
+						</div>
+					}
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'unsaved-changes' && workspaceService.pendingUnsavedFile(); as unsavedFile) {
-        <div class="unsaved-modal-body">
-          <div class="unsaved-warning-icon">
-            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <div class="unsaved-message-box">
-            <h3 class="unsaved-title">Do you want to save the changes you made to "{{ unsavedFile.name }}"?</h3>
-            <p class="unsaved-desc">Your changes will be lost if you don't save them.</p>
-          </div>
-        </div>
-        <div class="action-footer unsaved-footer">
-          <button type="button" class="btn btn-secondary" (click)="cancelUnsavedClose()">Cancel</button>
-          <button type="button" class="btn btn-danger" (click)="discardAndClose()">Don't Save</button>
-          <button type="button" class="btn btn-primary" (click)="saveAndClose()">Save</button>
-        </div>
-      }
+			@if (
+				workspaceService.activeModal() === 'unsaved-changes' &&
+					workspaceService.pendingUnsavedFile();
+				as unsavedFile
+			) {
+				<div class="unsaved-modal-body">
+					<div class="unsaved-warning-icon">
+						<svg
+							viewBox="0 0 24 24"
+							width="38"
+							height="38"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+							/>
+						</svg>
+					</div>
+					<div class="unsaved-message-box">
+						<h3 class="unsaved-title">
+							Do you want to save the changes you made to "{{ unsavedFile.name }}"?
+						</h3>
+						<p class="unsaved-desc">
+							Your changes will be lost if you don't save them.
+						</p>
+					</div>
+				</div>
+				<div class="action-footer unsaved-footer">
+					<button type="button" class="btn btn-secondary" (click)="cancelUnsavedClose()">
+						Cancel
+					</button>
+					<button type="button" class="btn btn-danger" (click)="discardAndClose()">
+						Don't Save
+					</button>
+					<button type="button" class="btn btn-primary" (click)="saveAndClose()">
+						Save
+					</button>
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'close-editor-confirm') {
-        <div class="unsaved-modal-body">
-          <div class="unsaved-warning-icon">
-            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#f59e0b" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <div class="unsaved-message-box">
-            <h3 class="unsaved-title">Save changes before closing Vector IDE?</h3>
-            <p class="unsaved-desc">You have unsaved changes in {{ workspaceService.getModifiedFiles().length }} file(s). If you close without saving, your changes will be discarded.</p>
-            <div class="unsaved-files-list">
-              @for (file of workspaceService.getModifiedFiles(); track file.id) {
-                <div class="unsaved-file-item">
-                  <span class="unsaved-file-bullet">•</span>
-                  <span class="unsaved-file-name">{{ file.name }}</span>
-                  @if (file.path && file.path !== file.name) {
-                    <span class="unsaved-file-path">({{ file.path }})</span>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-        </div>
-        <div class="action-footer unsaved-footer">
-          <button type="button" class="btn btn-secondary" (click)="workspaceService.cancelExitApp()">Do Not Close</button>
-          <button type="button" class="btn btn-danger" (click)="workspaceService.discardAndExitApp()">Discard and Close Anyway</button>
-          <button type="button" class="btn btn-primary" (click)="workspaceService.saveAndExitApp()">Save and Close</button>
-        </div>
-      }
+			@if (workspaceService.activeModal() === 'close-editor-confirm') {
+				<div class="unsaved-modal-body">
+					<div class="unsaved-warning-icon">
+						<svg
+							viewBox="0 0 24 24"
+							width="38"
+							height="38"
+							fill="none"
+							stroke="#f59e0b"
+							stroke-width="2"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+							/>
+						</svg>
+					</div>
+					<div class="unsaved-message-box">
+						<h3 class="unsaved-title">Save changes before closing Vector IDE?</h3>
+						<p class="unsaved-desc">
+							You have unsaved changes in
+							{{ workspaceService.getModifiedFiles().length }} file(s). If you close
+							without saving, your changes will be discarded.
+						</p>
+						<div class="unsaved-files-list">
+							@for (file of workspaceService.getModifiedFiles(); track file.id) {
+								<div class="unsaved-file-item">
+									<span class="unsaved-file-bullet">•</span>
+									<span class="unsaved-file-name">{{ file.name }}</span>
+									@if (file.path && file.path !== file.name) {
+										<span class="unsaved-file-path">({{ file.path }})</span>
+									}
+								</div>
+							}
+						</div>
+					</div>
+				</div>
+				<div class="action-footer unsaved-footer">
+					<button
+						type="button"
+						class="btn btn-secondary"
+						(click)="workspaceService.cancelExitApp()"
+					>
+						Do Not Close
+					</button>
+					<button
+						type="button"
+						class="btn btn-danger"
+						(click)="workspaceService.discardAndExitApp()"
+					>
+						Discard and Close Anyway
+					</button>
+					<button
+						type="button"
+						class="btn btn-primary"
+						(click)="workspaceService.saveAndExitApp()"
+					>
+						Save and Close
+					</button>
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'delete-file-confirm' && workspaceService.pendingDeleteFile(); as delFile) {
-        <div class="unsaved-modal-body">
-          <div class="unsaved-warning-icon delete-icon">
-            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#ef4444" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </div>
-          <div class="unsaved-message-box">
-            <h3 class="unsaved-title">Delete "{{ delFile.name }}" permanently?</h3>
-            <p class="unsaved-desc">Are you sure you want to permanently delete this file from disk? This action cannot be undone.</p>
-          </div>
-        </div>
-        <div class="action-footer unsaved-footer">
-          <button type="button" class="btn btn-secondary" (click)="cancelDeleteFile()">Cancel</button>
-          <button type="button" class="btn btn-danger" (click)="executeDeleteFile(delFile)">Delete Permanently</button>
-        </div>
-      }
+			@if (
+				workspaceService.activeModal() === 'delete-file-confirm' &&
+					workspaceService.pendingDeleteFile();
+				as delFile
+			) {
+				<div class="unsaved-modal-body">
+					<div class="unsaved-warning-icon delete-icon">
+						<svg
+							viewBox="0 0 24 24"
+							width="38"
+							height="38"
+							fill="none"
+							stroke="#ef4444"
+							stroke-width="2"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+							/>
+						</svg>
+					</div>
+					<div class="unsaved-message-box">
+						<h3 class="unsaved-title">Delete "{{ delFile.name }}" permanently?</h3>
+						<p class="unsaved-desc">
+							Are you sure you want to permanently delete this file from disk? This
+							action cannot be undone.
+						</p>
+					</div>
+				</div>
+				<div class="action-footer unsaved-footer">
+					<button type="button" class="btn btn-secondary" (click)="cancelDeleteFile()">
+						Cancel
+					</button>
+					<button
+						type="button"
+						class="btn btn-danger"
+						(click)="executeDeleteFile(delFile)"
+					>
+						Delete Permanently
+					</button>
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'git-untrack-confirm' && workspaceService.pendingGitUntrackFile(); as untrackFile) {
-        <div class="unsaved-modal-body">
-          <div class="unsaved-warning-icon untrack-icon">
-            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#f59e0b" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <div class="unsaved-message-box">
-            @if (untrackFile.gitStatus === 'untracked') {
-              <h3 class="unsaved-title">Remove untracked file "{{ untrackFile.name }}"?</h3>
-              <p class="unsaved-desc">This file has never been committed. You can add it to .gitignore to keep it on disk, or delete it permanently from disk.</p>
-            } @else {
-              <h3 class="unsaved-title">Remove "{{ untrackFile.name }}" from Git tracking?</h3>
-              <p class="unsaved-desc">The file will remain safely on your disk, but will be staged for removal from Git in the next commit and added to .gitignore.</p>
-            }
-          </div>
-        </div>
-        <div class="action-footer unsaved-footer">
-          <button type="button" class="btn btn-secondary" (click)="cancelGitUntrack()">Cancel</button>
-          @if (untrackFile.gitStatus === 'untracked') {
-            <button type="button" class="btn btn-danger" (click)="executeDeleteUntrackedFile(untrackFile)">Delete from Disk</button>
-            <button type="button" class="btn btn-primary" (click)="executeGitUntrack(untrackFile, true)">Ignore in .gitignore</button>
-          } @else {
-            <button type="button" class="btn btn-primary" (click)="executeGitUntrack(untrackFile, true)">Remove from Git & Ignore</button>
-          }
-        </div>
-      }
+			@if (
+				workspaceService.activeModal() === 'git-untrack-confirm' &&
+					workspaceService.pendingGitUntrackFile();
+				as untrackFile
+			) {
+				<div class="unsaved-modal-body">
+					<div class="unsaved-warning-icon untrack-icon">
+						<svg
+							viewBox="0 0 24 24"
+							width="38"
+							height="38"
+							fill="none"
+							stroke="#f59e0b"
+							stroke-width="2"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+							/>
+						</svg>
+					</div>
+					<div class="unsaved-message-box">
+						@if (untrackFile.gitStatus === 'untracked') {
+							<h3 class="unsaved-title">
+								Remove untracked file "{{ untrackFile.name }}"?
+							</h3>
+							<p class="unsaved-desc">
+								This file has never been committed. You can add it to .gitignore to
+								keep it on disk, or delete it permanently from disk.
+							</p>
+						} @else {
+							<h3 class="unsaved-title">
+								Remove "{{ untrackFile.name }}" from Git tracking?
+							</h3>
+							<p class="unsaved-desc">
+								The file will remain safely on your disk, but will be staged for
+								removal from Git in the next commit and added to .gitignore.
+							</p>
+						}
+					</div>
+				</div>
+				<div class="action-footer unsaved-footer">
+					<button type="button" class="btn btn-secondary" (click)="cancelGitUntrack()">
+						Cancel
+					</button>
+					@if (untrackFile.gitStatus === 'untracked') {
+						<button
+							type="button"
+							class="btn btn-danger"
+							(click)="executeDeleteUntrackedFile(untrackFile)"
+						>
+							Delete from Disk
+						</button>
+						<button
+							type="button"
+							class="btn btn-primary"
+							(click)="executeGitUntrack(untrackFile, true)"
+						>
+							Ignore in .gitignore
+						</button>
+					} @else {
+						<button
+							type="button"
+							class="btn btn-primary"
+							(click)="executeGitUntrack(untrackFile, true)"
+						>
+							Remove from Git & Ignore
+						</button>
+					}
+				</div>
+			}
 
-      @if (workspaceService.isIndexing()) {
-        <div class="indexing-banner">
-          <span class="indexing-pulse">●</span>
-          <span>Indexing project in background ({{ workspaceService.indexedFileCount() }} files)...</span>
-        </div>
-      }
+			@if (workspaceService.isIndexing()) {
+				<div class="indexing-banner">
+					<span class="indexing-pulse">●</span>
+					<span
+						>Indexing project in background ({{
+							workspaceService.indexedFileCount()
+						}}
+						files)...</span
+					>
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'indentation') {
-        <div class="config-card">
-          <div class="config-section">
-            <span class="config-section-title">Indentation Character</span>
-            <div class="choice-group">
-              <button
-                type="button"
-                class="choice-btn"
-                [class.selected]="selectedIndentType() === 'tabs'"
-                (click)="selectedIndentType.set('tabs')"
-              >
-                ⇥ Tabs (Real Tab character)
-              </button>
-              <button
-                type="button"
-                class="choice-btn"
-                [class.selected]="selectedIndentType() === 'spaces'"
-                (click)="selectedIndentType.set('spaces')"
-              >
-                ␣ Spaces
-              </button>
-            </div>
-          </div>
+			@if (workspaceService.activeModal() === 'indentation') {
+				<div class="config-card">
+					<div class="config-section">
+						<span class="config-section-title">Indentation Character</span>
+						<div class="choice-group">
+							<button
+								type="button"
+								class="choice-btn"
+								[class.selected]="selectedIndentType() === 'tabs'"
+								(click)="selectedIndentType.set('tabs')"
+							>
+								⇥ Tabs (Real Tab character)
+							</button>
+							<button
+								type="button"
+								class="choice-btn"
+								[class.selected]="selectedIndentType() === 'spaces'"
+								(click)="selectedIndentType.set('spaces')"
+							>
+								␣ Spaces
+							</button>
+						</div>
+					</div>
 
-          <div class="config-section">
-            <span class="config-section-title">Tab / Indent Size</span>
-            <div class="size-group">
-              @for (s of [2, 4, 8]; track s) {
-                <button
-                  type="button"
-                  class="size-btn"
-                  [class.selected]="selectedTabSize() === s"
-                  (click)="selectedTabSize.set(s)"
-                >
-                  {{ s }} spaces
-                </button>
-              }
-            </div>
-          </div>
+					<div class="config-section">
+						<span class="config-section-title">Tab / Indent Size</span>
+						<div class="size-group">
+							@for (s of [2, 4, 8]; track s) {
+								<button
+									type="button"
+									class="size-btn"
+									[class.selected]="selectedTabSize() === s"
+									(click)="selectedTabSize.set(s)"
+								>
+									{{ s }} spaces
+								</button>
+							}
+						</div>
+					</div>
 
-          <div class="action-footer has-left-action">
-            <div class="left-actions">
-              <button
-                type="button"
-                class="btn btn-secondary detect-btn"
-                (click)="autoDetectIndentation()"
-                title="Auto-detect indentation from active file content"
-              >
-                ⟳ Auto-Detect from File
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary convert-btn"
-                (click)="convertIndentation()"
-                title="Convert all lines in the active file to the selected indentation style"
-              >
-                ⇄ Convert File Indentation
-              </button>
-            </div>
-            <div class="footer-buttons">
-              <button type="button" class="btn btn-secondary" (click)="close()">Cancel</button>
-              <button type="button" class="btn btn-primary" (click)="applyIndentation()">Apply</button>
-            </div>
-          </div>
-        </div>
-      }
+					<div class="action-footer has-left-action">
+						<div class="left-actions">
+							<button
+								type="button"
+								class="btn btn-secondary detect-btn"
+								(click)="autoDetectIndentation()"
+								title="Auto-detect indentation from active file content"
+							>
+								⟳ Auto-Detect from File
+							</button>
+							<button
+								type="button"
+								class="btn btn-secondary convert-btn"
+								(click)="convertIndentation()"
+								title="Convert all lines in the active file to the selected indentation style"
+							>
+								⇄ Convert File Indentation
+							</button>
+						</div>
+						<div class="footer-buttons">
+							<button type="button" class="btn btn-secondary" (click)="close()">
+								Cancel
+							</button>
+							<button
+								type="button"
+								class="btn btn-primary"
+								(click)="applyIndentation()"
+							>
+								Apply
+							</button>
+						</div>
+					</div>
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'ai-settings') {
-        <div class="ai-config-card">
-          <div class="ai-status-row">
-            <div class="status-indicator-box">
-              <span
-                class="status-dot"
-                [class.online]="aiService.isConfigured()"
-                [class.offline]="!aiService.isConfigured()"
-              ></span>
-              <span class="status-text">
-                {{ aiService.isConfigured() ? 'Gemini AI is Ready (' + aiService.geminiModel() + ')' : 'No API Key - AI is Disabled' }}
-              </span>
-            </div>
-            @if (aiService.isConfigured()) {
-              <button
-                type="button"
-                class="btn-check-health"
-                [disabled]="aiService.isCheckingHealth()"
-                (click)="testGeminiKey()"
-              >
-                {{ aiService.isCheckingHealth() ? 'Testing...' : '🔄 Test API Key' }}
-              </button>
-            }
-          </div>
+			@if (workspaceService.activeModal() === 'ai-settings') {
+				<div class="ai-config-card">
+					<div class="ai-status-row">
+						<div class="status-indicator-box">
+							<span
+								class="status-dot"
+								[class.online]="aiService.isConfigured()"
+								[class.offline]="!aiService.isConfigured()"
+							></span>
+							<span class="status-text">
+								{{
+									aiService.isConfigured()
+										? 'Gemini AI is Ready (' + aiService.geminiModel() + ')'
+										: 'No API Key - AI is Disabled'
+								}}
+							</span>
+						</div>
+						@if (aiService.isConfigured()) {
+							<button
+								type="button"
+								class="btn-check-health"
+								[disabled]="aiService.isCheckingHealth()"
+								(click)="testGeminiKey()"
+							>
+								{{
+									aiService.isCheckingHealth() ? 'Testing...' : '🔄 Test API Key'
+								}}
+							</button>
+						}
+					</div>
 
-          <div class="ai-field-group">
-            <label class="ai-label">Google Gemini API Key</label>
-            <input
-              type="password"
-              class="ai-input"
-              [ngModel]="aiService.geminiApiKey()"
-              (ngModelChange)="aiService.setGeminiApiKey($event)"
-            />
-            <span class="ai-hint">Get your free API key from Google AI Studio (aistudio.google.com). No local server required.</span>
-          </div>
+					<div class="ai-field-group">
+						<label class="ai-label">Google Gemini API Key</label>
+						<input
+							type="password"
+							class="ai-input"
+							[ngModel]="aiService.geminiApiKey()"
+							(ngModelChange)="aiService.setGeminiApiKey($event)"
+						/>
+						<span class="ai-hint"
+							>Get your free API key from Google AI Studio (aistudio.google.com). No
+							local server required.</span
+						>
+					</div>
 
-          <div class="ai-field-group">
-            <label class="ai-label">Gemini Model</label>
-            <select
-              class="ai-input"
-              [ngModel]="aiService.geminiModel()"
-              (ngModelChange)="aiService.setGeminiModel($event)"
-            >
-              @for (m of aiService.availableModels; track m.id) {
-                <option [value]="m.id">{{ m.name }}</option>
-              }
-            </select>
-            <span class="ai-hint">Ultra-low latency models optimized for coding completions and refactoring.</span>
-          </div>
+					<div class="ai-field-group">
+						<label class="ai-label">Gemini Model</label>
+						<select
+							class="ai-input"
+							[ngModel]="aiService.geminiModel()"
+							(ngModelChange)="aiService.setGeminiModel($event)"
+						>
+							@for (m of aiService.availableModels; track m.id) {
+								<option [value]="m.id">{{ m.name }}</option>
+							}
+						</select>
+						<span class="ai-hint"
+							>Ultra-low latency models optimized for coding completions and
+							refactoring.</span
+						>
+					</div>
 
-          <div class="ai-field-group">
-            <label class="ai-checkbox-label">
-              <input
-                type="checkbox"
-                [ngModel]="assistantService.showFloatingButton()"
-                (ngModelChange)="assistantService.setShowFloatingButton($event)"
-              />
-              <span>Show Floating Agent Button</span>
-            </label>
-            <span class="ai-hint">Display a floating avatar button on screen to quickly open the AI chat window.</span>
-          </div>
+					<div class="ai-field-group">
+						<label class="ai-checkbox-label">
+							<input
+								type="checkbox"
+								[ngModel]="assistantService.showFloatingButton()"
+								(ngModelChange)="assistantService.setShowFloatingButton($event)"
+							/>
+							<span>Show Floating Agent Button</span>
+						</label>
+						<span class="ai-hint"
+							>Display a floating avatar button on screen to quickly open the AI chat
+							window.</span
+						>
+					</div>
 
-          <div class="ai-section-divider">
-            <span class="ai-section-title">🤖 AI Assistant Chat</span>
-          </div>
+					<div class="ai-section-divider">
+						<span class="ai-section-title">🤖 AI Assistant Chat</span>
+					</div>
 
-          <div class="ai-field-group">
-            <div class="ai-field-header">
-              <label class="ai-label">Chat Agent API Key (Dedicated)</label>
-              @if (aiService.isChatConfigured()) {
-                <button
-                  type="button"
-                  class="btn-check-health"
-                  [disabled]="aiService.isChatCheckingHealth()"
-                  (click)="testChatKey()"
-                >
-                  {{ aiService.isChatCheckingHealth() ? 'Testing...' : '🔄 Test Chat Key' }}
-                </button>
-              }
-            </div>
-            <input
-              type="password"
-              class="ai-input"
-              [ngModel]="aiService.chatApiKey()"
-              (ngModelChange)="aiService.setChatApiKey($event)"
-            />
-            <span class="ai-hint">Dedicated API key for chat assistant. If left empty, uses the primary key above.</span>
-          </div>
+					<div class="ai-field-group">
+						<div class="ai-field-header">
+							<label class="ai-label">Chat Agent API Key (Dedicated)</label>
+							@if (aiService.isChatConfigured()) {
+								<button
+									type="button"
+									class="btn-check-health"
+									[disabled]="aiService.isChatCheckingHealth()"
+									(click)="testChatKey()"
+								>
+									{{
+										aiService.isChatCheckingHealth()
+											? 'Testing...'
+											: '🔄 Test Chat Key'
+									}}
+								</button>
+							}
+						</div>
+						<input
+							type="password"
+							class="ai-input"
+							[ngModel]="aiService.chatApiKey()"
+							(ngModelChange)="aiService.setChatApiKey($event)"
+						/>
+						<span class="ai-hint"
+							>Dedicated API key for chat assistant. If left empty, uses the primary
+							key above.</span
+						>
+					</div>
 
-          <div class="ai-field-group">
-            <label class="ai-label">Chat Model</label>
-            <select
-              class="ai-input"
-              [ngModel]="aiService.chatModel()"
-              (ngModelChange)="aiService.setChatModel($event)"
-            >
-              @for (m of aiService.availableModels; track m.id) {
-                <option [value]="m.id">{{ m.name }}</option>
-              }
-            </select>
-            <span class="ai-hint">High-intelligence model recommended for conversational coding assistance (e.g. Gemini 3.8 Flash).</span>
-          </div>
+					<div class="ai-field-group">
+						<label class="ai-label">Chat Model</label>
+						<select
+							class="ai-input"
+							[ngModel]="aiService.chatModel()"
+							(ngModelChange)="aiService.setChatModel($event)"
+						>
+							@for (m of aiService.availableModels; track m.id) {
+								<option [value]="m.id">{{ m.name }}</option>
+							}
+						</select>
+						<span class="ai-hint"
+							>High-intelligence model recommended for conversational coding
+							assistance (e.g. Gemini 3.8 Flash).</span
+						>
+					</div>
 
-          <div class="ai-field-group">
-            <label class="ai-label">Chat Window Direction</label>
-            <select
-              class="ai-input"
-              [ngModel]="aiService.chatDirection()"
-              (ngModelChange)="aiService.setChatDirection($event)"
-            >
-              <option value="ltr">Left-to-Right (LTR - Default)</option>
-              <option value="rtl">Right-to-Left (RTL)</option>
-            </select>
-            <span class="ai-hint">Input textarea automatically detects language and text direction.</span>
-          </div>
+					<div class="ai-field-group">
+						<label class="ai-label">Chat Window Direction</label>
+						<select
+							class="ai-input"
+							[ngModel]="aiService.chatDirection()"
+							(ngModelChange)="aiService.setChatDirection($event)"
+						>
+							<option value="ltr">Left-to-Right (LTR - Default)</option>
+							<option value="rtl">Right-to-Left (RTL)</option>
+						</select>
+						<span class="ai-hint"
+							>Input textarea automatically detects language and text direction.</span
+						>
+					</div>
 
-          <div class="ai-field-group">
-            <div class="ai-field-header">
-              <label class="ai-label">System Prompt</label>
-              <button type="button" class="btn-reset-link" (click)="aiService.resetChatSystemPrompt()">
-                Reset to default
-              </button>
-            </div>
-            <textarea
-              class="ai-input ai-textarea"
-              rows="3"
-              [ngModel]="aiService.chatSystemPrompt()"
-              (ngModelChange)="aiService.setChatSystemPrompt($event)"
-            ></textarea>
-            <span class="ai-hint">The assistant receives active editor file context, cursor position, and project tools.</span>
-          </div>
+					<div class="ai-field-group">
+						<div class="ai-field-header">
+							<label class="ai-label">System Prompt</label>
+							<button
+								type="button"
+								class="btn-reset-link"
+								(click)="aiService.resetChatSystemPrompt()"
+							>
+								Reset to default
+							</button>
+						</div>
+						<textarea
+							class="ai-input ai-textarea"
+							rows="3"
+							[ngModel]="aiService.chatSystemPrompt()"
+							(ngModelChange)="aiService.setChatSystemPrompt($event)"
+						></textarea>
+						<span class="ai-hint"
+							>The assistant receives active editor file context, cursor position, and
+							project tools.</span
+						>
+					</div>
 
-          <div class="ai-features-box">
-            <div class="feature-item">
-              <span class="feature-icon">✨</span>
-              <div class="feature-desc">
-                <strong>Smart Trigger Completions:</strong> FIM ghost text triggers only on syntactic keys (brackets, spaces, operators) with 400ms debounce.
-              </div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">⚡</span>
-              <div class="feature-desc">
-                <strong>Gemini Cloud Powered:</strong> Zero CPU/GPU local load, high-precision code completions.
-              </div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">💡</span>
-              <div class="feature-desc">
-                <strong>Syntax Quick-Fix:</strong> Automated QuickFix lightbulb on parser and syntax errors.
-              </div>
-            </div>
-            <div class="feature-item">
-              <span class="feature-icon">📝</span>
-              <div class="feature-desc">
-                <strong>Git Commit Note:</strong> Generates Conventional Commit messages from staged/working diff.
-              </div>
-            </div>
-          </div>
+					<div class="ai-features-box">
+						<div class="feature-item">
+							<span class="feature-icon">✨</span>
+							<div class="feature-desc">
+								<strong>Smart Trigger Completions:</strong> FIM ghost text triggers
+								only on syntactic keys (brackets, spaces, operators) with 400ms
+								debounce.
+							</div>
+						</div>
+						<div class="feature-item">
+							<span class="feature-icon">⚡</span>
+							<div class="feature-desc">
+								<strong>Gemini Cloud Powered:</strong> Zero CPU/GPU local load,
+								high-precision code completions.
+							</div>
+						</div>
+						<div class="feature-item">
+							<span class="feature-icon">💡</span>
+							<div class="feature-desc">
+								<strong>Syntax Quick-Fix:</strong> Automated QuickFix lightbulb on
+								parser and syntax errors.
+							</div>
+						</div>
+						<div class="feature-item">
+							<span class="feature-icon">📝</span>
+							<div class="feature-desc">
+								<strong>Git Commit Note:</strong> Generates Conventional Commit
+								messages from staged/working diff.
+							</div>
+						</div>
+					</div>
 
-          <div class="action-footer ai-modal-footer">
-            <button
-              type="button"
-              class="btn btn-secondary"
-              (click)="aiService.toggleEnabled()"
-            >
-              {{ aiService.isEnabled() ? 'Disable AI Features' : 'Enable AI Features' }}
-            </button>
-            <button type="button" class="btn btn-secondary" (click)="close()">
-              Close
-            </button>
-          </div>
-        </div>
-      }
+					<div class="action-footer ai-modal-footer">
+						<button
+							type="button"
+							class="btn btn-secondary"
+							(click)="aiService.toggleEnabled()"
+						>
+							{{
+								aiService.isEnabled() ? 'Disable AI Features' : 'Enable AI Features'
+							}}
+						</button>
+						<button type="button" class="btn btn-secondary" (click)="close()">
+							Close
+						</button>
+					</div>
+				</div>
+			}
 
+			@if (workspaceService.activeModal() === 'change-language') {
+				<div class="results-list">
+					@for (lang of languageResults(); track lang.id) {
+						<div class="result-item" (click)="selectLanguage(lang.id)">
+							<span class="file-badge">{{ lang.badge }}</span>
+							<span class="file-name">{{ lang.name }}</span>
+							<span class="file-dir">{{ lang.extensions }}</span>
+						</div>
+					}
+					@if (languageResults().length === 0) {
+						<div class="no-results">No languages matching query</div>
+					}
+				</div>
+			}
 
+			@if (workspaceService.activeModal() === 'git-branches') {
+				<div class="results-list">
+					@if (workspaceService.isLoadingBranches()) {
+						<div class="searching-indicator">
+							<div class="mini-spinner"></div>
+							<span>Loading Git branches...</span>
+						</div>
+					} @else {
+						@if (canCreateBranchFromInput()) {
+							<div
+								class="result-item branch-action-item create-action"
+								(click)="createAndSwitchBranch(inputValue().trim())"
+							>
+								<span class="file-badge branch-badge">➕</span>
+								<span class="file-name"
+									>Create new branch:
+									<strong>{{ inputValue().trim() }}</strong></span
+								>
+							</div>
+						}
 
-      @if (workspaceService.activeModal() === 'change-language') {
-        <div class="results-list">
-          @for (lang of languageResults(); track lang.id) {
-            <div class="result-item" (click)="selectLanguage(lang.id)">
-              <span class="file-badge">{{ lang.badge }}</span>
-              <span class="file-name">{{ lang.name }}</span>
-              <span class="file-dir">{{ lang.extensions }}</span>
-            </div>
-          }
-          @if (languageResults().length === 0) {
-            <div class="no-results">No languages matching query</div>
-          }
-        </div>
-      }
+						<div
+							class="result-item branch-action-item tag-action"
+							(click)="openCreateTagModal()"
+						>
+							<span class="file-badge tag-badge">🏷️</span>
+							<span class="file-name">Create new Tag...</span>
+						</div>
 
-      @if (workspaceService.activeModal() === 'git-branches') {
-        <div class="results-list">
-          @if (workspaceService.isLoadingBranches()) {
-            <div class="searching-indicator">
-              <div class="mini-spinner"></div>
-              <span>Loading Git branches...</span>
-            </div>
-          } @else {
-            @if (canCreateBranchFromInput()) {
-              <div class="result-item branch-action-item create-action" (click)="createAndSwitchBranch(inputValue().trim())">
-                <span class="file-badge branch-badge">➕</span>
-                <span class="file-name">Create new branch: <strong>{{ inputValue().trim() }}</strong></span>
-              </div>
-            }
+						@if (filteredBranches().length > 0) {
+							<div class="results-meta">
+								BRANCHES ({{ filteredBranches().length }})
+							</div>
+							@for (branch of filteredBranches(); track branch.name) {
+								<div
+									class="result-item branch-item"
+									[class.current]="branch.is_current"
+									(click)="selectBranch(branch)"
+								>
+									<span class="file-badge branch-badge">{{
+										branch.is_remote ? '☁' : '⎇'
+									}}</span>
+									<span class="file-name">{{ branch.name }}</span>
+									@if (branch.is_current) {
+										<span class="branch-status-pill current">✓ current</span>
+									}
+									@if (branch.is_remote) {
+										<span class="branch-status-pill remote">remote</span>
+									}
+								</div>
+							}
+						}
 
-            <div class="result-item branch-action-item tag-action" (click)="openCreateTagModal()">
-              <span class="file-badge tag-badge">🏷️</span>
-              <span class="file-name">Create new Tag...</span>
-            </div>
+						@if (filteredTags().length > 0) {
+							<div class="results-meta">TAGS ({{ filteredTags().length }})</div>
+							@for (tag of filteredTags(); track tag) {
+								<div
+									class="result-item tag-item"
+									(click)="selectTag(tag)"
+									[title]="'Checkout tag ' + tag"
+								>
+									<span class="file-badge tag-badge">🏷️</span>
+									<span class="file-name">{{ tag }}</span>
+									<span class="tag-checkout-hint">Checkout</span>
+								</div>
+							}
+						}
 
-            @if (filteredBranches().length > 0) {
-              <div class="results-meta">BRANCHES ({{ filteredBranches().length }})</div>
-              @for (branch of filteredBranches(); track branch.name) {
-                <div
-                  class="result-item branch-item"
-                  [class.current]="branch.is_current"
-                  (click)="selectBranch(branch)"
-                >
-                  <span class="file-badge branch-badge">{{ branch.is_remote ? '☁' : '⎇' }}</span>
-                  <span class="file-name">{{ branch.name }}</span>
-                  @if (branch.is_current) {
-                    <span class="branch-status-pill current">✓ current</span>
-                  }
-                  @if (branch.is_remote) {
-                    <span class="branch-status-pill remote">remote</span>
-                  }
-                </div>
-              }
-            }
+						@if (
+							filteredBranches().length === 0 &&
+							filteredTags().length === 0 &&
+							!canCreateBranchFromInput()
+						) {
+							<div class="no-results">
+								No branches or tags matching "{{ inputValue() }}"
+							</div>
+						}
+					}
+				</div>
+			}
 
-            @if (filteredTags().length > 0) {
-              <div class="results-meta">TAGS ({{ filteredTags().length }})</div>
-              @for (tag of filteredTags(); track tag) {
-                <div
-                  class="result-item tag-item"
-                  (click)="selectTag(tag)"
-                  [title]="'Checkout tag ' + tag"
-                >
-                  <span class="file-badge tag-badge">🏷️</span>
-                  <span class="file-name">{{ tag }}</span>
-                  <span class="tag-checkout-hint">Checkout</span>
-                </div>
-              }
-            }
+			@if (workspaceService.activeModal() === 'git-create-tag') {
+				<div class="tag-modal-body">
+					<div class="tag-field-group">
+						<label class="tag-field-label">Tag Message / Annotation (Optional)</label>
+						<input
+							type="text"
+							class="modal-input"
+							[ngModel]="tagMessage()"
+							(ngModelChange)="tagMessage.set($event)"
+							(keydown.enter)="submitCreateTag()"
+							(keydown.escape)="close()"
+						/>
+					</div>
+					<div class="modal-actions-row">
+						<button type="button" class="btn-modal-cancel" (click)="close()">
+							Cancel
+						</button>
+						<button
+							type="button"
+							class="btn-modal-submit"
+							[disabled]="!inputValue().trim()"
+							(click)="submitCreateTag()"
+						>
+							Create Tag
+						</button>
+					</div>
+				</div>
+			}
 
-            @if (filteredBranches().length === 0 && filteredTags().length === 0 && !canCreateBranchFromInput()) {
-              <div class="no-results">No branches or tags matching "{{ inputValue() }}"</div>
-            }
-          }
-        </div>
-      }
+			@if (workspaceService.activeModal() === 'grep') {
+				<div class="results-list">
+					@if (isSearching()) {
+						<div class="searching-indicator">
+							<div class="mini-spinner"></div>
+							<span>Searching through workspace files...</span>
+						</div>
+					} @else if (grepResults().length > 0) {
+						<div class="results-meta">
+							<span
+								>{{ grepResults().length }} match(es) in
+								{{ getUniqueFileCount(grepResults()) }} file(s)</span
+							>
+						</div>
+						@for (
+							result of grepResults();
+							track result.file.id + ':' + result.lineNumber
+						) {
+							<div
+								class="result-item"
+								(click)="
+									workspaceService.jumpToLine(result.file, result.lineNumber)
+								"
+							>
+								<span class="file-path"
+									>{{ result.file.path }}:{{ result.lineNumber }}</span
+								>
+								<span class="line-snippet">{{ result.lineText }}</span>
+							</div>
+						}
+					} @else if (inputValue().trim().length >= 2) {
+						<div class="no-results">No matching text found</div>
+					}
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'git-create-tag') {
-        <div class="tag-modal-body">
-          <div class="tag-field-group">
-            <label class="tag-field-label">Tag Message / Annotation (Optional)</label>
-            <input
-              type="text"
-              class="modal-input"
-              [ngModel]="tagMessage()"
-              (ngModelChange)="tagMessage.set($event)"
-              (keydown.enter)="submitCreateTag()"
-              (keydown.escape)="close()"
-            />
-          </div>
-          <div class="modal-actions-row">
-            <button
-              type="button"
-              class="btn-modal-cancel"
-              (click)="close()"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              class="btn-modal-submit"
-              [disabled]="!inputValue().trim()"
-              (click)="submitCreateTag()"
-            >
-              Create Tag
-            </button>
-          </div>
-        </div>
-      }
+			@if (workspaceService.activeModal() === 'references') {
+				<div class="results-list references-list">
+					@if (workspaceService.isSearchingReferences()) {
+						<div class="searching-indicator">
+							<div class="mini-spinner"></div>
+							<span>Searching references across workspace...</span>
+						</div>
+					} @else if (workspaceService.pendingReferences().length > 0) {
+						<div class="results-meta">
+							<span
+								>{{ workspaceService.pendingReferences().length }} reference(s)
+								found in
+								{{
+									getUniqueFileCount(workspaceService.pendingReferences())
+								}}
+								file(s)</span
+							>
+						</div>
+						@for (
+							result of workspaceService.pendingReferences();
+							track result.file.id + ':' + result.lineNumber + ':' + result.matchStart
+						) {
+							<div class="result-item" (click)="jumpToReference(result)">
+								<span class="file-path"
+									>{{ result.file.path }}:{{ result.lineNumber }}</span
+								>
+								<span class="line-snippet">{{ result.lineText }}</span>
+							</div>
+						}
+					} @else {
+						<div class="no-results">
+							No references found for "{{
+								workspaceService.pendingReferencesSymbol()
+							}}"
+						</div>
+					}
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'grep') {
-        <div class="results-list">
-          @if (isSearching()) {
-            <div class="searching-indicator">
-              <div class="mini-spinner"></div>
-              <span>Searching through workspace files...</span>
-            </div>
-          } @else if (grepResults().length > 0) {
-            <div class="results-meta">
-              <span>{{ grepResults().length }} match(es) in {{ getUniqueFileCount(grepResults()) }} file(s)</span>
-            </div>
-            @for (result of grepResults(); track result.file.id + ':' + result.lineNumber) {
-              <div
-                class="result-item"
-                (click)="workspaceService.jumpToLine(result.file, result.lineNumber)"
-              >
-                <span class="file-path">{{ result.file.path }}:{{ result.lineNumber }}</span>
-                <span class="line-snippet">{{ result.lineText }}</span>
-              </div>
-            }
-          } @else if (inputValue().trim().length >= 2) {
-            <div class="no-results">No matching text found</div>
-          }
-        </div>
-      }
+			@if (workspaceService.activeModal() === 'file-search') {
+				<div class="results-list">
+					@if (fileResults().length > 0) {
+						<div class="results-meta">
+							<span
+								>{{ fileResults().length }} files found (of
+								{{ workspaceService.files().length }})</span
+							>
+						</div>
+					}
+					@for (file of fileResults(); track file.id) {
+						<div class="result-item" (click)="selectFile(file)">
+							@if (isOmniFlux(file)) {
+								<span class="file-badge icon-badge" title="OmniFlux">
+									<img
+										src="omniflux-icon.png"
+										class="file-badge-img"
+										alt="OmniFlux"
+									/>
+								</span>
+							} @else if (isPhp(file)) {
+								<span class="file-badge icon-badge" title="PHP">
+									<img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
+								</span>
+							} @else if (isPerl(file)) {
+								<span class="file-badge icon-badge" title="Perl">
+									<img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
+								</span>
+							} @else {
+								<span class="file-badge">{{ getFileBadge(file) }}</span>
+							}
+							<span class="file-name">{{ file.name }}</span>
+							<span class="file-dir">{{ file.path }}</span>
+						</div>
+					}
+					@if (fileResults().length === 0) {
+						<div class="no-results">No files matching query</div>
+					}
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'references') {
-        <div class="results-list references-list">
-          @if (workspaceService.isSearchingReferences()) {
-            <div class="searching-indicator">
-              <div class="mini-spinner"></div>
-              <span>Searching references across workspace...</span>
-            </div>
-          } @else if (workspaceService.pendingReferences().length > 0) {
-            <div class="results-meta">
-              <span>{{ workspaceService.pendingReferences().length }} reference(s) found in {{ getUniqueFileCount(workspaceService.pendingReferences()) }} file(s)</span>
-            </div>
-            @for (result of workspaceService.pendingReferences(); track result.file.id + ':' + result.lineNumber + ':' + result.matchStart) {
-              <div
-                class="result-item"
-                (click)="jumpToReference(result)"
-              >
-                <span class="file-path">{{ result.file.path }}:{{ result.lineNumber }}</span>
-                <span class="line-snippet">{{ result.lineText }}</span>
-              </div>
-            }
-          } @else {
-            <div class="no-results">No references found for "{{ workspaceService.pendingReferencesSymbol() }}"</div>
-          }
-        </div>
-      }
+			@if (workspaceService.activeModal() === 'open-folder-path') {
+				<div class="quick-paths-container">
+					<span class="quick-paths-title">Quick Select Paths:</span>
+					<div class="quick-paths-grid">
+						<button
+							type="button"
+							class="path-chip"
+							(click)="setFolderQuickPath('/home/ori/work/vide')"
+						>
+							📁 /home/ori/work/vide
+						</button>
+						<button
+							type="button"
+							class="path-chip"
+							(click)="setFolderQuickPath('~/work/vide')"
+						>
+							📁 ~/work/vide
+						</button>
+						<button
+							type="button"
+							class="path-chip"
+							(click)="setFolderQuickPath('/home/ori/work')"
+						>
+							📁 /home/ori/work
+						</button>
+						@if (workspaceService.parentWorkspacePath(); as parent) {
+							<button
+								type="button"
+								class="path-chip parent-chip"
+								(click)="setFolderQuickPath(parent)"
+							>
+								⬆ Parent ({{ parent }})
+							</button>
+						}
+					</div>
+				</div>
+				<div class="action-footer">
+					<button class="btn btn-secondary" (click)="close()">Cancel</button>
+					<button class="btn btn-primary" (click)="onEnter()">Open Folder</button>
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'file-search') {
-        <div class="results-list">
-          @if (fileResults().length > 0) {
-            <div class="results-meta">
-              <span>{{ fileResults().length }} files found (of {{ workspaceService.files().length }})</span>
-            </div>
-          }
-          @for (file of fileResults(); track file.id) {
-            <div class="result-item" (click)="selectFile(file)">
-              @if (isOmniFlux(file)) {
-                <span class="file-badge icon-badge" title="OmniFlux">
-                  <img src="omniflux-icon.png" class="file-badge-img" alt="OmniFlux" />
-                </span>
-              } @else if (isPhp(file)) {
-                <span class="file-badge icon-badge" title="PHP">
-                  <img src="php-elephant.svg" class="file-badge-img" alt="PHP" />
-                </span>
-              } @else if (isPerl(file)) {
-                <span class="file-badge icon-badge" title="Perl">
-                  <img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
-                </span>
-              } @else {
-                <span class="file-badge">{{ getFileBadge(file) }}</span>
-              }
-              <span class="file-name">{{ file.name }}</span>
-              <span class="file-dir">{{ file.path }}</span>
-            </div>
-          }
-          @if (fileResults().length === 0) {
-            <div class="no-results">No files matching query</div>
-          }
-        </div>
-      }
+			@if (
+				workspaceService.activeModal() === 'new-file' ||
+				workspaceService.activeModal() === 'new-folder'
+			) {
+				<div class="action-footer">
+					<button class="btn btn-secondary" (click)="close()">Cancel</button>
+					<button class="btn btn-primary" (click)="onEnter()">Create</button>
+				</div>
+			}
 
-      @if (workspaceService.activeModal() === 'open-folder-path') {
-        <div class="quick-paths-container">
-          <span class="quick-paths-title">Quick Select Paths:</span>
-          <div class="quick-paths-grid">
-            <button
-              type="button"
-              class="path-chip"
-              (click)="setFolderQuickPath('/home/ori/work/vide')"
-            >
-              📁 /home/ori/work/vide
-            </button>
-            <button
-              type="button"
-              class="path-chip"
-              (click)="setFolderQuickPath('~/work/vide')"
-            >
-              📁 ~/work/vide
-            </button>
-            <button
-              type="button"
-              class="path-chip"
-              (click)="setFolderQuickPath('/home/ori/work')"
-            >
-              📁 /home/ori/work
-            </button>
-            @if (workspaceService.parentWorkspacePath(); as parent) {
-              <button
-                type="button"
-                class="path-chip parent-chip"
-                (click)="setFolderQuickPath(parent)"
-              >
-                ⬆ Parent ({{ parent }})
-              </button>
-            }
-          </div>
-        </div>
-        <div class="action-footer">
-          <button class="btn btn-secondary" (click)="close()">Cancel</button>
-          <button class="btn btn-primary" (click)="onEnter()">Open Folder</button>
-        </div>
-      }
+			@if (workspaceService.activeModal() === 'git-commit-details') {
+				@if (workspaceService.isLoadingCommitDetails()) {
+					<div class="commit-details-loading">
+						<div class="mini-spinner"></div>
+						<span>Loading Git commit details...</span>
+					</div>
+				} @else if (workspaceService.pendingCommitDetails(); as c) {
+					<div class="commit-details-body">
+						<!-- Top Controls & Hash -->
+						<div class="commit-top-bar">
+							<div class="commit-hash-group">
+								<span class="commit-hash-pill">{{ c.short_hash }}</span>
+								<code class="commit-full-hash">{{ c.hash }}</code>
+								<button
+									type="button"
+									class="btn-icon-copy"
+									(click)="copyToClipboard(c.hash, 'hash')"
+									[title]="isCopied('hash') ? 'Copied!' : 'Copy full commit SHA'"
+								>
+									{{ isCopied('hash') ? '✓ Copied' : '📋 Copy SHA' }}
+								</button>
+							</div>
 
-      @if (
-        workspaceService.activeModal() === 'new-file' ||
-        workspaceService.activeModal() === 'new-folder'
-      ) {
-        <div class="action-footer">
-          <button class="btn btn-secondary" (click)="close()">Cancel</button>
-          <button class="btn btn-primary" (click)="onEnter()">Create</button>
-        </div>
-      }
+							<div class="commit-refs-group">
+								@for (ref of c.refs; track ref) {
+									<span class="commit-ref-pill">{{ ref }}</span>
+								}
+							</div>
+						</div>
 
-      @if (workspaceService.activeModal() === 'git-commit-details') {
-        @if (workspaceService.isLoadingCommitDetails()) {
-          <div class="commit-details-loading">
-            <div class="mini-spinner"></div>
-            <span>Loading Git commit details...</span>
-          </div>
-        } @else if (workspaceService.pendingCommitDetails(); as c) {
-          <div class="commit-details-body">
-            <!-- Top Controls & Hash -->
-            <div class="commit-top-bar">
-              <div class="commit-hash-group">
-                <span class="commit-hash-pill">{{ c.short_hash }}</span>
-                <code class="commit-full-hash">{{ c.hash }}</code>
-                <button
-                  type="button"
-                  class="btn-icon-copy"
-                  (click)="copyToClipboard(c.hash, 'hash')"
-                  [title]="isCopied('hash') ? 'Copied!' : 'Copy full commit SHA'"
-                >
-                  {{ isCopied('hash') ? '✓ Copied' : '📋 Copy SHA' }}
-                </button>
-              </div>
+						<!-- Commit Subject & Message -->
+						<div class="commit-message-section">
+							<h2 class="commit-subject">{{ c.subject }}</h2>
+							@if (c.body) {
+								<div class="commit-body-text">{{ c.body }}</div>
+							}
+						</div>
 
-              <div class="commit-refs-group">
-                @for (ref of c.refs; track ref) {
-                  <span class="commit-ref-pill">{{ ref }}</span>
-                }
-              </div>
-            </div>
+						<!-- Meta details (Author, Committer, Date, Parents) -->
+						<div class="commit-meta-grid">
+							<div class="meta-row">
+								<span class="meta-label">Author:</span>
+								<span class="meta-value">
+									<strong>{{ c.author_name }}</strong>
+									<span class="meta-email">&lt;{{ c.author_email }}&gt;</span>
+									<span class="meta-date"
+										>• {{ c.author_date }} ({{ c.author_date_relative }})</span
+									>
+								</span>
+							</div>
 
-            <!-- Commit Subject & Message -->
-            <div class="commit-message-section">
-              <h2 class="commit-subject">{{ c.subject }}</h2>
-              @if (c.body) {
-                <div class="commit-body-text">{{ c.body }}</div>
-              }
-            </div>
+							@if (
+								c.committer_name &&
+								(c.committer_name !== c.author_name ||
+									c.committer_date !== c.author_date)
+							) {
+								<div class="meta-row">
+									<span class="meta-label">Committer:</span>
+									<span class="meta-value">
+										<strong>{{ c.committer_name }}</strong>
+										<span class="meta-email"
+											>&lt;{{ c.committer_email }}&gt;</span
+										>
+										<span class="meta-date">• {{ c.committer_date }}</span>
+									</span>
+								</div>
+							}
 
-            <!-- Meta details (Author, Committer, Date, Parents) -->
-            <div class="commit-meta-grid">
-              <div class="meta-row">
-                <span class="meta-label">Author:</span>
-                <span class="meta-value">
-                  <strong>{{ c.author_name }}</strong>
-                  <span class="meta-email">&lt;{{ c.author_email }}&gt;</span>
-                  <span class="meta-date">• {{ c.author_date }} ({{ c.author_date_relative }})</span>
-                </span>
-              </div>
+							@if (c.parents.length > 0) {
+								<div class="meta-row">
+									<span class="meta-label">Parents:</span>
+									<span class="meta-value commit-parents">
+										@for (p of c.parents; track p) {
+											<code
+												class="parent-hash"
+												(click)="workspaceService.openCommitDetails(p)"
+												[title]="'Inspect parent ' + p"
+												>{{ p.substring(0, 7) }}</code
+											>
+										}
+									</span>
+								</div>
+							}
+						</div>
 
-              @if (c.committer_name && (c.committer_name !== c.author_name || c.committer_date !== c.author_date)) {
-                <div class="meta-row">
-                  <span class="meta-label">Committer:</span>
-                  <span class="meta-value">
-                    <strong>{{ c.committer_name }}</strong>
-                    <span class="meta-email">&lt;{{ c.committer_email }}&gt;</span>
-                    <span class="meta-date">• {{ c.committer_date }}</span>
-                  </span>
-                </div>
-              }
+						<!-- Changed Files Header -->
+						<div class="commit-files-header-bar">
+							<span class="commit-files-title"
+								>📁 Changed Files ({{ c.files.length }})</span
+							>
+							@if (c.stat_summary) {
+								<div class="commit-stat-pill" [title]="c.stat_summary">
+									{{ c.stat_summary }}
+								</div>
+							}
+						</div>
 
-              @if (c.parents.length > 0) {
-                <div class="meta-row">
-                  <span class="meta-label">Parents:</span>
-                  <span class="meta-value commit-parents">
-                    @for (p of c.parents; track p) {
-                      <code class="parent-hash" (click)="workspaceService.openCommitDetails(p)" [title]="'Inspect parent ' + p">{{ p.substring(0, 7) }}</code>
-                    }
-                  </span>
-                </div>
-              }
-            </div>
+						<!-- Changed Files List with 2 actions per file -->
+						<div class="commit-files-list">
+							@for (file of c.files; track file.path) {
+								<div class="commit-file-row">
+									<span
+										class="file-status-badge status-{{
+											file.status.toLowerCase()
+										}}"
+									>
+										{{ file.status }}
+									</span>
+									<span class="file-path" [title]="file.path">{{
+										file.path
+									}}</span>
+									<span class="file-changes-count">
+										@if (file.insertions > 0) {
+											<span class="ins">+{{ file.insertions }}</span>
+										}
+										@if (file.deletions > 0) {
+											<span class="del">-{{ file.deletions }}</span>
+										}
+									</span>
+									<div class="file-actions-right">
+										<button
+											type="button"
+											class="btn-file-action btn-diff"
+											(click)="
+												workspaceService.openCommitFileDiff(
+													c.hash,
+													file.path,
+													file.status
+												)
+											"
+											title="Open side-by-side diff"
+										>
+											◫ Side-by-Side Diff
+										</button>
+										<button
+											type="button"
+											class="btn-file-action btn-open"
+											(click)="openFileFromCommit(file.path)"
+											title="Go to current file in workspace"
+										>
+											↗ Go to File
+										</button>
+									</div>
+								</div>
+							}
+						</div>
+					</div>
 
-            <!-- Changed Files Header -->
-            <div class="commit-files-header-bar">
-              <span class="commit-files-title">📁 Changed Files ({{ c.files.length }})</span>
-              @if (c.stat_summary) {
-                <div class="commit-stat-pill" [title]="c.stat_summary">
-                  {{ c.stat_summary }}
-                </div>
-              }
-            </div>
-
-            <!-- Changed Files List with 2 actions per file -->
-            <div class="commit-files-list">
-              @for (file of c.files; track file.path) {
-                <div class="commit-file-row">
-                  <span class="file-status-badge status-{{ file.status.toLowerCase() }}">
-                    {{ file.status }}
-                  </span>
-                  <span class="file-path" [title]="file.path">{{ file.path }}</span>
-                  <span class="file-changes-count">
-                    @if (file.insertions > 0) {
-                      <span class="ins">+{{ file.insertions }}</span>
-                    }
-                    @if (file.deletions > 0) {
-                      <span class="del">-{{ file.deletions }}</span>
-                    }
-                  </span>
-                  <div class="file-actions-right">
-                    <button
-                      type="button"
-                      class="btn-file-action btn-diff"
-                      (click)="workspaceService.openCommitFileDiff(c.hash, file.path, file.status)"
-                      title="Open side-by-side diff"
-                    >
-                      ◫ Side-by-Side Diff
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-file-action btn-open"
-                      (click)="openFileFromCommit(file.path)"
-                      title="Go to current file in workspace"
-                    >
-                      ↗ Go to File
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
-          </div>
-
-          <!-- Footer Actions -->
-          <div class="action-footer commit-footer">
-            <button
-              type="button"
-              class="btn btn-ai-analyze"
-              [disabled]="!canExplainWithAi()"
-              [title]="getAiExplainTooltip()"
-              (click)="analyzeCommitWithAi(c)"
-            >
-              ✨ Explain with Vector AI
-            </button>
-            <button type="button" class="btn btn-secondary" (click)="close()">Close</button>
-          </div>
-        }
-      }
-    </div>
-  </div>
+					<!-- Footer Actions -->
+					<div class="action-footer commit-footer">
+						<button
+							type="button"
+							class="btn btn-ai-analyze"
+							[disabled]="!canExplainWithAi()"
+							[title]="getAiExplainTooltip()"
+							(click)="analyzeCommitWithAi(c)"
+						>
+							✨ Explain with Vector AI
+						</button>
+						<button type="button" class="btn btn-secondary" (click)="close()">
+							Close
+						</button>
+					</div>
+				}
+			}
+		</div>
+	</div>
 }

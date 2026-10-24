@@ -110,8 +110,30 @@ export class InlineCompletionService {
 						});
 
 						const isOnlyIndentation = lineBeforeCursor.trim().length === 0;
-						const lastChar = lineBeforeCursor.length > 0 ? lineBeforeCursor[lineBeforeCursor.length - 1] : '';
-						const triggerChars = [' ', '\t', '(', ')', '{', '}', '[', ']', '=', ':', ';', ',', '>', '<', '$', '.', '"', '\''];
+						const lastChar =
+							lineBeforeCursor.length > 0
+								? lineBeforeCursor[lineBeforeCursor.length - 1]
+								: '';
+						const triggerChars = [
+							' ',
+							'\t',
+							'(',
+							')',
+							'{',
+							'}',
+							'[',
+							']',
+							'=',
+							':',
+							';',
+							',',
+							'>',
+							'<',
+							'$',
+							'.',
+							'"',
+							"'",
+						];
 						const isTriggerKey = triggerChars.includes(lastChar);
 
 						if (!isOnlyIndentation && !isTriggerKey) {
@@ -190,11 +212,15 @@ export class InlineCompletionService {
 							let aiSuggestion = await this.aiService.getInfillCompletion(
 								prefix,
 								suffix,
-								controller.signal
+								controller.signal,
 							);
 
 							if (aiSuggestion && aiSuggestion.length > 0) {
-								aiSuggestion = this.deduplicateOverlap(aiSuggestion, prefix, suffix);
+								aiSuggestion = this.deduplicateOverlap(
+									aiSuggestion,
+									prefix,
+									suffix,
+								);
 								if (aiSuggestion.trim().length > 0) {
 									return {
 										items: [
@@ -204,7 +230,7 @@ export class InlineCompletionService {
 													position.lineNumber,
 													position.column,
 													position.lineNumber,
-													position.column
+													position.column,
 												),
 											},
 										],
@@ -239,7 +265,7 @@ export class InlineCompletionService {
 									position.lineNumber,
 									position.column,
 									position.lineNumber,
-									position.column
+									position.column,
 								),
 							},
 						],
@@ -252,7 +278,10 @@ export class InlineCompletionService {
 
 	private getSmartSuggestion(language: string, currentPrefix: string): string | null {
 		if (language === 'omniflux') {
-			if ('when receiving'.startsWith(currentPrefix) || currentPrefix.endsWith('when receiving')) {
+			if (
+				'when receiving'.startsWith(currentPrefix) ||
+				currentPrefix.endsWith('when receiving')
+			) {
 				return ' GET request to "/api/v1/users":\n    respond with status 200 and json {"ok": true}';
 			}
 			if ('listen on'.startsWith(currentPrefix) || currentPrefix.endsWith('listen')) {

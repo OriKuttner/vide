@@ -14,23 +14,112 @@ function escapeRegex(str: string): string {
 }
 
 const IGNORED_KEYWORDS = new Set([
-	'if', 'else', 'elseif', 'for', 'foreach', 'while', 'do', 'switch', 'case', 'break', 'continue',
-	'return', 'function', 'class', 'interface', 'trait', 'enum', 'extends', 'implements', 'public',
-	'protected', 'private', 'static', 'final', 'abstract', 'const', 'let', 'var', 'new', 'try',
-	'catch', 'finally', 'throw', 'use', 'namespace', 'import', 'export', 'default', 'from', 'as',
-	'true', 'false', 'null', 'undefined', 'void', 'this', 'self', 'parent', 'echo', 'print',
-	'include', 'require', 'include_once', 'require_once', 'die', 'exit', 'yield', 'async', 'await'
+	'if',
+	'else',
+	'elseif',
+	'for',
+	'foreach',
+	'while',
+	'do',
+	'switch',
+	'case',
+	'break',
+	'continue',
+	'return',
+	'function',
+	'class',
+	'interface',
+	'trait',
+	'enum',
+	'extends',
+	'implements',
+	'public',
+	'protected',
+	'private',
+	'static',
+	'final',
+	'abstract',
+	'const',
+	'let',
+	'var',
+	'new',
+	'try',
+	'catch',
+	'finally',
+	'throw',
+	'use',
+	'namespace',
+	'import',
+	'export',
+	'default',
+	'from',
+	'as',
+	'true',
+	'false',
+	'null',
+	'undefined',
+	'void',
+	'this',
+	'self',
+	'parent',
+	'echo',
+	'print',
+	'include',
+	'require',
+	'include_once',
+	'require_once',
+	'die',
+	'exit',
+	'yield',
+	'async',
+	'await',
 ]);
 
 const IGNORED_DIR_NAMES = new Set([
-	'.git', '.vide', 'node_modules', 'vendor', '.cache', 'dist', 'build', '.angular'
+	'.git',
+	'.vide',
+	'node_modules',
+	'vendor',
+	'.cache',
+	'dist',
+	'build',
+	'.angular',
 ]);
 
 const BINARY_EXTENSIONS = new Set([
-	'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'ico', 'svg',
-	'zip', 'tar', 'gz', '7z', 'rar', 'pdf', 'exe', 'bin', 'dll',
-	'so', 'dylib', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4',
-	'wav', 'ogg', 'mov', 'avi', 'mkv', 'flac', 'iso', 'lock'
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'bmp',
+	'webp',
+	'ico',
+	'svg',
+	'zip',
+	'tar',
+	'gz',
+	'7z',
+	'rar',
+	'pdf',
+	'exe',
+	'bin',
+	'dll',
+	'so',
+	'dylib',
+	'woff',
+	'woff2',
+	'ttf',
+	'eot',
+	'mp3',
+	'mp4',
+	'wav',
+	'ogg',
+	'mov',
+	'avi',
+	'mkv',
+	'flac',
+	'iso',
+	'lock',
 ]);
 
 function getLanguageFamily(ext: string): Set<string> {
@@ -89,11 +178,19 @@ export class SymbolNavigationService {
 
 	public isLineFunctionDefinition(line: string): boolean {
 		const trimmed = line.trim();
-		if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('#')) {
+		if (
+			!trimmed ||
+			trimmed.startsWith('//') ||
+			trimmed.startsWith('*') ||
+			trimmed.startsWith('/*') ||
+			trimmed.startsWith('#')
+		) {
 			return false;
 		}
 
-		if (/^(?:if|elseif|while|for|foreach|switch|catch|return|throw|echo|print)\b/.test(trimmed)) {
+		if (
+			/^(?:if|elseif|while|for|foreach|switch|catch|return|throw|echo|print)\b/.test(trimmed)
+		) {
 			return false;
 		}
 		if (/^(?:this\.|super\.|\$this->)/.test(trimmed)) {
@@ -118,7 +215,7 @@ export class SymbolNavigationService {
 
 	public isCursorOnDefinition(
 		model: MonacoType.editor.ITextModel,
-		position: MonacoType.IPosition
+		position: MonacoType.IPosition,
 	): boolean {
 		const line = model.getLineContent(position.lineNumber);
 		if (this.isLineFunctionDefinition(line)) {
@@ -127,7 +224,11 @@ export class SymbolNavigationService {
 
 		if (position.lineNumber > 1) {
 			const prevLine = model.getLineContent(position.lineNumber - 1);
-			if (this.isLineFunctionDefinition(prevLine) && !prevLine.includes('{') && !prevLine.includes(';')) {
+			if (
+				this.isLineFunctionDefinition(prevLine) &&
+				!prevLine.includes('{') &&
+				!prevLine.includes(';')
+			) {
 				return true;
 			}
 		}
@@ -150,14 +251,26 @@ export class SymbolNavigationService {
 		const escaped = escapeRegex(bareSymbol);
 
 		const funcPatterns = [
-			new RegExp(`(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s*(?:\\*\\s*)?(?:&\\s*)?${escaped}\\s*[\\(<]`, 'i'),
+			new RegExp(
+				`(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s*(?:\\*\\s*)?(?:&\\s*)?${escaped}\\s*[\\(<]`,
+				'i',
+			),
 			new RegExp(`(?:func|proc|flow|action|task|component)\\s+${escaped}\\b`, 'i'),
-			new RegExp(`(?:export\\s+)?(?:default\\s+)?(?:async\\s+)?function\\s*(?:\\*\\s*)?${escaped}\\s*[\\(<]`, 'i'),
-			new RegExp(`(?:export\\s+)?(?:const|let|var)\\s+${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[a-zA-Z0-9_$]+)\\s*=>`),
+			new RegExp(
+				`(?:export\\s+)?(?:default\\s+)?(?:async\\s+)?function\\s*(?:\\*\\s*)?${escaped}\\s*[\\(<]`,
+				'i',
+			),
+			new RegExp(
+				`(?:export\\s+)?(?:const|let|var)\\s+${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[a-zA-Z0-9_$]+)\\s*=>`,
+			),
 			new RegExp(`^(?:export\\s+)?type\\s+${escaped}\\s*=`),
-			new RegExp(`(?:public|protected|private|static|async|override|get|set|readonly)\\s+(?:async\\s+)?${escaped}\\s*[\\(<:=]`),
+			new RegExp(
+				`(?:public|protected|private|static|async|override|get|set|readonly)\\s+(?:async\\s+)?${escaped}\\s*[\\(<:=]`,
+			),
 			new RegExp(`^\\s*${escaped}\\s*\\([^)]*\\)\\s*(?::\\s*[^{]+)?\\s*\\{?`),
-			new RegExp(`^\\s*${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[a-zA-Z0-9_$]+)\\s*=>`),
+			new RegExp(
+				`^\\s*${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[a-zA-Z0-9_$]+)\\s*=>`,
+			),
 			new RegExp(`sub\\s+${escaped}\\b`, 'i'),
 			new RegExp(`(?:def|fn)\\s+${escaped}\\b`, 'i'),
 			new RegExp(`(?:class|interface|trait|enum|struct)\\s+${escaped}\\b`, 'i'),
@@ -168,7 +281,7 @@ export class SymbolNavigationService {
 
 	public async triggerFindReferences(
 		model: MonacoType.editor.ITextModel,
-		position: MonacoType.IPosition
+		position: MonacoType.IPosition,
 	): Promise<void> {
 		const symbolInfo = this.extractSymbolAtPosition(model, position, this.monacoRef);
 		if (!symbolInfo) {
@@ -184,7 +297,13 @@ export class SymbolNavigationService {
 		this.workspaceService.isSearchingReferences.set(true);
 		this.workspaceService.openModal('references');
 
-		const results = await this.searchReferencesForSymbol(model, position, queryWord, isVar, bareSymbol);
+		const results = await this.searchReferencesForSymbol(
+			model,
+			position,
+			queryWord,
+			isVar,
+			bareSymbol,
+		);
 		this.workspaceService.pendingReferences.set(results);
 		this.workspaceService.isSearchingReferences.set(false);
 	}
@@ -193,7 +312,7 @@ export class SymbolNavigationService {
 		model: MonacoType.editor.ITextModel,
 		position: MonacoType.IPosition,
 		token: MonacoType.CancellationToken,
-		monaco: typeof MonacoType
+		monaco: typeof MonacoType,
 	): Promise<MonacoType.languages.Location[] | null> {
 		const symbolInfo = this.extractSymbolAtPosition(model, position, monaco);
 		if (!symbolInfo) return null;
@@ -249,7 +368,9 @@ export class SymbolNavigationService {
 
 		// 3. Search candidate files strictly filtered by language family (capped at 15 files)
 		const allFiles = this.workspaceService.files();
-		const currentExt = activeFile?.name.includes('.') ? activeFile.name.substring(activeFile.name.lastIndexOf('.') + 1) : '';
+		const currentExt = activeFile?.name.includes('.')
+			? activeFile.name.substring(activeFile.name.lastIndexOf('.') + 1)
+			: '';
 		const family = getLanguageFamily(currentExt);
 
 		const candidateFiles = allFiles.filter((f) => {
@@ -262,9 +383,10 @@ export class SymbolNavigationService {
 		// Sort candidate files:
 		// A. Files that contain the symbol in their filename or path
 		// B. Files in the same folder
-		const currentDir = activeFile?.path && activeFile.path.includes('/')
-			? activeFile.path.substring(0, activeFile.path.lastIndexOf('/'))
-			: '';
+		const currentDir =
+			activeFile?.path && activeFile.path.includes('/')
+				? activeFile.path.substring(0, activeFile.path.lastIndexOf('/'))
+				: '';
 
 		candidateFiles.sort((a, b) => {
 			const aHasName = a.name.toLowerCase().includes(bareSymbol.toLowerCase()) ? 1 : 0;
@@ -313,7 +435,7 @@ export class SymbolNavigationService {
 		originPosition: MonacoType.IPosition,
 		_queryWord: string,
 		isVar: boolean,
-		bareSymbol: string
+		bareSymbol: string,
 	): Promise<GrepResult[]> {
 		const results: GrepResult[] = [];
 		const escaped = escapeRegex(bareSymbol);
@@ -384,7 +506,9 @@ export class SymbolNavigationService {
 
 		// 3. Other candidate files in the same language family (capped at 30 files)
 		const allFiles = this.workspaceService.files();
-		const currentExt = activeFile?.name.includes('.') ? activeFile.name.substring(activeFile.name.lastIndexOf('.') + 1) : '';
+		const currentExt = activeFile?.name.includes('.')
+			? activeFile.name.substring(activeFile.name.lastIndexOf('.') + 1)
+			: '';
 		const family = getLanguageFamily(currentExt);
 
 		const candidateFiles = allFiles.filter((f) => {
@@ -438,7 +562,7 @@ export class SymbolNavigationService {
 	private extractSymbolAtPosition(
 		model: MonacoType.editor.ITextModel,
 		position: MonacoType.IPosition,
-		_monaco?: typeof MonacoType | null
+		_monaco?: typeof MonacoType | null,
 	): { queryWord: string; isVar: boolean; bareSymbol: string } | null {
 		let wordInfo = model.getWordAtPosition(position);
 		const line = model.getLineContent(position.lineNumber);
@@ -449,7 +573,10 @@ export class SymbolNavigationService {
 		if (!wordInfo) {
 			// Check if cursor is directly on a $ character
 			if (position.column <= line.length && line[position.column - 1] === '$') {
-				wordInfo = model.getWordAtPosition({ lineNumber: position.lineNumber, column: position.column + 1 } as any);
+				wordInfo = model.getWordAtPosition({
+					lineNumber: position.lineNumber,
+					column: position.column + 1,
+				} as any);
 				if (wordInfo) {
 					isVar = true;
 					queryWord = '$' + wordInfo.word;
@@ -475,7 +602,7 @@ export class SymbolNavigationService {
 	private findDefinitionsInContent(
 		content: string,
 		queryWord: string,
-		isVar: boolean
+		isVar: boolean,
 	): { lineNumber: number; startCol: number; endCol: number }[] {
 		const results: { lineNumber: number; startCol: number; endCol: number }[] = [];
 		const bareSymbol = isVar && queryWord.startsWith('$') ? queryWord.substring(1) : queryWord;
@@ -485,22 +612,56 @@ export class SymbolNavigationService {
 
 		if (isVar) {
 			// PHP / Perl variable assignment or property/parameter declaration
-			patterns.push(new RegExp(`(?:(?:public|protected|private|static|var)\\s+)?\\$${escaped}\\s*=`, 'i'));
-			patterns.push(new RegExp(`(?:function|fn|sub)\\s+[^\\(]*\\([^\\)]*\\$${escaped}\\b`, 'i'));
+			patterns.push(
+				new RegExp(
+					`(?:(?:public|protected|private|static|var)\\s+)?\\$${escaped}\\s*=`,
+					'i',
+				),
+			);
+			patterns.push(
+				new RegExp(`(?:function|fn|sub)\\s+[^\\(]*\\([^\\)]*\\$${escaped}\\b`, 'i'),
+			);
 		} else {
 			// Functions & Methods (PHP, JS/TS, OmniFlux, Perl, Go, Rust, etc.)
-			patterns.push(new RegExp(`(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+(?:&\\s*)?${escaped}\\s*\\(`, 'i'));
-			patterns.push(new RegExp(`(?:func|proc|flow|action|task|component|service|endpoint)\\s+${escaped}\\b`, 'i'));
-			patterns.push(new RegExp(`(?:export\\s+)?(?:default\\s+)?(?:async\\s+)?function\\s*(?:\\*\\s*)?${escaped}\\s*[\\(<]`, 'i'));
-			patterns.push(new RegExp(`(?:export\\s+)?(?:const|let|var)\\s+${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[a-zA-Z0-9_$]+)\\s*=>`));
-			patterns.push(new RegExp(`(?:public|protected|private|static|async|get|set|readonly)\\s+(?:async\\s+)?${escaped}\\s*[\\(<:=]`));
+			patterns.push(
+				new RegExp(
+					`(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+(?:&\\s*)?${escaped}\\s*\\(`,
+					'i',
+				),
+			);
+			patterns.push(
+				new RegExp(
+					`(?:func|proc|flow|action|task|component|service|endpoint)\\s+${escaped}\\b`,
+					'i',
+				),
+			);
+			patterns.push(
+				new RegExp(
+					`(?:export\\s+)?(?:default\\s+)?(?:async\\s+)?function\\s*(?:\\*\\s*)?${escaped}\\s*[\\(<]`,
+					'i',
+				),
+			);
+			patterns.push(
+				new RegExp(
+					`(?:export\\s+)?(?:const|let|var)\\s+${escaped}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[a-zA-Z0-9_$]+)\\s*=>`,
+				),
+			);
+			patterns.push(
+				new RegExp(
+					`(?:public|protected|private|static|async|get|set|readonly)\\s+(?:async\\s+)?${escaped}\\s*[\\(<:=]`,
+				),
+			);
 			patterns.push(new RegExp(`^\\s*${escaped}\\s*\\([^)]*\\)\\s*(?::\\s*[^{]+)?\\{`));
 			patterns.push(new RegExp(`sub\\s+${escaped}\\b`, 'i'));
 			patterns.push(new RegExp(`(?:def|fn)\\s+${escaped}\\b`, 'i'));
 
 			// Classes, Interfaces, Types, Traits, Enums
-			patterns.push(new RegExp(`(?:class|interface|trait|enum|type|struct)\\s+${escaped}\\b`, 'i'));
-			patterns.push(new RegExp(`(?:const\\s+${escaped}\\s*=|define\\s*\\(\\s*['"]${escaped}['"])`, 'i'));
+			patterns.push(
+				new RegExp(`(?:class|interface|trait|enum|type|struct)\\s+${escaped}\\b`, 'i'),
+			);
+			patterns.push(
+				new RegExp(`(?:const\\s+${escaped}\\s*=|define\\s*\\(\\s*['"]${escaped}['"])`, 'i'),
+			);
 			patterns.push(new RegExp(`(?:export\\s+)?(?:const|let|var)\\s+${escaped}\\b\\s*[:=]`));
 			patterns.push(new RegExp(`(?:state|prop|var|const|model|data)\\s+${escaped}\\b`, 'i'));
 		}
@@ -523,7 +684,8 @@ export class SymbolNavigationService {
 					}
 					if (idx !== -1) {
 						const startCol = idx + 1;
-						const endCol = startCol + (line.startsWith('$', idx) ? sym.length : bareSymbol.length);
+						const endCol =
+							startCol + (line.startsWith('$', idx) ? sym.length : bareSymbol.length);
 						results.push({ lineNumber: i + 1, startCol, endCol });
 						break;
 					}
@@ -537,7 +699,7 @@ export class SymbolNavigationService {
 	private handleOpenCodeEditor(
 		_source: MonacoType.editor.ICodeEditor,
 		resource: MonacoType.Uri,
-		selectionOrPosition?: MonacoType.IRange | MonacoType.IPosition
+		selectionOrPosition?: MonacoType.IRange | MonacoType.IPosition,
 	): boolean {
 		const uriStr = resource.toString();
 		const prefix = 'inmemory://workspace/';

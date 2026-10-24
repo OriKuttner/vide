@@ -6,280 +6,423 @@
 
 <!-- Floating Draggable Trigger Button (Only visible when enabled and chat is closed) -->
 @if (!isOpen() && assistantService.showFloatingButton()) {
-  <div class="agent-floating-btn"
-       [style.left.px]="buttonPos().x"
-       [style.top.px]="buttonPos().y"
-       (pointerdown)="onButtonPointerDown($event)"
-       (pointermove)="onButtonPointerMove($event)"
-       (pointerup)="onButtonPointerUp($event)"
-       (click)="onButtonClick($event)"
-       [class.thinking]="assistantService.isLoading()"
-       [title]="assistantService.currentAgent().name + ' — Click to open chat'">
-    <div class="avatar-ring">
-      <div class="vector-ai-icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-          <circle cx="12" cy="5" r="2"></circle>
-          <path d="M12 7v4"></path>
-          <line x1="8" y1="16" x2="8" y2="16"></line>
-          <line x1="16" y1="16" x2="16" y2="16"></line>
-        </svg>
-      </div>
-      @if (assistantService.isLoading()) {
-        <div class="thinking-spinner"></div>
-      }
-    </div>
-  </div>
+	<div
+		class="agent-floating-btn"
+		[style.left.px]="buttonPos().x"
+		[style.top.px]="buttonPos().y"
+		(pointerdown)="onButtonPointerDown($event)"
+		(pointermove)="onButtonPointerMove($event)"
+		(pointerup)="onButtonPointerUp($event)"
+		(click)="onButtonClick($event)"
+		[class.thinking]="assistantService.isLoading()"
+		[title]="assistantService.currentAgent().name + ' — Click to open chat'"
+	>
+		<div class="avatar-ring">
+			<div class="vector-ai-icon">
+				<svg
+					width="28"
+					height="28"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<rect x="3" y="11" width="18" height="10" rx="2"></rect>
+					<circle cx="12" cy="5" r="2"></circle>
+					<path d="M12 7v4"></path>
+					<line x1="8" y1="16" x2="8" y2="16"></line>
+					<line x1="16" y1="16" x2="16" y2="16"></line>
+				</svg>
+			</div>
+			@if (assistantService.isLoading()) {
+				<div class="thinking-spinner"></div>
+			}
+		</div>
+	</div>
 }
 
 <!-- Resizable Floating Chat Window (Kept in DOM, toggled via CSS for instant 0ms opening) -->
-<div class="agent-chat-window"
-     [class.hidden]="!isOpen()"
-     [attr.dir]="aiService.chatDirection()"
-     [class.dir-rtl]="aiService.chatDirection() === 'rtl'"
-     [class.dir-ltr]="aiService.chatDirection() === 'ltr'"
-     [style.width.px]="windowSize().width"
-     [style.height.px]="windowSize().height"
-     [style.right.px]="20"
-     [style.bottom.px]="30">
+<div
+	class="agent-chat-window"
+	[class.hidden]="!isOpen()"
+	[attr.dir]="aiService.chatDirection()"
+	[class.dir-rtl]="aiService.chatDirection() === 'rtl'"
+	[class.dir-ltr]="aiService.chatDirection() === 'ltr'"
+	[style.width.px]="windowSize().width"
+	[style.height.px]="windowSize().height"
+	[style.right.px]="20"
+	[style.bottom.px]="30"
+>
+	<!-- Resize Handles -->
+	<div class="resize-handle handle-top" (pointerdown)="onResizeStart($event, 'top')"></div>
+	<div class="resize-handle handle-left" (pointerdown)="onResizeStart($event, 'left')"></div>
+	<div
+		class="resize-handle handle-top-left"
+		(pointerdown)="onResizeStart($event, 'top-left')"
+	></div>
 
-    <!-- Resize Handles -->
-    <div class="resize-handle handle-top" (pointerdown)="onResizeStart($event, 'top')"></div>
-    <div class="resize-handle handle-left" (pointerdown)="onResizeStart($event, 'left')"></div>
-    <div class="resize-handle handle-top-left" (pointerdown)="onResizeStart($event, 'top-left')"></div>
+	<!-- Chat Header -->
+	<header class="chat-header">
+		<div class="agent-selector-wrapper">
+			<div class="agent-title-btn">
+				<div class="header-avatar-icon">
+					<svg
+						width="22"
+						height="22"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<rect x="3" y="11" width="18" height="10" rx="2"></rect>
+						<circle cx="12" cy="5" r="2"></circle>
+						<path d="M12 7v4"></path>
+						<line x1="8" y1="16" x2="8" y2="16"></line>
+						<line x1="16" y1="16" x2="16" y2="16"></line>
+					</svg>
+				</div>
+				<div class="header-titles">
+					<span class="agent-name">{{ assistantService.currentAgent().name }}</span>
+					<span class="agent-subtitle">{{ aiService.chatModel() }}</span>
+				</div>
+			</div>
+		</div>
 
-    <!-- Chat Header -->
-    <header class="chat-header">
-      <div class="agent-selector-wrapper">
-        <div class="agent-title-btn">
-          <div class="header-avatar-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-              <circle cx="12" cy="5" r="2"></circle>
-              <path d="M12 7v4"></path>
-              <line x1="8" y1="16" x2="8" y2="16"></line>
-              <line x1="16" y1="16" x2="16" y2="16"></line>
-            </svg>
-          </div>
-          <div class="header-titles">
-            <span class="agent-name">{{ assistantService.currentAgent().name }}</span>
-            <span class="agent-subtitle">{{ aiService.chatModel() }}</span>
-          </div>
-        </div>
-      </div>
+		<!-- Action Buttons -->
+		<div class="header-actions">
+			<!-- Direction Toggle Button (LTR / RTL) -->
+			<button
+				type="button"
+				class="header-btn dir-toggle-btn"
+				(click)="toggleChatDirection()"
+				[title]="
+					aiService.chatDirection() === 'rtl'
+						? 'Switch to Left-to-Right (LTR)'
+						: 'Switch to Right-to-Left (RTL)'
+				"
+			>
+				<span class="dir-badge">{{
+					aiService.chatDirection() === 'rtl' ? 'RTL' : 'LTR'
+				}}</span>
+			</button>
 
-      <!-- Action Buttons -->
-      <div class="header-actions">
-        <!-- Direction Toggle Button (LTR / RTL) -->
-        <button type="button"
-                class="header-btn dir-toggle-btn"
-                (click)="toggleChatDirection()"
-                [title]="aiService.chatDirection() === 'rtl' ? 'Switch to Left-to-Right (LTR)' : 'Switch to Right-to-Left (RTL)'">
-          <span class="dir-badge">{{ aiService.chatDirection() === 'rtl' ? 'RTL' : 'LTR' }}</span>
-        </button>
+			<!-- AI Settings Shortcut Button -->
+			<button
+				type="button"
+				class="header-btn settings-btn"
+				(click)="openAiSettings()"
+				title="AI Settings"
+			>
+				<svg
+					width="17"
+					height="17"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<circle cx="12" cy="12" r="3"></circle>
+					<path
+						d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+					></path>
+				</svg>
+			</button>
 
-        <!-- AI Settings Shortcut Button -->
-        <button type="button"
-                class="header-btn settings-btn"
-                (click)="openAiSettings()"
-                title="AI Settings">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-        </button>
+			<!-- Clear Chat Button (New conversation) -->
+			<button
+				type="button"
+				class="header-btn clear-btn"
+				(click)="clearChat()"
+				title="New conversation (Clear history)"
+			>
+				<svg
+					width="17"
+					height="17"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<polyline points="3 6 5 6 21 6"></polyline>
+					<path
+						d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+					></path>
+				</svg>
+			</button>
 
-        <!-- Clear Chat Button (New conversation) -->
-        <button type="button"
-                class="header-btn clear-btn"
-                (click)="clearChat()"
-                title="New conversation (Clear history)">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-          </svg>
-        </button>
+			<!-- Close / Minimize Button -->
+			<button
+				type="button"
+				class="header-btn close-btn"
+				(click)="closeChat()"
+				title="Close chat"
+			>
+				<svg
+					width="17"
+					height="17"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<line x1="18" y1="6" x2="6" y2="18"></line>
+					<line x1="6" y1="6" x2="18" y2="18"></line>
+				</svg>
+			</button>
+		</div>
+	</header>
 
-        <!-- Close / Minimize Button -->
-        <button type="button" class="header-btn close-btn" (click)="closeChat()" title="Close chat">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-    </header>
+	<!-- Unconfigured Banner (If Gemini key is missing) -->
+	@if (!aiService.isChatConfigured()) {
+		<div class="auth-fallback-banner">
+			<span>A Google Gemini API key is required to use the assistant</span>
+			<button type="button" class="login-action-btn" (click)="openAiSettings()">
+				Configure API Key
+			</button>
+		</div>
+	} @else if (assistantService.errorMessage()) {
+		<div class="error-banner">
+			<span>{{ assistantService.errorMessage() }}</span>
+		</div>
+	}
 
-    <!-- Unconfigured Banner (If Gemini key is missing) -->
-    @if (!aiService.isChatConfigured()) {
-      <div class="auth-fallback-banner">
-        <span>A Google Gemini API key is required to use the assistant</span>
-        <button type="button" class="login-action-btn" (click)="openAiSettings()">
-          Configure API Key
-        </button>
-      </div>
-    } @else if (assistantService.errorMessage()) {
-      <div class="error-banner">
-        <span>{{ assistantService.errorMessage() }}</span>
-      </div>
-    }
+	<!-- Messages Container -->
+	<div
+		class="chat-messages"
+		#messagesContainer
+		(scroll)="onChatScroll()"
+		(wheel)="onChatWheel($event)"
+	>
+		@if (assistantService.feed().length === 0 && !assistantService.isLoading()) {
+			<div class="empty-state">
+				<div class="empty-avatar-icon">
+					<svg
+						width="44"
+						height="44"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<rect x="3" y="11" width="18" height="10" rx="2"></rect>
+						<circle cx="12" cy="5" r="2"></circle>
+						<path d="M12 7v4"></path>
+						<line x1="8" y1="16" x2="8" y2="16"></line>
+						<line x1="16" y1="16" x2="16" y2="16"></line>
+					</svg>
+				</div>
+				<p class="empty-greeting">{{ assistantService.currentAgent().greeting }}</p>
+				<div class="empty-shortcuts">
+					<span class="shortcut-tip"
+						>💡 Assistant is aware of active file and editor cursor position.</span
+					>
+				</div>
+			</div>
+		}
 
-    <!-- Messages Container -->
-    <div class="chat-messages" #messagesContainer (scroll)="onChatScroll()" (wheel)="onChatWheel($event)">
-      @if (assistantService.feed().length === 0 && !assistantService.isLoading()) {
-        <div class="empty-state">
-          <div class="empty-avatar-icon">
-            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-              <circle cx="12" cy="5" r="2"></circle>
-              <path d="M12 7v4"></path>
-              <line x1="8" y1="16" x2="8" y2="16"></line>
-              <line x1="16" y1="16" x2="16" y2="16"></line>
-            </svg>
-          </div>
-          <p class="empty-greeting">{{ assistantService.currentAgent().greeting }}</p>
-          <div class="empty-shortcuts">
-            <span class="shortcut-tip">💡 Assistant is aware of active file and editor cursor position.</span>
-          </div>
-        </div>
-      }
+		@for (msg of assistantService.feed(); track msg.id || $index) {
+			<div
+				class="message-row"
+				[class.user-row]="msg.role === 'user'"
+				[class.assistant-row]="msg.role === 'assistant'"
+				[class.system-row]="msg.role === 'system'"
+			>
+				<div class="message-bubble">
+					<div class="message-meta">
+						<span class="sender-name">
+							@if (msg.role === 'user') {
+								You
+							} @else if (msg.role === 'assistant') {
+								{{ assistantService.currentAgent().name }}
+							} @else {
+								System
+							}
+						</span>
+						@if (msg.role === 'assistant') {
+							@if (msg.model) {
+								<span class="meta-tag model-tag">{{ msg.model }}</span>
+							}
+							@if (msg.elapsed) {
+								<span class="meta-tag elapsed-tag">{{ msg.elapsed }}s</span>
+							}
+						}
+						@if (msg.tm) {
+							<span class="time-tag">{{ msg.tm }}</span>
+						}
+					</div>
 
-      @for (msg of assistantService.feed(); track (msg.id || $index)) {
-        <div class="message-row" [class.user-row]="msg.role === 'user'" [class.assistant-row]="msg.role === 'assistant'" [class.system-row]="msg.role === 'system'">
-          <div class="message-bubble">
-            <div class="message-meta">
-              <span class="sender-name">
-                @if (msg.role === 'user') { You }
-                @else if (msg.role === 'assistant') { {{ assistantService.currentAgent().name }} }
-                @else { System }
-              </span>
-              @if (msg.role === 'assistant') {
-                @if (msg.model) {
-                  <span class="meta-tag model-tag">{{ msg.model }}</span>
-                }
-                @if (msg.elapsed) {
-                  <span class="meta-tag elapsed-tag">{{ msg.elapsed }}s</span>
-                }
-              }
-              @if (msg.tm) {
-                <span class="time-tag">{{ msg.tm }}</span>
-              }
-            </div>
+					<!-- Thoughts & Tool Execution Accordion -->
+					@if (
+						msg.role === 'assistant' &&
+						(msg.thoughts || (msg.steps && msg.steps.length > 0))
+					) {
+						<div class="thoughts-section">
+							<button
+								type="button"
+								class="thoughts-toggle-btn"
+								(click)="toggleThoughts(msg.id || $index)"
+							>
+								<span class="thoughts-icon">⚙️</span>
+								<span>Actions & tools executed ({{ msg.steps?.length || 1 }})</span>
+								<svg
+									class="chevron-sm"
+									[class.open]="isThoughtsExpanded(msg.id || $index)"
+									width="12"
+									height="12"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M6 9l6 6 6-6"></path>
+								</svg>
+							</button>
 
-            <!-- Thoughts & Tool Execution Accordion -->
-            @if (msg.role === 'assistant' && (msg.thoughts || (msg.steps && msg.steps.length > 0))) {
-              <div class="thoughts-section">
-                <button type="button" class="thoughts-toggle-btn" (click)="toggleThoughts(msg.id || $index)">
-                  <span class="thoughts-icon">⚙️</span>
-                  <span>Actions & tools executed ({{ msg.steps?.length || 1 }})</span>
-                  <svg class="chevron-sm" [class.open]="isThoughtsExpanded(msg.id || $index)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M6 9l6 6 6-6"></path>
-                  </svg>
-                </button>
+							@if (isThoughtsExpanded(msg.id || $index)) {
+								<div class="thoughts-body">
+									@if (msg.steps && msg.steps.length > 0) {
+										<div class="steps-history-list">
+											@for (step of msg.steps; track $index) {
+												<div
+													class="history-step-item"
+													[class.tool-step]="step.type === 'tool'"
+												>
+													<span class="step-check">✓</span>
+													<span class="step-text">{{ step.text }}</span>
+													@if (step.timestamp) {
+														<small class="step-time">{{
+															step.timestamp
+														}}</small>
+													}
+												</div>
+											}
+										</div>
+									}
+								</div>
+							}
+						</div>
+					}
 
-                @if (isThoughtsExpanded(msg.id || $index)) {
-                  <div class="thoughts-body">
-                    @if (msg.steps && msg.steps.length > 0) {
-                      <div class="steps-history-list">
-                        @for (step of msg.steps; track $index) {
-                          <div class="history-step-item" [class.tool-step]="step.type === 'tool'">
-                            <span class="step-check">✓</span>
-                            <span class="step-text">{{ step.text }}</span>
-                            @if (step.timestamp) {
-                              <small class="step-time">{{ step.timestamp }}</small>
-                            }
-                          </div>
-                        }
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
-            }
+					<!-- Message Body formatted via MarkdownPipe -->
+					<div class="message-body" dir="auto" [innerHTML]="msg.message | markdown"></div>
+				</div>
+			</div>
+		}
 
-            <!-- Message Body formatted via MarkdownPipe -->
-            <div class="message-body" dir="auto" [innerHTML]="msg.message | markdown"></div>
-          </div>
-        </div>
-      }
+		<!-- Live Thinking Box while agent is processing -->
+		@if (assistantService.isLoading()) {
+			<div class="message-row assistant-row">
+				<div class="message-bubble live-thinking-card">
+					<div class="live-thinking-header">
+						<span class="live-spinner"></span>
+						<span class="live-title"
+							>{{ assistantService.currentAgent().name }} is processing
+							request...</span
+						>
+					</div>
 
-      <!-- Live Thinking Box while agent is processing -->
-      @if (assistantService.isLoading()) {
-        <div class="message-row assistant-row">
-          <div class="message-bubble live-thinking-card">
-            <div class="live-thinking-header">
-              <span class="live-spinner"></span>
-              <span class="live-title">{{ assistantService.currentAgent().name }} is processing request...</span>
-            </div>
+					@if (assistantService.thinkingSteps().length > 0) {
+						<div class="live-steps-container">
+							@for (step of assistantService.thinkingSteps(); track $index) {
+								<div
+									class="live-step-item"
+									[class.tool-step]="step.type === 'tool'"
+								>
+									<div class="step-tool-row">
+										@if (step.done) {
+											<span class="tool-icon tool-done">✓</span>
+										} @else {
+											<span class="tool-icon tool-active">⚙</span>
+										}
+										<span class="tool-text">{{ step.text }}</span>
+										@if (step.timestamp) {
+											<small class="tool-time">{{ step.timestamp }}</small>
+										}
+									</div>
+								</div>
+							}
+						</div>
+					} @else {
+						<div class="live-thinking-empty">
+							<span>Analyzing context and preparing response...</span>
+						</div>
+					}
+				</div>
+			</div>
+		}
+	</div>
 
-            @if (assistantService.thinkingSteps().length > 0) {
-              <div class="live-steps-container">
-                @for (step of assistantService.thinkingSteps(); track $index) {
-                  <div class="live-step-item" [class.tool-step]="step.type === 'tool'">
-                    <div class="step-tool-row">
-                      @if (step.done) {
-                        <span class="tool-icon tool-done">✓</span>
-                      } @else {
-                        <span class="tool-icon tool-active">⚙</span>
-                      }
-                      <span class="tool-text">{{ step.text }}</span>
-                      @if (step.timestamp) {
-                        <small class="tool-time">{{ step.timestamp }}</small>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
-            } @else {
-              <div class="live-thinking-empty">
-                <span>Analyzing context and preparing response...</span>
-              </div>
-            }
-          </div>
-        </div>
-      }
-    </div>
+	<!-- Scroll-to-bottom pill button if user is scrolled up -->
+	@if (isUserScrolledUp()) {
+		<button
+			type="button"
+			class="scroll-bottom-pill"
+			(click)="scrollToBottomManually()"
+			title="Scroll to bottom"
+		>
+			<svg
+				width="14"
+				height="14"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.5"
+			>
+				<polyline points="6 9 12 15 18 9"></polyline>
+			</svg>
+			<span>Scroll to bottom</span>
+		</button>
+	}
 
-    <!-- Scroll-to-bottom pill button if user is scrolled up -->
-    @if (isUserScrolledUp()) {
-      <button type="button" class="scroll-bottom-pill" (click)="scrollToBottomManually()" title="Scroll to bottom">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-        <span>Scroll to bottom</span>
-      </button>
-    }
-
-    <!-- Input Footer (CRITICAL: No placeholder attribute!) -->
-    <footer class="chat-footer">
-      <div class="input-wrapper">
-        <textarea #inputField
-                  [(ngModel)]="messageText"
-                  (keydown)="onKeyDown($event)"
-                  rows="1"
-                  dir="auto"
-                  class="chat-textarea"></textarea>
-        @if (assistantService.isLoading()) {
-          <button type="button"
-                  class="send-btn stop-btn"
-                  (click)="stopGeneration()"
-                  title="Stop generation">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-            </svg>
-          </button>
-        } @else {
-          <button type="button"
-                  class="send-btn"
-                  [disabled]="!messageText().trim()"
-                  (click)="sendMessage()"
-                  title="Send message">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-          </button>
-        }
-      </div>
-    </footer>
+	<!-- Input Footer (CRITICAL: No placeholder attribute!) -->
+	<footer class="chat-footer">
+		<div class="input-wrapper">
+			<textarea
+				#inputField
+				[(ngModel)]="messageText"
+				(keydown)="onKeyDown($event)"
+				rows="1"
+				dir="auto"
+				class="chat-textarea"
+			></textarea>
+			@if (assistantService.isLoading()) {
+				<button
+					type="button"
+					class="send-btn stop-btn"
+					(click)="stopGeneration()"
+					title="Stop generation"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+						<rect x="6" y="6" width="12" height="12" rx="2"></rect>
+					</svg>
+				</button>
+			} @else {
+				<button
+					type="button"
+					class="send-btn"
+					[disabled]="!messageText().trim()"
+					(click)="sendMessage()"
+					title="Send message"
+				>
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<line x1="22" y1="2" x2="11" y2="13"></line>
+						<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+					</svg>
+				</button>
+			}
+		</div>
+	</footer>
 </div>

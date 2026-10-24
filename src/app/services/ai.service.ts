@@ -23,7 +23,8 @@ export const GEMINI_MODELS: GeminiModelOption[] = [
 	{
 		id: 'gemini-3.8-flash',
 		name: 'Gemini 3.8 Flash (High Intelligence - Code & Software Engineering)',
-		description: 'Most intelligent Flash model, engineered for software engineering and complex workflows.',
+		description:
+			'Most intelligent Flash model, engineered for software engineering and complex workflows.',
 	},
 	{
 		id: 'gemini-3.6-flash',
@@ -59,9 +60,7 @@ export class AiService {
 
 	// Gemini Configuration signals (Primary / Inline Completions)
 	readonly geminiApiKey = signal<string>(
-		typeof window !== 'undefined'
-			? localStorage.getItem('vide_gemini_api_key') || ''
-			: ''
+		typeof window !== 'undefined' ? localStorage.getItem('vide_gemini_api_key') || '' : '',
 	);
 
 	readonly geminiModel = signal<string>(
@@ -72,22 +71,18 @@ export class AiService {
 				return saved;
 			}
 			return 'gemini-3.5-flash-lite';
-		})()
+		})(),
 	);
 
 	readonly isConfigured = computed(() => this.geminiApiKey().trim().length > 0);
 
 	readonly isEnabled = signal<boolean>(
-		typeof window !== 'undefined'
-			? localStorage.getItem('vide_ai_enabled') !== 'false'
-			: true
+		typeof window !== 'undefined' ? localStorage.getItem('vide_ai_enabled') !== 'false' : true,
 	);
 
 	// Chat Agent Configuration signals (Dedicated Key with fallback, separate model, system prompt & direction)
 	readonly chatApiKey = signal<string>(
-		typeof window !== 'undefined'
-			? localStorage.getItem('vide_chat_gemini_api_key') || ''
-			: ''
+		typeof window !== 'undefined' ? localStorage.getItem('vide_chat_gemini_api_key') || '' : '',
 	);
 
 	readonly effectiveChatApiKey = computed(() => {
@@ -105,13 +100,13 @@ export class AiService {
 				return saved;
 			}
 			return 'gemini-3.8-flash';
-		})()
+		})(),
 	);
 
 	readonly chatSystemPrompt = signal<string>(
 		typeof window !== 'undefined'
 			? localStorage.getItem('vide_chat_system_prompt') || DEFAULT_CHAT_SYSTEM_PROMPT
-			: DEFAULT_CHAT_SYSTEM_PROMPT
+			: DEFAULT_CHAT_SYSTEM_PROMPT,
 	);
 
 	readonly chatDirection = signal<'ltr' | 'rtl'>(
@@ -119,7 +114,7 @@ export class AiService {
 			if (typeof window === 'undefined') return 'ltr';
 			const saved = localStorage.getItem('vide_chat_direction');
 			return saved === 'rtl' ? 'rtl' : 'ltr';
-		})()
+		})(),
 	);
 
 	// Status signals (isServerOnline reflects whether Gemini is configured and enabled)
@@ -211,7 +206,10 @@ export class AiService {
 			if (!resp.ok) {
 				const errJson = await resp.json().catch(() => null);
 				const msg = errJson?.error?.message || `HTTP ${resp.status} ${resp.statusText}`;
-				terminalLog('AI_TEST_ERROR', `Inline Gemini connection test FAILED (${resp.status}): ${msg}`);
+				terminalLog(
+					'AI_TEST_ERROR',
+					`Inline Gemini connection test FAILED (${resp.status}): ${msg}`,
+				);
 				this.lastApiError.set(msg);
 				return false;
 			}
@@ -251,7 +249,10 @@ export class AiService {
 			if (!resp.ok) {
 				const errJson = await resp.json().catch(() => null);
 				const msg = errJson?.error?.message || `HTTP ${resp.status} ${resp.statusText}`;
-				terminalLog('AI_TEST_ERROR', `Chat Gemini connection test FAILED (${resp.status}): ${msg}`);
+				terminalLog(
+					'AI_TEST_ERROR',
+					`Chat Gemini connection test FAILED (${resp.status}): ${msg}`,
+				);
 				this.lastChatApiError.set(msg);
 				return false;
 			}
@@ -283,7 +284,7 @@ export class AiService {
 	public async getInfillCompletion(
 		prefix: string,
 		suffix: string,
-		abortSignal?: AbortSignal
+		abortSignal?: AbortSignal,
 	): Promise<string | null> {
 		if (!this.isConfigured() || !this.isEnabled()) {
 			return null;
@@ -332,7 +333,10 @@ export class AiService {
 			return this.cleanCompletion(text);
 		} catch (err: any) {
 			if (err.name !== 'AbortError') {
-				terminalLog('AI_FIM_ERROR', `Inline completion network error: ${err?.message || err}`);
+				terminalLog(
+					'AI_FIM_ERROR',
+					`Inline completion network error: ${err?.message || err}`,
+				);
 			}
 		} finally {
 			this.isGenerating.set(false);
@@ -348,7 +352,7 @@ export class AiService {
 	public async suggestPatternEdits(
 		originalLine: string,
 		editedLine: string,
-		targetLines: string[]
+		targetLines: string[],
 	): Promise<string[] | null> {
 		if (!this.isEnabled() || !this.isServerOnline() || targetLines.length === 0) {
 			return null;
@@ -367,7 +371,10 @@ ${targetLines.map((line, idx) => `[Target ${idx + 1}]: ${line}`).join('\n')}
 Output ONLY the transformed lines in order, one per line. Do not write explanations, markdown fences, or prefixes.`;
 
 			const response = await this.queryChatCompletion([
-				{ role: 'system', content: 'You are a precise code transformation tool. Output only raw code.' },
+				{
+					role: 'system',
+					content: 'You are a precise code transformation tool. Output only raw code.',
+				},
 				{ role: 'user', content: prompt },
 			]);
 
@@ -395,7 +402,7 @@ Output ONLY the transformed lines in order, one per line. Do not write explanati
 	public async fixSyntaxError(
 		codeSnippet: string,
 		errorMessage: string,
-		language: string
+		language: string,
 	): Promise<string | null> {
 		if (!this.isEnabled() || !this.isServerOnline()) {
 			return null;
@@ -417,7 +424,8 @@ Output ONLY the corrected code snippet replacement. Do not include explanations.
 			const response = await this.queryChatCompletion([
 				{
 					role: 'system',
-					content: 'You are an automated syntax error fixer. Output ONLY the fixed replacement code without markdown formatting.',
+					content:
+						'You are an automated syntax error fixer. Output ONLY the fixed replacement code without markdown formatting.',
 				},
 				{ role: 'user', content: prompt },
 			]);
@@ -467,7 +475,8 @@ ${truncatedDiff}`;
 			const response = await this.queryChatCompletion([
 				{
 					role: 'system',
-					content: 'You are an expert software developer writing clean, standardized Conventional Commits.',
+					content:
+						'You are an expert software developer writing clean, standardized Conventional Commits.',
 				},
 				{ role: 'user', content: prompt },
 			]);
@@ -487,7 +496,7 @@ ${truncatedDiff}`;
 	 */
 	private async queryChatCompletion(
 		messages: { role: string; content: string }[],
-		temperature = 0.2
+		temperature = 0.2,
 	): Promise<string | null> {
 		if (!this.isConfigured() || !this.isEnabled()) {
 			return null;

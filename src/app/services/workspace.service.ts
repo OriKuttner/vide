@@ -4,7 +4,16 @@
  * Written by: Ori Kuttner and Shira (Antigravity agent)
  */
 
-import { Injectable, signal, computed, inject, NgZone, effect, untracked, ApplicationRef } from '@angular/core';
+import {
+	Injectable,
+	signal,
+	computed,
+	inject,
+	NgZone,
+	effect,
+	untracked,
+	ApplicationRef,
+} from '@angular/core';
 import {
 	WorkspaceFile,
 	FileTreeNode,
@@ -100,7 +109,7 @@ export class WorkspaceService {
 	readonly showHiddenFiles = signal<boolean>(
 		typeof window !== 'undefined'
 			? localStorage.getItem('vector_show_hidden_files') === 'true'
-			: false
+			: false,
 	);
 
 	// Scanning / loading state
@@ -133,7 +142,24 @@ export class WorkspaceService {
 
 	// Active search/modal mode
 	readonly activeModal = signal<
-		'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'close-editor-confirm' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | 'references' | 'git-commit-details' | null
+		| 'grep'
+		| 'file-search'
+		| 'new-file'
+		| 'new-folder'
+		| 'open-folder-path'
+		| 'indentation'
+		| 'change-language'
+		| 'unsaved-changes'
+		| 'close-editor-confirm'
+		| 'ai-settings'
+		| 'ai-download'
+		| 'delete-file-confirm'
+		| 'git-untrack-confirm'
+		| 'git-branches'
+		| 'git-create-tag'
+		| 'references'
+		| 'git-commit-details'
+		| null
 	>(null);
 	readonly pendingCommitDetails = signal<GitCommitDetails | null>(null);
 	readonly isLoadingCommitDetails = signal<boolean>(false);
@@ -145,11 +171,19 @@ export class WorkspaceService {
 	readonly pendingGitUntrackFile = signal<WorkspaceFile | null>(null);
 
 	// Line jump request (from Grep search or Go to Definition)
-	readonly pendingLineJump = signal<{ lineNumber: number; column?: number; fileId?: string } | null>(null);
+	readonly pendingLineJump = signal<{
+		lineNumber: number;
+		column?: number;
+		fileId?: string;
+	} | null>(null);
 
 	// Navigation history session state and callbacks
 	readonly navigationSessionState = signal<{ history: any[]; index: number } | null>(null);
-	public onBeforeJumpToLine?: (targetFile: WorkspaceFile, targetLine: number, targetCol: number) => void;
+	public onBeforeJumpToLine?: (
+		targetFile: WorkspaceFile,
+		targetLine: number,
+		targetCol: number,
+	) => void;
 	public onFileOpened?: (file: WorkspaceFile) => void;
 	public onSessionRestored?: (history: any[], index: number) => void;
 	public onWorkspaceReset?: () => void;
@@ -159,7 +193,9 @@ export class WorkspaceService {
 	public readonly editorConfigService = inject(EditorConfigService);
 
 	// Programmatic content replacement request (from AI tools / external)
-	readonly pendingContentReplacement = signal<{ fileId: string; newContent: string } | null>(null);
+	readonly pendingContentReplacement = signal<{ fileId: string; newContent: string } | null>(
+		null,
+	);
 
 	// Line highlight range request (from Ada / CLI goto)
 	readonly pendingHighlight = signal<{
@@ -205,7 +241,9 @@ export class WorkspaceService {
 					f.gitStatus === 'deleted'
 				);
 			}
-			return f.isModified || (f.originalContent !== undefined && f.content !== f.originalContent);
+			return (
+				f.isModified || (f.originalContent !== undefined && f.content !== f.originalContent)
+			);
 		});
 		return list.sort((a, b) => {
 			// Show modified files first, then untracked/added
@@ -296,8 +334,15 @@ export class WorkspaceService {
 				const payload = event.payload;
 				if (payload) {
 					if (payload.file) {
-						await this.navigateToFile(payload.file, payload.highlight_start, payload.highlight_end);
-					} else if (payload.highlight_start !== undefined && payload.highlight_start !== null) {
+						await this.navigateToFile(
+							payload.file,
+							payload.highlight_start,
+							payload.highlight_end,
+						);
+					} else if (
+						payload.highlight_start !== undefined &&
+						payload.highlight_start !== null
+					) {
 						const active = this.activeFile();
 						if (active) {
 							const s = payload.highlight_start;
@@ -310,7 +355,7 @@ export class WorkspaceService {
 						}
 					}
 				}
-			}
+			},
 		).catch((err) => {
 			console.warn('Failed to register vide://navigate listener:', err);
 		});
@@ -319,7 +364,7 @@ export class WorkspaceService {
 	public async navigateToFile(
 		filePath: string,
 		highlightStart?: number | null,
-		highlightEnd?: number | null
+		highlightEnd?: number | null,
 	): Promise<void> {
 		const rootPath = this.nativeWorkspacePath();
 		const cleanPath = filePath.trim().replace(/^\.\//, '');
@@ -333,15 +378,19 @@ export class WorkspaceService {
 		}
 
 		let fileToOpen = this.files().find(
-			(f) => f.path === relPath || f.id === relPath || f.fsPath === cleanPath || f.name === relPath
+			(f) =>
+				f.path === relPath ||
+				f.id === relPath ||
+				f.fsPath === cleanPath ||
+				f.name === relPath,
 		);
 
 		if (!fileToOpen && rootPath) {
 			const fullFsPath = cleanPath.startsWith('/')
 				? cleanPath
 				: rootPath.endsWith('/')
-				? `${rootPath}${relPath}`
-				: `${rootPath}/${relPath}`;
+					? `${rootPath}${relPath}`
+					: `${rootPath}/${relPath}`;
 			const baseName = relPath.split('/').pop() || relPath;
 			fileToOpen = {
 				id: relPath,
@@ -403,7 +452,8 @@ export class WorkspaceService {
 	}
 
 	public setSidebarWidth(width: number): void {
-		const maxWidth = typeof window !== 'undefined' ? Math.max(300, window.innerWidth - 200) : 800;
+		const maxWidth =
+			typeof window !== 'undefined' ? Math.max(300, window.innerWidth - 200) : 800;
 		const clamped = Math.max(180, Math.min(width, maxWidth));
 		this.sidebarWidth.set(clamped);
 		try {
@@ -428,7 +478,7 @@ export class WorkspaceService {
 				file.content = content;
 				file.isLoaded = true;
 				this.files.update((files) =>
-					files.map((f) => (f.id === file.id ? { ...f, content, isLoaded: true } : f))
+					files.map((f) => (f.id === file.id ? { ...f, content, isLoaded: true } : f)),
 				);
 			} catch (err) {
 				console.error('Failed to load file content for diff:', err);
@@ -449,32 +499,35 @@ export class WorkspaceService {
 				file.originalContent = '';
 			}
 		} else if (file.originalContent === undefined) {
-				try {
-					const gitDir = this.recentGitDirHandle;
-					if (gitDir) {
-						let indexHandle: any = null;
-						try {
-							indexHandle = await gitDir.getFileHandle('index', { create: false });
-						} catch {
-							for await (const entry of gitDir.values()) {
-								if (entry.name === 'index') { indexHandle = entry; break; }
-							}
-						}
-						if (indexHandle) {
-							const indexFile = await indexHandle.getFile();
-							const indexMap = this.parseGitIndex(await indexFile.arrayBuffer());
-							const normPath = file.path.replace(/^\.\//, '').replace(/^\//, '');
-							const entry = indexMap.get(normPath);
-							if (entry) {
-								const orig = await this.readGitBlob(gitDir, entry.sha);
-								file.originalContent = orig !== null ? orig : '';
+			try {
+				const gitDir = this.recentGitDirHandle;
+				if (gitDir) {
+					let indexHandle: any = null;
+					try {
+						indexHandle = await gitDir.getFileHandle('index', { create: false });
+					} catch {
+						for await (const entry of gitDir.values()) {
+							if (entry.name === 'index') {
+								indexHandle = entry;
+								break;
 							}
 						}
 					}
-				} catch (e) {
-					console.warn('Could not read baseline blob in openDiffView:', e);
+					if (indexHandle) {
+						const indexFile = await indexHandle.getFile();
+						const indexMap = this.parseGitIndex(await indexFile.arrayBuffer());
+						const normPath = file.path.replace(/^\.\//, '').replace(/^\//, '');
+						const entry = indexMap.get(normPath);
+						if (entry) {
+							const orig = await this.readGitBlob(gitDir, entry.sha);
+							file.originalContent = orig !== null ? orig : '';
+						}
+					}
 				}
+			} catch (e) {
+				console.warn('Could not read baseline blob in openDiffView:', e);
 			}
+		}
 
 		const currentTabs = this.openTabs();
 		if (!currentTabs.some((tab) => tab.id === file.id)) {
@@ -566,8 +619,8 @@ export class WorkspaceService {
 									isModified: false,
 									gitStatus: undefined,
 								}
-							: f
-					)
+							: f,
+					),
 				);
 				this.showNotification(`Reverted ${file.name} to HEAD baseline`);
 				await this.refreshGitStatus();
@@ -602,8 +655,8 @@ export class WorkspaceService {
 								isModified: false,
 								gitStatus: undefined,
 							}
-						: f
-				)
+						: f,
+				),
 			);
 			this.showNotification(`Reverted ${file.name} to HEAD baseline`);
 			await this.refreshGitStatus();
@@ -625,7 +678,8 @@ export class WorkspaceService {
 				const normNode = n.path.replace(/^\.\//, '').replace(/^\//, '');
 				if (normNode === normTarget) return false;
 				if (targetFs && n.fsPath && n.fsPath === targetFs) return false;
-				if (n.file && (n.file.id === target.id || n.file.path === target.path)) return false;
+				if (n.file && (n.file.id === target.id || n.file.path === target.path))
+					return false;
 				return true;
 			})
 			.map((n) => {
@@ -646,11 +700,17 @@ export class WorkspaceService {
 		this.forceCloseTab(file.id);
 		const currentTabs = this.openTabs();
 		const newTabs = currentTabs.filter(
-			(t) => t.id !== file.id && t.path !== file.path && (!file.fsPath || t.fsPath !== file.fsPath)
+			(t) =>
+				t.id !== file.id &&
+				t.path !== file.path &&
+				(!file.fsPath || t.fsPath !== file.fsPath),
 		);
 		if (newTabs.length !== currentTabs.length) {
 			this.openTabs.set(newTabs);
-			if (this.activeFileId() === file.id || !newTabs.some((t) => t.id === this.activeFileId())) {
+			if (
+				this.activeFileId() === file.id ||
+				!newTabs.some((t) => t.id === this.activeFileId())
+			) {
 				this.activeFileId.set(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : '');
 			}
 		}
@@ -676,7 +736,12 @@ export class WorkspaceService {
 
 		// 3. Remove file from in-memory state and file tree
 		this.files.update((files) =>
-			files.filter((f) => f.id !== file.id && f.path !== file.path && (!file.fsPath || f.fsPath !== file.fsPath))
+			files.filter(
+				(f) =>
+					f.id !== file.id &&
+					f.path !== file.path &&
+					(!file.fsPath || f.fsPath !== file.fsPath),
+			),
 		);
 		this.fileTree.update((nodes) => this.removeNodeFromTree(nodes, file));
 
@@ -709,7 +774,9 @@ export class WorkspaceService {
 
 				this.pendingGitUntrackFile.set(null);
 				this.closeModal();
-				this.showNotification(`✓ Removed "${file.name}" from Git tracking (file kept on disk)`);
+				this.showNotification(
+					`✓ Removed "${file.name}" from Git tracking (file kept on disk)`,
+				);
 				await this.refreshFileTree();
 				await this.refreshGitStatus();
 				return true;
@@ -757,7 +824,7 @@ export class WorkspaceService {
 							date: c.date,
 							message: c.message,
 							tags: c.tags || [],
-						}))
+						})),
 					);
 				} catch (err) {
 					console.warn('Failed to load git commits:', err);
@@ -796,14 +863,14 @@ export class WorkspaceService {
 					...f,
 					originalContent: f.savedContent ?? f.content,
 					gitStatus: undefined,
-				}))
+				})),
 			);
 			this.openTabs.update((tabs) =>
 				tabs.map((t) => ({
 					...t,
 					originalContent: t.savedContent ?? t.content,
 					gitStatus: undefined,
-				}))
+				})),
 			);
 			if (this.diffModeActive()) {
 				this.closeDiffView(false);
@@ -1130,7 +1197,11 @@ export class WorkspaceService {
 					const branch = await invoke<string>('get_git_branch', { repoPath });
 					this.gitBranch.set(branch);
 					if (branch) {
-						await Promise.all([this.loadRecentCommits(), this.loadGitSyncStatus(), this.loadGitTags()]);
+						await Promise.all([
+							this.loadRecentCommits(),
+							this.loadGitSyncStatus(),
+							this.loadGitTags(),
+						]);
 					} else {
 						this.recentCommits.set([]);
 						this.gitSyncStatus.set(null);
@@ -1143,12 +1214,23 @@ export class WorkspaceService {
 				}
 
 				const gitItems = await invoke<
-					Array<{ path: string; status: 'modified' | 'untracked' | 'added' | 'deleted'; staged: boolean }>
+					Array<{
+						path: string;
+						status: 'modified' | 'untracked' | 'added' | 'deleted';
+						staged: boolean;
+					}>
 				>('get_git_status', { repoPath });
 
-				const statusMap = new Map(gitItems.map((item) => [item.path.replace(/^\.\//, '').replace(/^\//, ''), item]));
+				const statusMap = new Map(
+					gitItems.map((item) => [
+						item.path.replace(/^\.\//, '').replace(/^\//, ''),
+						item,
+					]),
+				);
 				const currentFiles = [...this.files()];
-				const knownPaths = new Set(currentFiles.map((f) => f.path.replace(/^\.\//, '').replace(/^\//, '')));
+				const knownPaths = new Set(
+					currentFiles.map((f) => f.path.replace(/^\.\//, '').replace(/^\//, '')),
+				);
 
 				for (const item of gitItems) {
 					const normItemPath = item.path.replace(/^\.\//, '').replace(/^\//, '');
@@ -1173,7 +1255,10 @@ export class WorkspaceService {
 
 				const updated = currentFiles
 					.filter((file) => {
-						if (file.gitStatus === 'deleted' && !statusMap.has(file.path.replace(/^\.\//, '').replace(/^\//, ''))) {
+						if (
+							file.gitStatus === 'deleted' &&
+							!statusMap.has(file.path.replace(/^\.\//, '').replace(/^\//, ''))
+						) {
 							return false;
 						}
 						return true;
@@ -1190,7 +1275,9 @@ export class WorkspaceService {
 							return {
 								...file,
 								gitStatus: undefined,
-								originalContent: !file.isModified ? (file.savedContent ?? file.content) : file.originalContent,
+								originalContent: !file.isModified
+									? (file.savedContent ?? file.content)
+									: file.originalContent,
 							};
 						}
 					});
@@ -1203,9 +1290,12 @@ export class WorkspaceService {
 						return {
 							...tab,
 							gitStatus: item ? item.status : undefined,
-							originalContent: !tab.isModified && !item ? (tab.savedContent ?? tab.content) : tab.originalContent,
+							originalContent:
+								!tab.isModified && !item
+									? (tab.savedContent ?? tab.content)
+									: tab.originalContent,
 						};
-					})
+					}),
 				);
 
 				// Also update file tree nodes to reflect updated gitStatus and trigger tree re-render
@@ -1216,7 +1306,8 @@ export class WorkspaceService {
 							const item = statusMap.get(normPath);
 							node.file.gitStatus = item ? item.status : undefined;
 							if (!item && !node.file.isModified) {
-								node.file.originalContent = node.file.savedContent ?? node.file.content;
+								node.file.originalContent =
+									node.file.savedContent ?? node.file.content;
 							}
 						}
 						if (node.children && node.children.length > 0) {
@@ -1235,8 +1326,9 @@ export class WorkspaceService {
 					files.map((f) => ({
 						...f,
 						gitStatus: undefined,
-						isModified: f.originalContent !== undefined && f.content !== f.originalContent,
-					}))
+						isModified:
+							f.originalContent !== undefined && f.content !== f.originalContent,
+					})),
 				);
 				return;
 			}
@@ -1332,7 +1424,8 @@ export class WorkspaceService {
 						return {
 							...file,
 							gitStatus: 'untracked' as const,
-							originalContent: file.originalContent !== undefined ? file.originalContent : '',
+							originalContent:
+								file.originalContent !== undefined ? file.originalContent : '',
 						};
 					}
 
@@ -1364,7 +1457,10 @@ export class WorkspaceService {
 							return {
 								...file,
 								gitStatus: 'modified' as const,
-								originalContent: origContent !== null ? origContent : (file.originalContent ?? ''),
+								originalContent:
+									origContent !== null
+										? origContent
+										: (file.originalContent ?? ''),
 							};
 						} else {
 							return {
@@ -1376,7 +1472,7 @@ export class WorkspaceService {
 						console.warn('Error checking file status:', file.path, fileErr);
 						return file;
 					}
-				})
+				}),
 			);
 
 			this.files.set(updatedFiles);
@@ -1414,7 +1510,11 @@ export class WorkspaceService {
 			}
 		});
 
-		if (typeof document !== 'undefined' && document.hasFocus() && document.visibilityState === 'visible') {
+		if (
+			typeof document !== 'undefined' &&
+			document.hasFocus() &&
+			document.visibilityState === 'visible'
+		) {
 			this.startAutoSyncTimer();
 		}
 	}
@@ -1422,7 +1522,10 @@ export class WorkspaceService {
 	private startAutoSyncTimer(): void {
 		if (this.autoSyncIntervalId) return;
 		this.autoSyncIntervalId = setInterval(() => {
-			if (typeof document !== 'undefined' && (!document.hasFocus() || document.visibilityState !== 'visible')) {
+			if (
+				typeof document !== 'undefined' &&
+				(!document.hasFocus() || document.visibilityState !== 'visible')
+			) {
 				this.stopAutoSyncTimer();
 				return;
 			}
@@ -1486,7 +1589,12 @@ export class WorkspaceService {
 	 */
 	public async reloadActiveFileIfChangedOnDisk(): Promise<void> {
 		const active = this.activeFile();
-		if (!active || active.isImage || active.isBinary || (!active.fsPath && !active.handle && !active.rawFile)) {
+		if (
+			!active ||
+			active.isImage ||
+			active.isBinary ||
+			(!active.fsPath && !active.handle && !active.rawFile)
+		) {
 			return;
 		}
 
@@ -1496,9 +1604,12 @@ export class WorkspaceService {
 
 			if (isTauriApp() && active.fsPath) {
 				try {
-					const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
-						filePath: active.fsPath,
-					});
+					const meta = await invoke<{ mtime_ms: number; size: number }>(
+						'get_file_metadata',
+						{
+							filePath: active.fsPath,
+						},
+					);
 					currentMtime = meta.mtime_ms;
 					currentSize = meta.size;
 				} catch {
@@ -1566,15 +1677,19 @@ export class WorkspaceService {
 									lastDiskSize: currentSize,
 									fileSize: currentSize,
 								}
-							: f
-					)
+							: f,
+					),
 				);
 				this.triggerSaveSessionState();
 				return;
 			}
 
-			const baseContent = active.savedContent !== undefined ? active.savedContent : active.originalContent;
-			const diskChanged = baseContent !== undefined ? diskContent !== baseContent : diskContent !== active.content;
+			const baseContent =
+				active.savedContent !== undefined ? active.savedContent : active.originalContent;
+			const diskChanged =
+				baseContent !== undefined
+					? diskContent !== baseContent
+					: diskContent !== active.content;
 
 			// Update stored signature
 			active.lastDiskMtime = currentMtime;
@@ -1586,16 +1701,26 @@ export class WorkspaceService {
 				this.files.update((files) =>
 					files.map((f) =>
 						f.id === active.id
-							? { ...f, lastDiskMtime: currentMtime, lastDiskSize: currentSize, fileSize: currentSize }
-							: f
-					)
+							? {
+									...f,
+									lastDiskMtime: currentMtime,
+									lastDiskSize: currentSize,
+									fileSize: currentSize,
+								}
+							: f,
+					),
 				);
 				this.openTabs.update((tabs) =>
 					tabs.map((t) =>
 						t.id === active.id
-							? { ...t, lastDiskMtime: currentMtime, lastDiskSize: currentSize, fileSize: currentSize }
-							: t
-					)
+							? {
+									...t,
+									lastDiskMtime: currentMtime,
+									lastDiskSize: currentSize,
+									fileSize: currentSize,
+								}
+							: t,
+					),
 				);
 				this.triggerSaveSessionState();
 				return;
@@ -1616,8 +1741,8 @@ export class WorkspaceService {
 									lastDiskSize: currentSize,
 									fileSize: currentSize,
 								}
-							: f
-					)
+							: f,
+					),
 				);
 				this.openTabs.update((tabs) =>
 					tabs.map((t) =>
@@ -1630,11 +1755,13 @@ export class WorkspaceService {
 									lastDiskSize: currentSize,
 									fileSize: currentSize,
 								}
-							: t
-					)
+							: t,
+					),
 				);
 				this.triggerSaveSessionState();
-				this.showNotification(`External disk change detected for ${active.name} (unsaved edits preserved)`);
+				this.showNotification(
+					`External disk change detected for ${active.name} (unsaved edits preserved)`,
+				);
 			} else {
 				active.content = diskContent;
 				active.savedContent = diskContent;
@@ -1654,8 +1781,8 @@ export class WorkspaceService {
 									lastDiskSize: currentSize,
 									fileSize: currentSize,
 								}
-							: f
-					)
+							: f,
+					),
 				);
 				this.openTabs.update((tabs) =>
 					tabs.map((t) =>
@@ -1671,8 +1798,8 @@ export class WorkspaceService {
 									lastDiskSize: currentSize,
 									fileSize: currentSize,
 								}
-							: t
-					)
+							: t,
+					),
 				);
 				if (this.diffModeActive() && this.activeDiffFile()?.id === active.id) {
 					this.activeDiffFile.set({
@@ -1716,7 +1843,7 @@ export class WorkspaceService {
 		this.indentType.set(type);
 		this.tabSize.set(size);
 		this.showNotification(
-			`Indentation set to ${type === 'tabs' ? 'Tab Size: ' : 'Spaces: '}${size}`
+			`Indentation set to ${type === 'tabs' ? 'Tab Size: ' : 'Spaces: '}${size}`,
 		);
 		this.closeModal();
 	}
@@ -1745,7 +1872,7 @@ export class WorkspaceService {
 		type: 'tabs' | 'spaces',
 		size: number,
 		fromType?: 'tabs' | 'spaces',
-		fromSize?: number
+		fromSize?: number,
 	): void {
 		const active = this.activeFile();
 		if (!active) {
@@ -1761,12 +1888,8 @@ export class WorkspaceService {
 		if (active && active.id === fileId) {
 			active.language = language;
 		}
-		this.files.update((files) =>
-			files.map((f) => (f.id === fileId ? { ...f, language } : f))
-		);
-		this.openTabs.update((tabs) =>
-			tabs.map((t) => (t.id === fileId ? { ...t, language } : t))
-		);
+		this.files.update((files) => files.map((f) => (f.id === fileId ? { ...f, language } : f)));
+		this.openTabs.update((tabs) => tabs.map((t) => (t.id === fileId ? { ...t, language } : t)));
 	}
 
 	public changeActiveFileLanguage(language: string): void {
@@ -1774,10 +1897,10 @@ export class WorkspaceService {
 		if (!active) return;
 		active.language = language;
 		this.files.update((files) =>
-			files.map((f) => (f.id === active.id ? { ...f, language } : f))
+			files.map((f) => (f.id === active.id ? { ...f, language } : f)),
 		);
 		this.openTabs.update((tabs) =>
-			tabs.map((t) => (t.id === active.id ? { ...t, language } : t))
+			tabs.map((t) => (t.id === active.id ? { ...t, language } : t)),
 		);
 		this.pendingLanguageChange.set({ fileId: active.id, language });
 		this.showNotification(`Language set to ${language}`);
@@ -1805,7 +1928,7 @@ export class WorkspaceService {
 			| 'git-branches'
 			| 'git-create-tag'
 			| 'references'
-			| 'git-commit-details'
+			| 'git-commit-details',
 	): void {
 		if (mode === 'grep') {
 			this.setSidebarView('search');
@@ -1845,7 +1968,11 @@ export class WorkspaceService {
 		}
 	}
 
-	public async openCommitFileDiff(commitHash: string, filePath: string, status?: string): Promise<void> {
+	public async openCommitFileDiff(
+		commitHash: string,
+		filePath: string,
+		status?: string,
+	): Promise<void> {
 		const root = this.nativeWorkspacePath();
 		if (!root || !isTauriApp()) return;
 
@@ -1858,7 +1985,7 @@ export class WorkspaceService {
 					repoPath: root,
 					commitHash,
 					filePath,
-				}
+				},
 			);
 
 			const name = filePath.split('/').pop() || filePath;
@@ -1933,7 +2060,9 @@ export class WorkspaceService {
 		const language = detectLanguageFromFilename(baseName);
 		const nativeRoot = this.nativeWorkspacePath();
 		const fsPath = nativeRoot
-			? (nativeRoot.endsWith('/') ? `${nativeRoot}${trimmed}` : `${nativeRoot}/${trimmed}`)
+			? nativeRoot.endsWith('/')
+				? `${nativeRoot}${trimmed}`
+				: `${nativeRoot}/${trimmed}`
 			: undefined;
 
 		const cleanPath = trimmed.replace(/^[/\\]+/, '');
@@ -1943,7 +2072,7 @@ export class WorkspaceService {
 				f.id === cleanPath ||
 				f.path === trimmed ||
 				f.id === trimmed ||
-				(fsPath && f.fsPath === fsPath)
+				(fsPath && f.fsPath === fsPath),
 		);
 		if (existingInWorkspace) {
 			return {
@@ -1966,7 +2095,9 @@ export class WorkspaceService {
 
 		if (this.recentDirHandle && !isTauriApp()) {
 			try {
-				const existingHandle = await this.recentDirHandle.getFileHandle(trimmed, { create: false });
+				const existingHandle = await this.recentDirHandle.getFileHandle(trimmed, {
+					create: false,
+				});
 				if (existingHandle) {
 					return {
 						success: false,
@@ -2013,7 +2144,9 @@ export class WorkspaceService {
 		return { success: true };
 	}
 
-	public async createNewFolder(folderPath: string): Promise<{ success: boolean; error?: string }> {
+	public async createNewFolder(
+		folderPath: string,
+	): Promise<{ success: boolean; error?: string }> {
 		const trimmed = folderPath.trim();
 		if (!trimmed) {
 			return { success: false, error: 'Please enter a valid directory name.' };
@@ -2025,12 +2158,16 @@ export class WorkspaceService {
 		}
 		const nativeRoot = this.nativeWorkspacePath();
 		const fsPath = nativeRoot
-			? (nativeRoot.endsWith('/') ? `${nativeRoot}${trimmed}` : `${nativeRoot}/${trimmed}`)
+			? nativeRoot.endsWith('/')
+				? `${nativeRoot}${trimmed}`
+				: `${nativeRoot}/${trimmed}`
 			: undefined;
 
 		const cleanPath = trimmed.replace(/^[/\\]+/, '');
 		const existingDir = this.fileTree().find(
-			(n) => n.kind === 'directory' && (n.path === cleanPath || n.path === trimmed || (fsPath && n.fsPath === fsPath))
+			(n) =>
+				n.kind === 'directory' &&
+				(n.path === cleanPath || n.path === trimmed || (fsPath && n.fsPath === fsPath)),
 		);
 		if (existingDir) {
 			return {
@@ -2173,7 +2310,9 @@ export class WorkspaceService {
 		const all = this.files();
 		if (!term) return all.slice(0, 30);
 		return all
-			.filter((f) => f.name.toLowerCase().includes(term) || f.path.toLowerCase().includes(term))
+			.filter(
+				(f) => f.name.toLowerCase().includes(term) || f.path.toLowerCase().includes(term),
+			)
 			.slice(0, 60);
 	}
 
@@ -2187,7 +2326,10 @@ export class WorkspaceService {
 	public async openFileByPath(relPath: string): Promise<WorkspaceFile | null> {
 		const cleanPath = relPath.trim().replace(/^[/\\]+/, '');
 		let file = this.files().find(
-			(f) => f.path === cleanPath || f.path.endsWith(cleanPath) || (f.fsPath && f.fsPath.endsWith(cleanPath))
+			(f) =>
+				f.path === cleanPath ||
+				f.path.endsWith(cleanPath) ||
+				(f.fsPath && f.fsPath.endsWith(cleanPath)),
 		);
 
 		if (!file && this.nativeWorkspacePath()) {
@@ -2224,7 +2366,7 @@ export class WorkspaceService {
 		target: string,
 		replacement: string,
 		relPath?: string,
-		replaceAll = false
+		replaceAll = false,
 	): Promise<{ success: boolean; message: string }> {
 		let file: WorkspaceFile | null = null;
 		if (relPath) {
@@ -2238,7 +2380,10 @@ export class WorkspaceService {
 		}
 
 		if (file.isBinary || file.isImage || isBinaryFile(file.name) || isImageFile(file.name)) {
-			return { success: false, message: `Refusing to edit ${file.path}: File is binary or media and cannot be edited as text.` };
+			return {
+				success: false,
+				message: `Refusing to edit ${file.path}: File is binary or media and cannot be edited as text.`,
+			};
 		}
 
 		if (typeof target !== 'string' || target.length === 0) {
@@ -2278,7 +2423,7 @@ export class WorkspaceService {
 		if (!currentContent.includes(actualTarget)) {
 			return {
 				success: false,
-				message: `Target text was not found in ${file.path}. Please verify that the target string matches the file content exactly (including whitespace and indentation).`
+				message: `Target text was not found in ${file.path}. Please verify that the target string matches the file content exactly (including whitespace and indentation).`,
 			};
 		}
 
@@ -2289,7 +2434,7 @@ export class WorkspaceService {
 			if (firstIndex !== lastIndex) {
 				return {
 					success: false,
-					message: `Target text appears multiple times in ${file.path}. To avoid unintended edits, provide more surrounding context lines so the target is unique, or set all to true if you explicitly intend to replace all occurrences.`
+					message: `Target text appears multiple times in ${file.path}. To avoid unintended edits, provide more surrounding context lines so the target is unique, or set all to true if you explicitly intend to replace all occurrences.`,
 				};
 			}
 		}
@@ -2344,25 +2489,36 @@ export class WorkspaceService {
 
 		const alreadyLoaded = file.isLoaded;
 
-		if ((!file.isLoaded || (isImg && !file.imageUrl) || (file.isBinary && !file.hexData)) && (file.fsPath || file.handle || file.rawFile)) {
+		if (
+			(!file.isLoaded || (isImg && !file.imageUrl) || (file.isBinary && !file.hexData)) &&
+			(file.fsPath || file.handle || file.rawFile)
+		) {
 			try {
 				if (isImg) {
 					const mime = getImageMimeType(file.name);
 					let imageUrl = '';
 					if (isTauriApp() && file.fsPath) {
 						try {
-							const b64 = await invoke<string>('read_file_base64', { filePath: file.fsPath });
+							const b64 = await invoke<string>('read_file_base64', {
+								filePath: file.fsPath,
+							});
 							imageUrl = `data:${mime};base64,${b64}`;
 							try {
-								const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
-									filePath: file.fsPath,
-								});
+								const meta = await invoke<{ mtime_ms: number; size: number }>(
+									'get_file_metadata',
+									{
+										filePath: file.fsPath,
+									},
+								);
 								file.lastDiskMtime = meta.mtime_ms;
 								file.lastDiskSize = meta.size;
 								file.fileSize = meta.size;
 							} catch {}
 						} catch (err) {
-							console.warn('Failed to load image in Tauri via read_file_base64:', err);
+							console.warn(
+								'Failed to load image in Tauri via read_file_base64:',
+								err,
+							);
 						}
 					} else if (file.handle && typeof file.handle.getFile === 'function') {
 						const fileObj = await file.handle.getFile();
@@ -2389,7 +2545,9 @@ export class WorkspaceService {
 
 					if (isTauriApp() && file.fsPath) {
 						try {
-							const inspection = await invoke<FileInspectionResult>('inspect_file', { filePath: file.fsPath });
+							const inspection = await invoke<FileInspectionResult>('inspect_file', {
+								filePath: file.fsPath,
+							});
 							if (inspection && inspection.is_binary) {
 								isBinary = true;
 								fileTypeDesc = inspection.file_type;
@@ -2409,11 +2567,16 @@ export class WorkspaceService {
 						}
 
 						if (!isBinary) {
-							content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+							content = await invoke<string>('read_file_text', {
+								filePath: file.fsPath,
+							});
 							try {
-								const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
-									filePath: file.fsPath,
-								});
+								const meta = await invoke<{ mtime_ms: number; size: number }>(
+									'get_file_metadata',
+									{
+										filePath: file.fsPath,
+									},
+								);
 								mtime = meta.mtime_ms;
 								size = meta.size;
 							} catch (err) {
@@ -2424,7 +2587,9 @@ export class WorkspaceService {
 						const fileObj = await file.handle.getFile();
 						mtime = fileObj.lastModified;
 						size = fileObj.size;
-						const slice = await fileObj.slice(0, Math.min(8192, fileObj.size)).arrayBuffer();
+						const slice = await fileObj
+							.slice(0, Math.min(8192, fileObj.size))
+							.arrayBuffer();
 						const u8 = new Uint8Array(slice);
 						let hasNull = false;
 						for (let i = 0; i < u8.length; i++) {
@@ -2435,9 +2600,18 @@ export class WorkspaceService {
 						}
 						if (hasNull) {
 							isBinary = true;
-							fileTypeDesc = fileObj.type ? `Binary file (${fileObj.type})` : 'Binary data';
-							const hexSlice = await fileObj.slice(0, Math.min(4096, fileObj.size)).arrayBuffer();
-							hexResult = this.formatHexFromBuffer(new Uint8Array(hexSlice), fileObj.size, fileTypeDesc, 0);
+							fileTypeDesc = fileObj.type
+								? `Binary file (${fileObj.type})`
+								: 'Binary data';
+							const hexSlice = await fileObj
+								.slice(0, Math.min(4096, fileObj.size))
+								.arrayBuffer();
+							hexResult = this.formatHexFromBuffer(
+								new Uint8Array(hexSlice),
+								fileObj.size,
+								fileTypeDesc,
+								0,
+							);
 						} else {
 							content = await fileObj.text();
 						}
@@ -2445,7 +2619,9 @@ export class WorkspaceService {
 						const fileObj = file.rawFile;
 						mtime = fileObj.lastModified;
 						size = fileObj.size;
-						const slice = await fileObj.slice(0, Math.min(8192, fileObj.size)).arrayBuffer();
+						const slice = await fileObj
+							.slice(0, Math.min(8192, fileObj.size))
+							.arrayBuffer();
 						const u8 = new Uint8Array(slice);
 						let hasNull = false;
 						for (let i = 0; i < u8.length; i++) {
@@ -2456,9 +2632,18 @@ export class WorkspaceService {
 						}
 						if (hasNull) {
 							isBinary = true;
-							fileTypeDesc = fileObj.type ? `Binary file (${fileObj.type})` : 'Binary data';
-							const hexSlice = await fileObj.slice(0, Math.min(4096, fileObj.size)).arrayBuffer();
-							hexResult = this.formatHexFromBuffer(new Uint8Array(hexSlice), fileObj.size, fileTypeDesc, 0);
+							fileTypeDesc = fileObj.type
+								? `Binary file (${fileObj.type})`
+								: 'Binary data';
+							const hexSlice = await fileObj
+								.slice(0, Math.min(4096, fileObj.size))
+								.arrayBuffer();
+							hexResult = this.formatHexFromBuffer(
+								new Uint8Array(hexSlice),
+								fileObj.size,
+								fileTypeDesc,
+								0,
+							);
 						} else {
 							content = await fileObj.text();
 						}
@@ -2484,7 +2669,11 @@ export class WorkspaceService {
 						this.fileTree.update((nodes) => {
 							const updateNodes = (list: FileTreeNode[]): FileTreeNode[] => {
 								return list.map((n) => {
-									if (n.path === file.path || n.fsPath === file.fsPath || n.id === file.id) {
+									if (
+										n.path === file.path ||
+										n.fsPath === file.fsPath ||
+										n.id === file.id
+									) {
 										return { ...n, language: 'binary', file };
 									}
 									if (n.children && n.children.length > 0) {
@@ -2509,7 +2698,11 @@ export class WorkspaceService {
 								this.fileTree.update((nodes) => {
 									const updateNodes = (list: FileTreeNode[]): FileTreeNode[] => {
 										return list.map((n) => {
-											if (n.path === file.path || n.fsPath === file.fsPath || n.id === file.id) {
+											if (
+												n.path === file.path ||
+												n.fsPath === file.fsPath ||
+												n.id === file.id
+											) {
 												return { ...n, language: detected, file };
 											}
 											if (n.children && n.children.length > 0) {
@@ -2525,7 +2718,11 @@ export class WorkspaceService {
 						if (file.savedContent === undefined) {
 							file.savedContent = content;
 						}
-						if (file.originalContent === undefined && !file.isModified && !file.gitStatus) {
+						if (
+							file.originalContent === undefined &&
+							!file.isModified &&
+							!file.gitStatus
+						) {
 							file.originalContent = content;
 						}
 						file.isLoaded = true;
@@ -2542,8 +2739,12 @@ export class WorkspaceService {
 										...f,
 										language: file.language,
 										content: file.content,
-										savedContent: file.savedContent ?? f.savedContent ?? file.content,
-										originalContent: file.originalContent ?? f.originalContent ?? file.content,
+										savedContent:
+											file.savedContent ?? f.savedContent ?? file.content,
+										originalContent:
+											file.originalContent ??
+											f.originalContent ??
+											file.content,
 										isLoaded: true,
 										isModified: f.isModified ?? false,
 										isImage: file.isImage,
@@ -2556,7 +2757,7 @@ export class WorkspaceService {
 										lastDiskSize: file.lastDiskSize,
 										cursor: file.cursor ?? f.cursor,
 									}
-								: f
+								: f,
 						);
 					}
 					return [...files, file];
@@ -2571,7 +2772,12 @@ export class WorkspaceService {
 			if (file.savedContent === undefined && file.content !== undefined) {
 				file.savedContent = file.content;
 			}
-			if (file.originalContent === undefined && file.content !== undefined && !file.isModified && !file.gitStatus) {
+			if (
+				file.originalContent === undefined &&
+				file.content !== undefined &&
+				!file.isModified &&
+				!file.gitStatus
+			) {
 				file.originalContent = file.content;
 			}
 			// Ensure file exists in files signal
@@ -2598,9 +2804,9 @@ export class WorkspaceService {
 								fileTypeDescription: file.fileTypeDescription,
 								hexData: file.hexData,
 								fileSize: file.fileSize,
-						  }
-						: tab
-				)
+							}
+						: tab,
+				),
 			);
 		}
 		if (setActive) {
@@ -2612,7 +2818,12 @@ export class WorkspaceService {
 		}
 	}
 
-	public formatHexFromBuffer(u8: Uint8Array, totalSize: number, fileType: string, startOffset: number = 0): HexViewResult {
+	public formatHexFromBuffer(
+		u8: Uint8Array,
+		totalSize: number,
+		fileType: string,
+		startOffset: number = 0,
+	): HexViewResult {
 		const lines: HexLine[] = [];
 		for (let i = 0; i < u8.length; i += 16) {
 			const lineOffset = (startOffset + i).toString(16).padStart(8, '0').toUpperCase();
@@ -2629,12 +2840,12 @@ export class WorkspaceService {
 					} else {
 						hexPart2 += (hexPart2 ? ' ' : '') + hexStr;
 					}
-					ascii += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
+					ascii += b >= 32 && b <= 126 ? String.fromCharCode(b) : '.';
 				} else {
 					if (j < 8) {
-						hexPart1 += (hexPart1 ? '   ' : '  ');
+						hexPart1 += hexPart1 ? '   ' : '  ';
 					} else {
-						hexPart2 += (hexPart2 ? '   ' : '  ');
+						hexPart2 += hexPart2 ? '   ' : '  ';
 					}
 					ascii += ' ';
 				}
@@ -2646,7 +2857,7 @@ export class WorkspaceService {
 			file_type: fileType,
 			lines,
 			bytes_shown: startOffset + u8.length,
-			has_more: (startOffset + u8.length) < totalSize
+			has_more: startOffset + u8.length < totalSize,
 		};
 	}
 
@@ -2664,10 +2875,14 @@ export class WorkspaceService {
 				file.hexData.bytes_shown = nextChunk.bytes_shown;
 				file.hexData.has_more = nextChunk.has_more;
 				this.files.update((files) =>
-					files.map((f) => (f.id === file.id ? { ...f, hexData: { ...file.hexData! } } : f))
+					files.map((f) =>
+						f.id === file.id ? { ...f, hexData: { ...file.hexData! } } : f,
+					),
 				);
 				this.openTabs.update((tabs) =>
-					tabs.map((t) => (t.id === file.id ? { ...t, hexData: { ...file.hexData! } } : t))
+					tabs.map((t) =>
+						t.id === file.id ? { ...t, hexData: { ...file.hexData! } } : t,
+					),
 				);
 			} catch (err) {
 				console.error('Failed to load more hex:', err);
@@ -2682,16 +2897,20 @@ export class WorkspaceService {
 					new Uint8Array(nextSlice),
 					fileObj.size,
 					file.fileTypeDescription || '',
-					currentOffset
+					currentOffset,
 				);
 				file.hexData.lines = [...file.hexData.lines, ...nextChunk.lines];
 				file.hexData.bytes_shown = nextChunk.bytes_shown;
 				file.hexData.has_more = nextChunk.has_more;
 				this.files.update((files) =>
-					files.map((f) => (f.id === file.id ? { ...f, hexData: { ...file.hexData! } } : f))
+					files.map((f) =>
+						f.id === file.id ? { ...f, hexData: { ...file.hexData! } } : f,
+					),
 				);
 				this.openTabs.update((tabs) =>
-					tabs.map((t) => (t.id === file.id ? { ...t, hexData: { ...file.hexData! } } : t))
+					tabs.map((t) =>
+						t.id === file.id ? { ...t, hexData: { ...file.hexData! } } : t,
+					),
 				);
 			} catch (err) {
 				console.error('Failed to load more hex from web handle:', err);
@@ -2739,13 +2958,17 @@ export class WorkspaceService {
 	}
 
 	public discardChangesAndCloseTab(fileId: string): void {
-		const target = this.files().find((f) => f.id === fileId) || this.openTabs().find((t) => t.id === fileId);
+		const target =
+			this.files().find((f) => f.id === fileId) ||
+			this.openTabs().find((t) => t.id === fileId);
 		if (target) {
 			const reverted = target.savedContent ?? target.originalContent ?? target.content;
 			target.content = reverted;
 			target.isModified = false;
 			this.files.update((files) =>
-				files.map((f) => (f.id === fileId ? { ...f, content: reverted, isModified: false } : f))
+				files.map((f) =>
+					f.id === fileId ? { ...f, content: reverted, isModified: false } : f,
+				),
 			);
 		}
 		this.forceCloseTab(fileId);
@@ -2818,22 +3041,24 @@ export class WorkspaceService {
 		this.files.update((files) =>
 			files.map((file) => {
 				if (file.id === fileId) {
-					const baseContent = file.savedContent !== undefined ? file.savedContent : file.originalContent;
+					const baseContent =
+						file.savedContent !== undefined ? file.savedContent : file.originalContent;
 					const isModified = baseContent !== undefined ? baseContent !== content : true;
 					return { ...file, content, isModified };
 				}
 				return file;
-			})
+			}),
 		);
 		this.openTabs.update((tabs) =>
 			tabs.map((tab) => {
 				if (tab.id === fileId) {
-					const baseContent = tab.savedContent !== undefined ? tab.savedContent : tab.originalContent;
+					const baseContent =
+						tab.savedContent !== undefined ? tab.savedContent : tab.originalContent;
 					const isModified = baseContent !== undefined ? baseContent !== content : true;
 					return { ...tab, content, isModified };
 				}
 				return tab;
-			})
+			}),
 		);
 	}
 
@@ -3100,7 +3325,10 @@ export class WorkspaceService {
 		if (!file) return;
 
 		const normalizePath = (p: string) =>
-			p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+			p
+				.replace(/\\/g, '/')
+				.replace(/^\.\//, '')
+				.replace(/^\/+|\/+$/g, '');
 
 		let relPath = file.path || file.id;
 		let wsRoot = this.nativeWorkspacePath();
@@ -3191,10 +3419,16 @@ export class WorkspaceService {
 
 		const currentActiveId = this.activeFileId();
 		const currentActiveFile = this.activeFile();
-		const activePath = currentActiveFile?.path || currentActiveFile?.id || currentActiveId || null;
+		const activePath =
+			currentActiveFile?.path || currentActiveFile?.id || currentActiveId || null;
 
 		const openFiles = this.openTabs().map((t) => {
-			const item: { path: string; mtime?: number; size?: number; cursor?: { line: number; column: number } } = {
+			const item: {
+				path: string;
+				mtime?: number;
+				size?: number;
+				cursor?: { line: number; column: number };
+			} = {
 				path: t.path || t.id,
 			};
 			if (t.lastDiskMtime !== undefined) item.mtime = t.lastDiskMtime;
@@ -3234,8 +3468,12 @@ export class WorkspaceService {
 			}
 		} else if (this.recentDirHandle) {
 			try {
-				const videHandle = await this.recentDirHandle.getDirectoryHandle('.vide', { create: true });
-				const fileHandle = await videHandle.getFileHandle('workspace.json', { create: true });
+				const videHandle = await this.recentDirHandle.getDirectoryHandle('.vide', {
+					create: true,
+				});
+				const fileHandle = await videHandle.getFileHandle('workspace.json', {
+					create: true,
+				});
 				const writable = await fileHandle.createWritable();
 				await writable.write(jsonStr);
 				await writable.close();
@@ -3246,7 +3484,12 @@ export class WorkspaceService {
 	}
 
 	public async loadWorkspaceSessionState(dirHandle?: any): Promise<{
-		openFiles: Array<{ path: string; mtime?: number; size?: number; cursor?: { line: number; column: number } }>;
+		openFiles: Array<{
+			path: string;
+			mtime?: number;
+			size?: number;
+			cursor?: { line: number; column: number };
+		}>;
 		activeFile: string | null;
 	} | null> {
 		const rootPath = this.nativeWorkspacePath();
@@ -3256,28 +3499,49 @@ export class WorkspaceService {
 			try {
 				const parsed = JSON.parse(content);
 				if (parsed && Array.isArray(parsed.openFiles)) {
-					const normalizedOpenFiles: Array<{ path: string; mtime?: number; size?: number; cursor?: { line: number; column: number } }> = [];
+					const normalizedOpenFiles: Array<{
+						path: string;
+						mtime?: number;
+						size?: number;
+						cursor?: { line: number; column: number };
+					}> = [];
 					for (const item of parsed.openFiles) {
 						if (typeof item === 'string' && item.trim()) {
 							normalizedOpenFiles.push({ path: item.trim() });
-						} else if (item && typeof item === 'object' && typeof item.path === 'string' && item.path.trim()) {
+						} else if (
+							item &&
+							typeof item === 'object' &&
+							typeof item.path === 'string' &&
+							item.path.trim()
+						) {
 							normalizedOpenFiles.push({
 								path: item.path.trim(),
 								mtime: typeof item.mtime === 'number' ? item.mtime : undefined,
 								size: typeof item.size === 'number' ? item.size : undefined,
-								cursor: item.cursor && typeof item.cursor.line === 'number' ? item.cursor : undefined,
+								cursor:
+									item.cursor && typeof item.cursor.line === 'number'
+										? item.cursor
+										: undefined,
 							});
 						}
 					}
-					if (parsed && Array.isArray(parsed.navigationHistory) && parsed.navigationHistory.length > 0) {
+					if (
+						parsed &&
+						Array.isArray(parsed.navigationHistory) &&
+						parsed.navigationHistory.length > 0
+					) {
 						const navHistory = parsed.navigationHistory;
-						const navIndex = typeof parsed.navigationIndex === 'number' ? parsed.navigationIndex : -1;
+						const navIndex =
+							typeof parsed.navigationIndex === 'number'
+								? parsed.navigationIndex
+								: -1;
 						this.navigationSessionState.set({ history: navHistory, index: navIndex });
 						this.onSessionRestored?.(navHistory, navIndex);
 					}
 					return {
 						openFiles: normalizedOpenFiles,
-						activeFile: typeof parsed.activeFile === 'string' ? parsed.activeFile : null,
+						activeFile:
+							typeof parsed.activeFile === 'string' ? parsed.activeFile : null,
 					};
 				}
 			} catch {
@@ -3303,7 +3567,9 @@ export class WorkspaceService {
 			if (handle) {
 				try {
 					const videHandle = await handle.getDirectoryHandle('.vide', { create: false });
-					const fileHandle = await videHandle.getFileHandle('workspace.json', { create: false });
+					const fileHandle = await videHandle.getFileHandle('workspace.json', {
+						create: false,
+					});
 					const fileObj = await fileHandle.getFile();
 					const content = await fileObj.text();
 					if (content) {
@@ -3369,9 +3635,13 @@ export class WorkspaceService {
 		cliFiles?: CliFileToOpen[],
 		targetFile?: string | null,
 		highlightStart?: number | null,
-		highlightEnd?: number | null
+		highlightEnd?: number | null,
 	): Promise<void> {
-		if (this.isRealWorkspace() && this.nativeWorkspacePath() && this.nativeWorkspacePath() !== rootPath) {
+		if (
+			this.isRealWorkspace() &&
+			this.nativeWorkspacePath() &&
+			this.nativeWorkspacePath() !== rootPath
+		) {
 			await this.flushSessionBeforeClose();
 		}
 
@@ -3423,7 +3693,9 @@ export class WorkspaceService {
 
 		// Load .editorconfig if present in root
 		try {
-			const ecPath = rootPath.endsWith('/') ? `${rootPath}.editorconfig` : `${rootPath}/.editorconfig`;
+			const ecPath = rootPath.endsWith('/')
+				? `${rootPath}.editorconfig`
+				: `${rootPath}/.editorconfig`;
 			const ecContent = await invoke<string>('read_file_text', { filePath: ecPath });
 			if (ecContent) {
 				this.editorConfigService.loadConfigFromContent(ecContent);
@@ -3498,7 +3770,10 @@ export class WorkspaceService {
 
 			const fileToNavigate =
 				targetFile ||
-				(highlightStart !== undefined && highlightStart !== null && cliFiles && cliFiles.length > 0
+				(highlightStart !== undefined &&
+				highlightStart !== null &&
+				cliFiles &&
+				cliFiles.length > 0
 					? cliFiles[0].rel_path || cliFiles[0].fs_path
 					: null);
 
@@ -3507,7 +3782,7 @@ export class WorkspaceService {
 			} else if (cliFiles && cliFiles.length > 0) {
 				for (const cf of cliFiles.slice(0, 3)) {
 					let fileToOpen = sortedRootFiles.find(
-						(f) => f.path === cf.rel_path || f.fsPath === cf.fs_path
+						(f) => f.path === cf.rel_path || f.fsPath === cf.fs_path,
 					);
 					if (!fileToOpen) {
 						fileToOpen = {
@@ -3527,7 +3802,7 @@ export class WorkspaceService {
 				if (cliFiles.length > 0) {
 					const firstTarget = cliFiles[0];
 					const found = this.files().find(
-						(f) => f.path === firstTarget.rel_path || f.fsPath === firstTarget.fs_path
+						(f) => f.path === firstTarget.rel_path || f.fsPath === firstTarget.fs_path,
 					);
 					if (found) {
 						this.activeFileId.set(found.id);
@@ -3539,10 +3814,12 @@ export class WorkspaceService {
 					for (const item of session.openFiles) {
 						const relPath = item.path;
 						let fileToOpen = sortedRootFiles.find(
-							(f) => f.path === relPath || f.id === relPath || f.fsPath === relPath
+							(f) => f.path === relPath || f.id === relPath || f.fsPath === relPath,
 						);
 						if (!fileToOpen) {
-							const fullFsPath = rootPath.endsWith('/') ? `${rootPath}${relPath}` : `${rootPath}/${relPath}`;
+							const fullFsPath = rootPath.endsWith('/')
+								? `${rootPath}${relPath}`
+								: `${rootPath}/${relPath}`;
 							const baseName = relPath.split('/').pop() || relPath;
 							fileToOpen = {
 								id: relPath,
@@ -3577,7 +3854,7 @@ export class WorkspaceService {
 					}
 					if (session.activeFile) {
 						const activeTarget = this.files().find(
-							(f) => f.path === session.activeFile || f.id === session.activeFile
+							(f) => f.path === session.activeFile || f.id === session.activeFile,
 						);
 						if (activeTarget) {
 							this.activeFileId.set(activeTarget.id);
@@ -3664,7 +3941,7 @@ export class WorkspaceService {
 		const loadDirRecursive = async (
 			dirFsPath: string,
 			dirRelPath: string,
-			level: number
+			level: number,
 		): Promise<FileTreeNode[]> => {
 			try {
 				const entries = await invoke<
@@ -3689,13 +3966,17 @@ export class WorkspaceService {
 							level,
 						};
 						if (isExpanded) {
-							dirNode.children = await loadDirRecursive(entry.path, relPath, level + 1);
+							dirNode.children = await loadDirRecursive(
+								entry.path,
+								relPath,
+								level + 1,
+							);
 						}
 						nodes.push(dirNode);
 					} else if (this.isReadableTextFile(entry.name)) {
 						const isBin = isBinaryFile(entry.name);
 						const existingFile = this.files().find(
-							(f) => f.fsPath === entry.path || f.path === relPath
+							(f) => f.fsPath === entry.path || f.path === relPath,
 						);
 						const file: WorkspaceFile = existingFile || {
 							id: relPath,
@@ -3736,7 +4017,9 @@ export class WorkspaceService {
 		this.indexedFileCount.set(0);
 
 		const discoveredFiles: WorkspaceFile[] = [];
-		const queue: { fullPath: string; relPath: string }[] = [{ fullPath: rootPath, relPath: '' }];
+		const queue: { fullPath: string; relPath: string }[] = [
+			{ fullPath: rootPath, relPath: '' },
+		];
 		const visitedDirs = new Set<string>();
 		let dirsProcessed = 0;
 
@@ -3754,10 +4037,15 @@ export class WorkspaceService {
 				try {
 					const entries = await invoke<
 						Array<{ name: string; path: string; is_dir: boolean; size: number }>
-					>('read_dir_entries', { dirPath: current.fullPath, showHidden: this.showHiddenFiles() });
+					>('read_dir_entries', {
+						dirPath: current.fullPath,
+						showHidden: this.showHiddenFiles(),
+					});
 
 					for (const entry of entries) {
-						const relPath = current.relPath ? `${current.relPath}/${entry.name}` : entry.name;
+						const relPath = current.relPath
+							? `${current.relPath}/${entry.name}`
+							: entry.name;
 						if (entry.is_dir) {
 							if (
 								BACKGROUND_INDEX_IGNORED_DIRS.has(entry.name) ||
@@ -3795,7 +4083,7 @@ export class WorkspaceService {
 			const existingMap = new Map(
 				this.files()
 					.filter((f) => f.isLoaded || f.isModified || f.gitStatus)
-					.map((f) => [f.path, f])
+					.map((f) => [f.path, f]),
 			);
 
 			const mergedFiles = discoveredFiles.map((df) => {
@@ -3963,7 +4251,7 @@ export class WorkspaceService {
 				}
 				if (session.activeFile) {
 					const activeTarget = this.files().find(
-						(f) => f.path === session.activeFile || f.id === session.activeFile
+						(f) => f.path === session.activeFile || f.id === session.activeFile,
 					);
 					if (activeTarget) {
 						this.activeFileId.set(activeTarget.id);
@@ -4039,7 +4327,7 @@ export class WorkspaceService {
 							cli.files,
 							cli.target_file,
 							cli.highlight_start,
-							cli.highlight_end
+							cli.highlight_end,
 						);
 						return;
 					}
@@ -4341,7 +4629,9 @@ export class WorkspaceService {
 									id: relPath,
 									name: entry.name,
 									path: relPath,
-									language: isBin ? 'binary' : detectLanguageFromFilename(entry.name),
+									language: isBin
+										? 'binary'
+										: detectLanguageFromFilename(entry.name),
 									content: '',
 									isLoaded: false,
 									isBinary: isBin || undefined,
@@ -4366,7 +4656,7 @@ export class WorkspaceService {
 			const existingMap = new Map(
 				this.files()
 					.filter((f) => f.isLoaded || f.isModified || f.gitStatus)
-					.map((f) => [f.path, f])
+					.map((f) => [f.path, f]),
 			);
 			const mergedFiles = discoveredFiles.map((df) => {
 				const existing = existingMap.get(df.path);
@@ -4466,7 +4756,10 @@ export class WorkspaceService {
 		}
 
 		// Apply .editorconfig rules (trim trailing whitespace, insert final newline, line endings)
-		const processedContent = this.editorConfigService.applySaveRules(file.content, file.name || file.path);
+		const processedContent = this.editorConfigService.applySaveRules(
+			file.content,
+			file.name || file.path,
+		);
 		if (processedContent !== file.content) {
 			file.content = processedContent;
 			this.onContentProcessedOnSave?.(file.id, processedContent);
@@ -4484,9 +4777,12 @@ export class WorkspaceService {
 					content: file.content,
 				});
 				try {
-					const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
-						filePath: file.fsPath,
-					});
+					const meta = await invoke<{ mtime_ms: number; size: number }>(
+						'get_file_metadata',
+						{
+							filePath: file.fsPath,
+						},
+					);
 					file.lastDiskMtime = meta.mtime_ms;
 					file.lastDiskSize = meta.size;
 					file.fileSize = meta.size;
@@ -4502,8 +4798,8 @@ export class WorkspaceService {
 									lastDiskSize: file.lastDiskSize,
 									fileSize: file.fileSize,
 								}
-							: f
-					)
+							: f,
+					),
 				);
 				this.openTabs.update((tabs) =>
 					tabs.map((t) =>
@@ -4516,8 +4812,8 @@ export class WorkspaceService {
 									lastDiskSize: file.lastDiskSize,
 									fileSize: file.fileSize,
 								}
-							: t
-					)
+							: t,
+					),
 				);
 				this.triggerSaveSessionState();
 				this.showNotification(`Saved ${file.name} to disk`);
@@ -4556,8 +4852,8 @@ export class WorkspaceService {
 									lastDiskSize: file.lastDiskSize,
 									fileSize: file.fileSize,
 								}
-							: f
-					)
+							: f,
+					),
 				);
 				this.openTabs.update((tabs) =>
 					tabs.map((t) =>
@@ -4570,8 +4866,8 @@ export class WorkspaceService {
 									lastDiskSize: file.lastDiskSize,
 									fileSize: file.fileSize,
 								}
-							: t
-					)
+							: t,
+					),
 				);
 				this.triggerSaveSessionState();
 				this.showNotification(`Saved ${file.name} to disk`);
@@ -4584,10 +4880,14 @@ export class WorkspaceService {
 			}
 		} else {
 			this.files.update((files) =>
-				files.map((f) => (f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f))
+				files.map((f) =>
+					f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f,
+				),
 			);
 			this.openTabs.update((tabs) =>
-				tabs.map((t) => (t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t))
+				tabs.map((t) =>
+					t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t,
+				),
 			);
 			this.showNotification(`Updated ${file.name} (in-memory)`);
 			return true;
@@ -4612,8 +4912,17 @@ export class WorkspaceService {
 			const fNorm = f.path.replace(/^\.\//, '').replace(/^\//, '');
 			return fNorm === normPath || f.id === normId || f.path === path;
 		});
-		const status = file ? file.gitStatus : (typeof fileOrPath === 'object' ? fileOrPath.gitStatus : undefined);
-		return status === 'modified' || status === 'added' || status === 'untracked' || status === 'deleted';
+		const status = file
+			? file.gitStatus
+			: typeof fileOrPath === 'object'
+				? fileOrPath.gitStatus
+				: undefined;
+		return (
+			status === 'modified' ||
+			status === 'added' ||
+			status === 'untracked' ||
+			status === 'deleted'
+		);
 	}
 
 	public isFileModified(fileOrPath: WorkspaceFile | string): boolean {
@@ -4677,7 +4986,7 @@ export class WorkspaceService {
 					}
 				}, 500);
 			},
-			{ once: true }
+			{ once: true },
 		);
 
 		input.onchange = async () => {
@@ -4699,7 +5008,8 @@ export class WorkspaceService {
 
 				const firstPath = filesList[0].webkitRelativePath || filesList[0].name;
 				const slashIdx = firstPath.indexOf('/');
-				this.fallbackRootName = slashIdx !== -1 ? firstPath.substring(0, slashIdx) : 'WORKSPACE';
+				this.fallbackRootName =
+					slashIdx !== -1 ? firstPath.substring(0, slashIdx) : 'WORKSPACE';
 				this.workspaceName.set(this.fallbackRootName);
 				this.isRealWorkspace.set(true);
 				if (typeof window !== 'undefined') {
@@ -4796,7 +5106,7 @@ export class WorkspaceService {
 
 				// Check for git branch in fallback files list
 				const gitHead = filesList.find(
-					(f) => f.webkitRelativePath?.endsWith('.git/HEAD') || f.name === 'HEAD'
+					(f) => f.webkitRelativePath?.endsWith('.git/HEAD') || f.name === 'HEAD',
 				);
 				if (gitHead) {
 					try {
@@ -4813,7 +5123,9 @@ export class WorkspaceService {
 					this.gitBranch.set(null);
 				}
 
-				this.showNotification(`Opened ${this.fallbackRootName} (${allWorkspaceFiles.length} files indexed)`);
+				this.showNotification(
+					`Opened ${this.fallbackRootName} (${allWorkspaceFiles.length} files indexed)`,
+				);
 			} finally {
 				this.isScanning.set(false);
 			}

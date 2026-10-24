@@ -97,7 +97,11 @@ export class NavigationHistoryService {
 
 		// Check if session was already restored before this service constructor ran
 		const existingState = this.workspaceService.navigationSessionState();
-		if (existingState && Array.isArray(existingState.history) && existingState.history.length > 0) {
+		if (
+			existingState &&
+			Array.isArray(existingState.history) &&
+			existingState.history.length > 0
+		) {
 			this.loadFromState(existingState.history, existingState.index);
 		}
 
@@ -131,13 +135,13 @@ export class NavigationHistoryService {
 	public addManualLocation(
 		targetFile?: WorkspaceFile | { path: string; name?: string; content?: string } | null,
 		targetLine?: number,
-		targetCol = 1
+		targetCol = 1,
 	): void {
 		const file = targetFile || this.workspaceService.activeFile();
 		if (!file) return;
 		const cursor = 'cursor' in file ? (file as WorkspaceFile).cursor : undefined;
-		const line = targetLine !== undefined ? targetLine : (cursor?.line || 1);
-		const col = targetCol !== undefined ? targetCol : (cursor?.column || 1);
+		const line = targetLine !== undefined ? targetLine : cursor?.line || 1;
+		const col = targetCol !== undefined ? targetCol : cursor?.column || 1;
 		this.recordLocation(file, line, col, undefined, true);
 		const fileName = file.name || (file as any).path?.split('/').pop() || 'file';
 		this.workspaceService.showNotification(`📍 Added ${fileName}:${line} to navigation stack`);
@@ -151,7 +155,7 @@ export class NavigationHistoryService {
 		line: number,
 		col = 1,
 		explicitPreview?: string,
-		isManual = false
+		isManual = false,
 	): void {
 		if (this.isNavigating || this.workspaceService.isRestoringSession()) return;
 		const filePath = file.path || (file as any).id || '';
@@ -184,7 +188,9 @@ export class NavigationHistoryService {
 		if (
 			currentEntry &&
 			currentEntry.filePath === filePath &&
-			(isManual ? currentEntry.lineNumber === line : Math.abs(currentEntry.lineNumber - line) <= 1)
+			(isManual
+				? currentEntry.lineNumber === line
+				: Math.abs(currentEntry.lineNumber - line) <= 1)
 		) {
 			// Update line preview and column without creating a duplicate
 			this.history.update((h) => {
