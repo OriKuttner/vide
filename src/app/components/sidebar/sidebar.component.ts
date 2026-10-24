@@ -200,11 +200,7 @@ export class SidebarComponent {
 	}
 
 	public async selectMatch(m: GrepResult): Promise<void> {
-		await this.workspaceService.openFile(m.file);
-		this.workspaceService.pendingLineJump.set({
-			lineNumber: m.lineNumber,
-			column: (m.matchStart ?? 0) + 1,
-		});
+		await this.workspaceService.jumpToLine(m.file, m.lineNumber, (m.matchStart ?? 0) + 1);
 	}
 
 	public formatMatchPreview(m: GrepResult): string {

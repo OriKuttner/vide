@@ -16,6 +16,7 @@ export interface NavigationEntry {
 	linePreview?: string;
 	timestamp: number;
 	isManual?: boolean;
+	source?: 'jump' | 'edit' | 'explorer' | 'manual';
 }
 
 export interface NavigationRecentItem {
@@ -30,35 +31,36 @@ export interface NavigationRecentItem {
 export class NavigationHistoryService {
 	private readonly workspaceService = inject(WorkspaceService);
 
-	// Unbounded / infinite navigation history stack
+	// Back stack (locations navigated away from)
 	public readonly history = signal<NavigationEntry[]>([]);
 
-	// Pointer to current active entry in history
+	// Forward stack (locations for forward navigation after going back)
+	public readonly forwardStack = signal<NavigationEntry[]>([]);
+
+	// Pointer / index compatibility (points to top of history, or -1 if empty)
 	public readonly currentIndex = signal<number>(-1);
 
 	// Controls dropdown visibility in tabs bar
 	public readonly isDropdownOpen = signal<boolean>(false);
 
-	// Guard flag to prevent re-recording during navigation jumps
+	// Guard flag to prevent re-recording during navigation transitions
 	private isNavigating = false;
 
-	// Track last recorded line to detect duplicate entries
-	private lastRecordedLine = -1;
-	private lastRecordedFile = '';
+	// Tracking for active file context to avoid explorer glance pollution
+	private activeFilePath = '';
+	private activeFileLine = 1;
+	private activeFileCol = 1;
+	private activeHasInteracted = false;
 
 	// Can navigate back
-	public readonly canNavigateBack = computed(() => this.currentIndex() > 0);
+	public readonly canNavigateBack = computed(() => this.history().length > 0);
 
 	// Can navigate forward
-	public readonly canNavigateForward = computed(() => {
-		const idx = this.currentIndex();
-		return idx >= 0 && idx < this.history().length - 1;
-	});
+	public readonly canNavigateForward = computed(() => this.forwardStack().length > 0);
 
 	// Recent up to 30 locations (newest on top)
 	public readonly recent30Entries = computed<NavigationRecentItem[]>(() => {
 		const list = this.history();
-		const currentIdx = this.currentIndex();
 		if (list.length === 0) return [];
 
 		const total = list.length;
@@ -72,27 +74,29 @@ export class NavigationHistoryService {
 				return {
 					entry,
 					originalIndex,
-					isCurrent: originalIndex === currentIdx,
+					isCurrent: false,
 				};
 			})
 			.reverse();
 	});
 
 	constructor() {
-		// Hook into WorkspaceService jumpToLine so all jumps are tracked
-		this.workspaceService.onBeforeJumpToLine = (targetFile, targetLine, targetCol) => {
-			this.recordCurrentLocation();
+		// Hook into WorkspaceService jumpToLine: records ONLY the origin position before jump
+		this.workspaceService.onBeforeJumpToLine = (_targetFile, _targetLine, _targetCol) => {
+			if (this.isNavigating) return;
+
+			this.recordCurrentLocationBeforeJump('jump');
+			this.isNavigating = true;
 			setTimeout(() => {
-				this.recordLocation(targetFile, targetLine, targetCol);
-			}, 50);
+				this.isNavigating = false;
+				this.updateActiveTrackingAfterJump(_targetFile, _targetLine, _targetCol);
+			}, 300);
 		};
 
-		// Hook into WorkspaceService openFile (tab switches and explorer clicks)
+		// Hook into WorkspaceService openFile (explorer clicks and tab switches)
 		this.workspaceService.onFileOpened = (file) => {
 			if (this.isNavigating || !file.isLoaded) return;
-			const line = file.cursor?.line || 1;
-			const col = file.cursor?.column || 1;
-			this.recordLocation(file, line, col);
+			this.onFileSwitched(file);
 		};
 
 		// Check if session was already restored before this service constructor ran
@@ -117,16 +121,11 @@ export class NavigationHistoryService {
 	}
 
 	/**
-	 * Records the current editor position before making a jump
+	 * Records current editor position before making a jump away
 	 */
-	public recordCurrentLocation(): void {
+	public recordCurrentLocation(source: 'jump' | 'edit' | 'explorer' | 'manual' = 'jump'): void {
 		if (this.isNavigating || this.workspaceService.isRestoringSession()) return;
-		const file = this.workspaceService.activeFile();
-		if (!file) return;
-
-		const line = file.cursor?.line || 1;
-		const col = file.cursor?.column || 1;
-		this.recordLocation(file, line, col);
+		this.recordCurrentLocationBeforeJump(source);
 	}
 
 	/**
@@ -139,16 +138,40 @@ export class NavigationHistoryService {
 	): void {
 		const file = targetFile || this.workspaceService.activeFile();
 		if (!file) return;
+		const filePath = file.path || (file as any).id || '';
+		if (!filePath) return;
+
 		const cursor = 'cursor' in file ? (file as WorkspaceFile).cursor : undefined;
-		const line = targetLine !== undefined ? targetLine : cursor?.line || 1;
-		const col = targetCol !== undefined ? targetCol : cursor?.column || 1;
-		this.recordLocation(file, line, col, undefined, true);
-		const fileName = file.name || (file as any).path?.split('/').pop() || 'file';
+		const line = targetLine !== undefined ? targetLine : cursor?.line || this.activeFileLine || 1;
+		const col = targetCol !== undefined ? targetCol : cursor?.column || this.activeFileCol || 1;
+		const fileName = file.name || filePath.split('/').pop() || filePath;
+
+		let preview: string | undefined;
+		if (file.content) {
+			const lines = file.content.split('\n');
+			if (lines[line - 1]) {
+				preview = lines[line - 1].trim().slice(0, 100);
+			}
+		}
+
+		const manualEntry: NavigationEntry = {
+			filePath,
+			fileName,
+			lineNumber: line,
+			column: col,
+			linePreview: preview,
+			timestamp: Date.now(),
+			isManual: true,
+			source: 'manual',
+		};
+
+		this.pushToHistory(manualEntry);
+		this.activeHasInteracted = true;
 		this.workspaceService.showNotification(`📍 Added ${fileName}:${line} to navigation stack`);
 	}
 
 	/**
-	 * Records a location in the navigation stack
+	 * Records a location directly into the history stack
 	 */
 	public recordLocation(
 		file: WorkspaceFile | { path: string; name?: string; content?: string },
@@ -156,6 +179,7 @@ export class NavigationHistoryService {
 		col = 1,
 		explicitPreview?: string,
 		isManual = false,
+		source: 'jump' | 'edit' | 'explorer' | 'manual' = 'jump',
 	): void {
 		if (this.isNavigating || this.workspaceService.isRestoringSession()) return;
 		const filePath = file.path || (file as any).id || '';
@@ -178,50 +202,46 @@ export class NavigationHistoryService {
 			linePreview: preview,
 			timestamp: Date.now(),
 			isManual: isManual || undefined,
+			source,
 		};
 
-		const currentList = this.history();
-		const currIdx = this.currentIndex();
-		const currentEntry = currIdx >= 0 ? currentList[currIdx] : null;
+		this.pushToHistory(newEntry);
+	}
 
-		// Check if this is the exact same or adjacent location in same file
-		if (
-			currentEntry &&
-			currentEntry.filePath === filePath &&
-			(isManual
-				? currentEntry.lineNumber === line
-				: Math.abs(currentEntry.lineNumber - line) <= 1)
-		) {
-			// Update line preview and column without creating a duplicate
-			this.history.update((h) => {
-				const copy = [...h];
-				copy[currIdx] = {
-					...copy[currIdx],
-					lineNumber: line,
-					column: col,
-					linePreview: preview || copy[currIdx].linePreview,
-					timestamp: Date.now(),
-					isManual: isManual ? true : copy[currIdx].isManual,
-				};
-				return copy;
-			});
-			this.lastRecordedLine = line;
-			this.lastRecordedFile = filePath;
-			this.syncToWorkspaceSession();
-			return;
+	/**
+	 * Tracks cursor position within the active editor
+	 */
+	public recordCursorMovement(file: WorkspaceFile, line: number, col: number): void {
+		if (this.isNavigating || this.workspaceService.isRestoringSession()) return;
+		const filePath = file.path || file.id || '';
+		if (!filePath) return;
+
+		if (this.activeFilePath === filePath) {
+			if (line !== 1 || col !== 1 || this.activeFileLine !== line) {
+				this.activeHasInteracted = true;
+			}
+			this.activeFileLine = line;
+			this.activeFileCol = col;
+		} else {
+			this.activeFilePath = filePath;
+			this.activeFileLine = line;
+			this.activeFileCol = col;
+			this.activeHasInteracted = true;
 		}
+	}
 
-		// If we were in the middle of history and made a new move, truncate forward history
-		let baseList = currentList;
-		if (currIdx >= 0 && currIdx < currentList.length - 1) {
-			baseList = currentList.slice(0, currIdx + 1);
-		}
+	/**
+	 * Records that content was edited in the active file
+	 */
+	public recordEditLocation(file: WorkspaceFile, line: number, col: number): void {
+		if (this.isNavigating || this.workspaceService.isRestoringSession()) return;
+		const filePath = file.path || file.id || '';
+		if (!filePath) return;
 
-		this.history.set([...baseList, newEntry]);
-		this.currentIndex.set(baseList.length);
-		this.lastRecordedLine = line;
-		this.lastRecordedFile = filePath;
-		this.syncToWorkspaceSession();
+		this.activeFilePath = filePath;
+		this.activeFileLine = line;
+		this.activeFileCol = col;
+		this.activeHasInteracted = true;
 	}
 
 	/**
@@ -230,14 +250,23 @@ export class NavigationHistoryService {
 	public async navigateBack(): Promise<void> {
 		if (!this.canNavigateBack()) return;
 
-		// Update active position before jumping
-		this.updateCurrentLocationBeforeJump();
+		// 1. Capture current location before leaving it
+		const currentEntry = this.captureCurrentLocation('jump');
 
-		const targetIndex = this.currentIndex() - 1;
-		this.currentIndex.set(targetIndex);
-		const target = this.history()[targetIndex];
+		// 2. Pop top entry from history
+		const historyList = this.history();
+		const target = historyList[historyList.length - 1];
+		this.history.set(historyList.slice(0, -1));
+		this.currentIndex.set(this.history().length - 1);
+
+		// 3. Push current location to forwardStack
+		if (currentEntry) {
+			this.forwardStack.update((fwd) => [...fwd, currentEntry]);
+		}
+
+		// 4. Jump to target
 		if (target) {
-			await this.jumpToEntry(target, targetIndex);
+			await this.performJump(target);
 		}
 	}
 
@@ -247,36 +276,55 @@ export class NavigationHistoryService {
 	public async navigateForward(): Promise<void> {
 		if (!this.canNavigateForward()) return;
 
-		const targetIndex = this.currentIndex() + 1;
-		this.currentIndex.set(targetIndex);
-		const target = this.history()[targetIndex];
+		// 1. Capture current location before leaving it
+		const currentEntry = this.captureCurrentLocation('jump');
+
+		// 2. Pop top entry from forwardStack
+		const fwdList = this.forwardStack();
+		const target = fwdList[fwdList.length - 1];
+		this.forwardStack.set(fwdList.slice(0, -1));
+
+		// 3. Push current location to history
+		if (currentEntry) {
+			this.pushToHistory(currentEntry);
+		}
+
+		// 4. Jump to target
 		if (target) {
-			await this.jumpToEntry(target, targetIndex);
+			await this.performJump(target);
 		}
 	}
 
 	/**
-	 * Jumps directly to a given navigation entry
+	 * Jumps directly to a given navigation entry from the dropdown
 	 */
-	public async jumpToEntry(entry: NavigationEntry, targetIndex?: number): Promise<void> {
-		this.isNavigating = true;
-		try {
-			if (typeof targetIndex === 'number' && targetIndex >= 0) {
-				this.currentIndex.set(targetIndex);
-			}
+	public async jumpToEntry(entry: NavigationEntry, originalIndex?: number): Promise<void> {
+		const currentEntry = this.captureCurrentLocation('jump');
+		const historyList = this.history();
 
-			const file = await this.workspaceService.openFileByPath(entry.filePath);
-			if (file) {
-				await this.workspaceService.jumpToLine(file, entry.lineNumber, entry.column || 1);
-			}
+		if (
+			typeof originalIndex === 'number' &&
+			originalIndex >= 0 &&
+			originalIndex < historyList.length
+		) {
+			const poppedAfter = historyList.slice(originalIndex + 1);
 
-			this.closeDropdown();
-			this.syncToWorkspaceSession();
-		} finally {
-			setTimeout(() => {
-				this.isNavigating = false;
-			}, 300);
+			// Truncate history to originalIndex (excluding target entry itself since user is jumping to it)
+			this.history.set(historyList.slice(0, originalIndex));
+			this.currentIndex.set(this.history().length - 1);
+
+			// Forward stack gets current location and popped intermediate entries in forward order
+			const toForward: NavigationEntry[] = [];
+			if (currentEntry) {
+				toForward.push(currentEntry);
+			}
+			for (let i = poppedAfter.length - 1; i >= 0; i--) {
+				toForward.push(poppedAfter[i]);
+			}
+			this.forwardStack.update((fwd) => [...fwd, ...toForward]);
 		}
+
+		await this.performJump(entry);
 	}
 
 	/**
@@ -286,20 +334,8 @@ export class NavigationHistoryService {
 		const list = this.history();
 		if (index < 0 || index >= list.length) return;
 
-		const currIdx = this.currentIndex();
-		const updated = list.filter((_, i) => i !== index);
-		this.history.set(updated);
-
-		if (updated.length === 0) {
-			this.currentIndex.set(-1);
-			this.lastRecordedLine = -1;
-			this.lastRecordedFile = '';
-		} else if (index < currIdx) {
-			this.currentIndex.set(currIdx - 1);
-		} else if (index === currIdx) {
-			this.currentIndex.set(Math.min(currIdx, updated.length - 1));
-		}
-
+		this.history.update((h) => h.filter((_, i) => i !== index));
+		this.currentIndex.set(this.history().length - 1);
 		this.syncToWorkspaceSession();
 	}
 
@@ -308,9 +344,8 @@ export class NavigationHistoryService {
 	 */
 	public clearHistory(): void {
 		this.history.set([]);
+		this.forwardStack.set([]);
 		this.currentIndex.set(-1);
-		this.lastRecordedLine = -1;
-		this.lastRecordedFile = '';
 		this.syncToWorkspaceSession();
 	}
 
@@ -336,24 +371,166 @@ export class NavigationHistoryService {
 	}
 
 	/**
-	 * Updates current location before jumping away
+	 * Loads restored history from workspace.json
 	 */
-	private updateCurrentLocationBeforeJump(): void {
+	public loadFromState(entries: NavigationEntry[], _index?: number): void {
+		if (!Array.isArray(entries)) return;
+		this.history.set(entries);
+		this.forwardStack.set([]);
+		const validIndex = entries.length - 1;
+		this.currentIndex.set(validIndex);
+		this.workspaceService.navigationSessionState.set({
+			history: entries,
+			index: validIndex,
+		});
+	}
+
+	/**
+	 * Records current location before a jump and clears forward stack
+	 */
+	private recordCurrentLocationBeforeJump(
+		source: 'jump' | 'edit' | 'explorer' | 'manual' = 'jump',
+	): void {
+		const current = this.captureCurrentLocation(source);
+		if (!current) return;
+
+		this.pushToHistory(current);
+		this.forwardStack.set([]);
+	}
+
+	/**
+	 * Captures current active file and cursor position
+	 */
+	private captureCurrentLocation(
+		source: 'jump' | 'edit' | 'explorer' | 'manual' = 'jump',
+	): NavigationEntry | null {
 		const file = this.workspaceService.activeFile();
-		const currIdx = this.currentIndex();
-		if (file && currIdx >= 0 && this.history()[currIdx]) {
-			const line = file.cursor?.line || 1;
-			const col = file.cursor?.column || 1;
-			this.history.update((h) => {
-				const copy = [...h];
-				copy[currIdx] = {
-					...copy[currIdx],
-					lineNumber: line,
-					column: col,
-					timestamp: Date.now(),
-				};
-				return copy;
-			});
+		if (!file) return null;
+		const filePath = file.path || (file as any).id || '';
+		if (!filePath) return null;
+
+		const fileName = file.name || filePath.split('/').pop() || filePath;
+		const line = file.cursor?.line || this.activeFileLine || 1;
+		const col = file.cursor?.column || this.activeFileCol || 1;
+
+		let preview: string | undefined;
+		if (file.content) {
+			const lines = file.content.split('\n');
+			if (lines[line - 1]) {
+				preview = lines[line - 1].trim().slice(0, 100);
+			}
+		}
+
+		return {
+			filePath,
+			fileName,
+			lineNumber: line,
+			column: col,
+			linePreview: preview,
+			timestamp: Date.now(),
+			source,
+		};
+	}
+
+	/**
+	 * Pushes an entry to history with duplicate suppression
+	 */
+	private pushToHistory(entry: NavigationEntry): void {
+		const list = this.history();
+		if (list.length > 0) {
+			const last = list[list.length - 1];
+			if (
+				last.filePath === entry.filePath &&
+				Math.abs(last.lineNumber - entry.lineNumber) <= 1
+			) {
+				return;
+			}
+		}
+
+		this.history.update((h) => [...h, entry]);
+		this.currentIndex.set(this.history().length - 1);
+		this.syncToWorkspaceSession();
+	}
+
+	/**
+	 * Handles file switching from explorer or tabs
+	 */
+	private onFileSwitched(file: WorkspaceFile): void {
+		const newPath = file.path || file.id || '';
+		if (!newPath) return;
+
+		if (this.activeFilePath === newPath) return;
+
+		// If user interacted with the previous file, push it to history before switching
+		if (this.activeFilePath && this.activeHasInteracted) {
+			const prevFile = this.workspaceService
+				.files()
+				.find((f) => f.path === this.activeFilePath || f.id === this.activeFilePath);
+			const fileName =
+				prevFile?.name || this.activeFilePath.split('/').pop() || this.activeFilePath;
+			let preview: string | undefined;
+			if (prevFile?.content) {
+				const lines = prevFile.content.split('\n');
+				if (lines[this.activeFileLine - 1]) {
+					preview = lines[this.activeFileLine - 1].trim().slice(0, 100);
+				}
+			}
+
+			const prevEntry: NavigationEntry = {
+				filePath: this.activeFilePath,
+				fileName,
+				lineNumber: this.activeFileLine,
+				column: this.activeFileCol,
+				linePreview: preview,
+				timestamp: Date.now(),
+				source: 'explorer',
+			};
+
+			this.pushToHistory(prevEntry);
+			this.forwardStack.set([]);
+		}
+
+		this.activeFilePath = newPath;
+		this.activeFileLine = file.cursor?.line || 1;
+		this.activeFileCol = file.cursor?.column || 1;
+		this.activeHasInteracted = false;
+	}
+
+	/**
+	 * Updates active tracking after a jump finishes
+	 */
+	private updateActiveTrackingAfterJump(
+		targetFile: WorkspaceFile,
+		targetLine: number,
+		targetCol: number,
+	): void {
+		this.activeFilePath = targetFile.path || targetFile.id || '';
+		this.activeFileLine = targetLine;
+		this.activeFileCol = targetCol;
+		this.activeHasInteracted = true;
+	}
+
+	/**
+	 * Performs actual file opening and line jumping
+	 */
+	private async performJump(target: NavigationEntry): Promise<void> {
+		this.isNavigating = true;
+		try {
+			const file = await this.workspaceService.openFileByPath(target.filePath);
+			if (file) {
+				await this.workspaceService.jumpToLine(file, target.lineNumber, target.column || 1);
+			}
+			this.activeFilePath = target.filePath;
+			this.activeFileLine = target.lineNumber;
+			this.activeFileCol = target.column || 1;
+			this.activeHasInteracted = true;
+			this.closeDropdown();
+			this.currentIndex.set(this.history().length - 1);
+			this.syncToWorkspaceSession();
+		} finally {
+			setTimeout(() => {
+				this.isNavigating = false;
+			}, 300);
 		}
 	}
 
@@ -367,26 +544,5 @@ export class NavigationHistoryService {
 			index: this.currentIndex(),
 		});
 		this.workspaceService.triggerSaveSessionState();
-	}
-
-	/**
-	 * Loads restored history from workspace.json
-	 */
-	public loadFromState(entries: NavigationEntry[], index?: number): void {
-		if (!Array.isArray(entries)) return;
-		this.history.set(entries);
-		const validIndex =
-			typeof index === 'number' && index >= 0 && index < entries.length
-				? index
-				: entries.length - 1;
-		this.currentIndex.set(validIndex);
-		if (validIndex >= 0 && entries[validIndex]) {
-			this.lastRecordedLine = entries[validIndex].lineNumber;
-			this.lastRecordedFile = entries[validIndex].filePath;
-		}
-		this.workspaceService.navigationSessionState.set({
-			history: entries,
-			index: validIndex,
-		});
 	}
 }

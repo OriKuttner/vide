@@ -910,6 +910,11 @@ ${rawContent}
 					line: e.position.lineNumber,
 					column: e.position.column,
 				});
+				this.navigationHistoryService.recordCursorMovement(
+					active,
+					e.position.lineNumber,
+					e.position.column,
+				);
 			}
 			if (this.aiThinkingWidget && this.aiService.isGenerating()) {
 				this.editorInstance?.layoutContentWidget(this.aiThinkingWidget);
@@ -932,6 +937,14 @@ ${rawContent}
 			if (activeFile && this.editorInstance) {
 				const val = this.editorInstance.getValue();
 				this.workspaceService.updateContent(activeFile.id, val);
+				const pos = this.editorInstance.getPosition();
+				if (pos) {
+					this.navigationHistoryService.recordEditLocation(
+						activeFile,
+						pos.lineNumber,
+						pos.column,
+					);
+				}
 				const model = this.editorInstance.getModel();
 				if (
 					model &&
@@ -1530,6 +1543,14 @@ ${rawContent}
 			if (activeDiff && this.diffEditorInstance) {
 				const val = this.diffEditorInstance.getModifiedEditor().getValue();
 				this.workspaceService.updateContent(activeDiff.id, val);
+				const pos = this.diffEditorInstance.getModifiedEditor().getPosition();
+				if (pos) {
+					this.navigationHistoryService.recordEditLocation(
+						activeDiff,
+						pos.lineNumber,
+						pos.column,
+					);
+				}
 			}
 		});
 
@@ -1539,6 +1560,14 @@ ${rawContent}
 				line: e.position.lineNumber,
 				column: e.position.column,
 			});
+			const activeDiff = this.workspaceService.activeDiffFile();
+			if (activeDiff) {
+				this.navigationHistoryService.recordCursorMovement(
+					activeDiff,
+					e.position.lineNumber,
+					e.position.column,
+				);
+			}
 		});
 
 		// Track diff changes count
