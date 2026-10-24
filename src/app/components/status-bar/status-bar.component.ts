@@ -72,6 +72,8 @@ export class StatusBarComponent {
         return 'JSON';
       case 'html':
         return 'HTML';
+      case 'xml':
+        return 'XML';
       case 'css':
         return 'CSS';
       case 'markdown':

@@ -592,6 +592,10 @@
       background-color: #e44d26;
       color: #fff;
     }
+    &[data-lang='xml'] {
+      background-color: #f97316;
+      color: #fff;
+    }
     &[data-lang='css'] {
       background-color: #264de4;
       color: #fff;
@@ -1375,6 +1379,10 @@
 
         &[data-lang='binary'] {
           color: #6366f1;
+        }
+
+        &[data-lang='xml'] {
+          color: #f97316;
         }
       }
 

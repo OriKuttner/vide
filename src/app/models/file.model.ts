@@ -109,15 +109,33 @@ export function detectLanguageFromFilename(filename: string): string {
     lower.endsWith('.hpp')
   )
     return 'cpp';
-  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.html') || lower.endsWith('.htm') || lower.endsWith('.xhtml') || lower.endsWith('.xht')) return 'html';
   if (lower.endsWith('.css') || lower.endsWith('.scss') || lower.endsWith('.less')) return 'css';
-  if (lower.endsWith('.json')) return 'json';
-  if (lower.endsWith('.md')) return 'markdown';
+  if (lower.endsWith('.json') || lower.endsWith('.jsonc') || lower.endsWith('.jsonld') || lower.endsWith('.webmanifest')) return 'json';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.mdx')) return 'markdown';
   if (lower.endsWith('.sql')) return 'sql';
   if (lower.endsWith('.sh') || lower.endsWith('.bash') || lower.endsWith('.zsh')) return 'shell';
   if (lower.endsWith('.py') || lower.endsWith('.pyw')) return 'python';
   if (lower.endsWith('.yaml') || lower.endsWith('.yml')) return 'yaml';
-  if (lower.endsWith('.xml')) return 'xml';
+  if (
+    lower.endsWith('.xml') ||
+    lower.endsWith('.opf') ||
+    lower.endsWith('.ncx') ||
+    lower.endsWith('.xsd') ||
+    lower.endsWith('.xsl') ||
+    lower.endsWith('.xslt') ||
+    lower.endsWith('.plist') ||
+    lower.endsWith('.xaml') ||
+    lower.endsWith('.dtd') ||
+    lower.endsWith('.rss') ||
+    lower.endsWith('.atom') ||
+    lower.endsWith('.kml') ||
+    lower.endsWith('.gpx') ||
+    lower.endsWith('.wsdl') ||
+    lower.endsWith('.xlf') ||
+    lower.endsWith('.xliff')
+  )
+    return 'xml';
   if (lower.endsWith('.rs')) return 'rust';
   if (isImageFile(filename)) return 'image';
   if (isBinaryFile(filename)) return 'binary';
@@ -155,9 +173,12 @@ export function detectLanguage(filename: string, content?: string): string {
 
     const headerSnippet = trimmed.slice(0, 2048);
 
-    // 2. PHP opening tags or content
-    if (/<\?(php|=)/i.test(headerSnippet) || trimmed.startsWith('<?')) {
-      return 'php';
+    // 2. XML prolog (MUST be checked before PHP, since <?xml starts with <?)
+    if (/<\?xml/i.test(headerSnippet)) {
+      if (/<!doctype\s+html|<html[\s>]/i.test(headerSnippet)) {
+        return 'html';
+      }
+      return 'xml';
     }
 
     // 3. HTML doctype or root tag
@@ -165,12 +186,17 @@ export function detectLanguage(filename: string, content?: string): string {
       return 'html';
     }
 
-    // 4. XML prolog
-    if (/<\?xml/i.test(headerSnippet)) {
+    // 4. XML root elements without prolog (e.g. <package, <ncx, <svg, <feed, <urlset)
+    if (/^<[a-zA-Z0-9_\-]+(\s+xmlns|\s+version|\s+xsi:)/i.test(trimmed) || /^<(package|ncx|feed|urlset|svg|rss|plist)\b/i.test(trimmed)) {
       return 'xml';
     }
 
-    // 5. JSON
+    // 5. PHP opening tags (<?php, <?=, or <? without xml)
+    if (/<\?(php|=)/i.test(headerSnippet) || (trimmed.startsWith('<?') && !trimmed.startsWith('<?xml'))) {
+      return 'php';
+    }
+
+    // 6. JSON
     if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
       try {
         JSON.parse(trimmed);
@@ -224,7 +250,7 @@ export function isBinaryFile(filename?: string): boolean {
   const binaryExts = [
     '.bin', '.exe', '.so', '.dll', '.dylib', '.o', '.a', '.pdf', '.zip', '.tar', '.gz',
     '.tgz', '.bz2', '.xz', '.7z', '.iso', '.deb', '.wasm', '.db', '.sqlite', '.sqlite3',
-    '.pyc', '.class', '.jar', '.apk', '.dmg', '.pkg', '.rpm', '.msi'
+    '.pyc', '.class', '.jar', '.apk', '.dmg', '.pkg', '.rpm', '.msi', '.epub', '.mobi', '.azw3'
   ];
   return binaryExts.some((ext) => lower.endsWith(ext));
 }
@@ -279,7 +305,31 @@ export function isHtmlFile(filename?: string, lang?: string): boolean {
   if (lang === 'html') return true;
   if (!filename) return false;
   const lower = filename.toLowerCase();
-  return lower.endsWith('.html') || lower.endsWith('.htm');
+  return lower.endsWith('.html') || lower.endsWith('.htm') || lower.endsWith('.xhtml') || lower.endsWith('.xht');
+}
+
+export function isXmlFile(filename?: string, lang?: string): boolean {
+  if (lang === 'xml') return true;
+  if (!filename) return false;
+  const lower = filename.toLowerCase();
+  return (
+    lower.endsWith('.xml') ||
+    lower.endsWith('.opf') ||
+    lower.endsWith('.ncx') ||
+    lower.endsWith('.xsd') ||
+    lower.endsWith('.xsl') ||
+    lower.endsWith('.xslt') ||
+    lower.endsWith('.plist') ||
+    lower.endsWith('.xaml') ||
+    lower.endsWith('.dtd') ||
+    lower.endsWith('.rss') ||
+    lower.endsWith('.atom') ||
+    lower.endsWith('.kml') ||
+    lower.endsWith('.gpx') ||
+    lower.endsWith('.wsdl') ||
+    lower.endsWith('.xlf') ||
+    lower.endsWith('.xliff')
+  );
 }
 
 export function isPreviewableFile(filename?: string, lang?: string): boolean {

@@ -2253,7 +2253,24 @@ export class WorkspaceService {
 							file.fileSize = size;
 						}
 						if (file.language === 'plaintext' || !file.language) {
-							file.language = detectLanguage(file.name, content);
+							const detected = detectLanguage(file.name, content);
+							if (detected !== 'plaintext' && detected !== file.language) {
+								file.language = detected;
+								this.fileTree.update((nodes) => {
+									const updateNodes = (list: FileTreeNode[]): FileTreeNode[] => {
+										return list.map((n) => {
+											if (n.path === file.path || n.fsPath === file.fsPath || n.id === file.id) {
+												return { ...n, language: detected, file };
+											}
+											if (n.children && n.children.length > 0) {
+												return { ...n, children: updateNodes(n.children) };
+											}
+											return n;
+										});
+									};
+									return updateNodes(nodes);
+								});
+							}
 						}
 						if (file.savedContent === undefined) {
 							file.savedContent = content;

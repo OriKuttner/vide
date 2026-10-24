@@ -75,12 +75,12 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
   readonly isCurrentHtml = computed(() => {
     const f = this.workspaceService.activeFile();
-    return f ? isHtmlFile(f.name) : false;
+    return f ? isHtmlFile(f.name, f.language) : false;
   });
 
   readonly isCurrentPreviewable = computed(() => {
     const f = this.workspaceService.activeFile();
-    return f ? isPreviewableFile(f.name) : false;
+    return f ? isPreviewableFile(f.name, f.language) : false;
   });
 
   readonly isPreviewActive = computed(() => {

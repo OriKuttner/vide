@@ -254,6 +254,8 @@ export class SidebarComponent {
         return '{}';
       case 'html':
         return '<>';
+      case 'xml':
+        return 'XML';
       case 'css':
         return '#';
       case 'markdown':
