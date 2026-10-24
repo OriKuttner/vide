@@ -404,6 +404,18 @@ body.vide-hide-goto-def {
   }
 }
 
+/* Hide redundant built-in Monaco reference actions ("Go to References" / "Peek References"), leaving our unified "Find References" */
+.monaco-menu .action-item:has([aria-label*="Go to References" i]),
+.context-view .action-item:has([aria-label*="Go to References" i]),
+.monaco-menu .action-item:has([title*="Go to References" i]),
+.context-view .action-item:has([title*="Go to References" i]),
+.monaco-menu .action-item:has([aria-label*="Goto Reference" i]),
+.context-view .action-item:has([aria-label*="Goto Reference" i]),
+.monaco-menu .action-item:has([aria-label*="Peek References" i]),
+.context-view .action-item:has([aria-label*="Peek References" i]) {
+  display: none !important;
+}
+
 /* Vector AI Assistant Markdown innerHTML Global Rules */
 .message-body {
   ul, ol {

@@ -4,10 +4,11 @@
  * Written by: Ori Kuttner and Shira (Antigravity agent)
  */
 
-import { Component, ElementRef, ViewChild, effect, inject } from '@angular/core';
+import { Component, ElementRef, ViewChild, HostListener, effect, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ThemeService } from '../../services/theme.service';
+import { NavigationHistoryService, NavigationEntry } from '../../services/navigation-history.service';
 import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isPreviewableFile, isBinaryFile } from '../../models/file.model';
 
 @Component({
@@ -20,6 +21,8 @@ import { WorkspaceFile, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isPr
 export class TabsComponent {
   public workspaceService = inject(WorkspaceService);
   public themeService = inject(ThemeService);
+  public navigationHistoryService = inject(NavigationHistoryService);
+  private elementRef = inject(ElementRef);
 
   @ViewChild('scrollArea', { static: false })
   public scrollArea?: ElementRef<HTMLElement>;
@@ -101,5 +104,44 @@ export class TabsComponent {
       return `${cleanRoot}/${cleanRel}`;
     }
     return tab.path || tab.name;
+  }
+
+  @HostListener('document:click', ['$event'])
+  public onDocumentClick(event: MouseEvent): void {
+    if (this.navigationHistoryService.isDropdownOpen()) {
+      const navWrapper = this.elementRef.nativeElement.querySelector('.nav-stack-wrapper');
+      if (navWrapper && !navWrapper.contains(event.target as Node)) {
+        this.navigationHistoryService.closeDropdown();
+      }
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  public onEscapeKey(): void {
+    if (this.navigationHistoryService.isDropdownOpen()) {
+      this.navigationHistoryService.closeDropdown();
+    }
+  }
+
+  public onSelectNavigationEntry(entry: NavigationEntry, originalIndex: number): void {
+    this.navigationHistoryService.jumpToEntry(entry, originalIndex);
+  }
+
+  public formatTimeAgo(timestamp: number): string {
+    const diffMs = Date.now() - timestamp;
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return 'just now';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    return `${Math.floor(diffHr / 24)}d ago`;
+  }
+
+  public getDirectoryPath(filePath: string): string {
+    const parts = filePath.split('/');
+    if (parts.length <= 1) return '';
+    parts.pop();
+    return parts.join('/');
   }
 }

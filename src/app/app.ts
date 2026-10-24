@@ -15,6 +15,7 @@ import { SearchModalComponent } from './components/search-modal/search-modal.com
 import { AgentChatComponent } from './components/agent-chat/agent-chat.component';
 import { isTauriApp, WorkspaceService } from './services/workspace.service';
 import { ZoomService } from './services/zoom.service';
+import { NavigationHistoryService } from './services/navigation-history.service';
 
 @Component({
 	selector: 'app-root',
@@ -34,6 +35,7 @@ import { ZoomService } from './services/zoom.service';
 export class App {
 	public workspaceService = inject(WorkspaceService);
 	public zoomService = inject(ZoomService);
+	public navigationHistoryService = inject(NavigationHistoryService);
 	private titleService = inject(Title);
 	readonly title = signal('Vector IDE');
 	readonly cursor = signal<{ line: number; column: number }>({ line: 1, column: 1 });
@@ -97,58 +99,72 @@ export class App {
 
 	@HostListener('window:keydown', ['$event'])
 	onKeyDown(event: KeyboardEvent): void {
-		if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
+		const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+		const isShift = event.shiftKey;
+		const code = event.code;
+		const key = event.key ? event.key.toLowerCase() : '';
+
+		if (event.altKey && !isCtrlOrCmd && !isShift) {
+			if (code === 'ArrowLeft' || event.key === 'ArrowLeft') {
+				event.preventDefault();
+				this.navigationHistoryService.navigateBack();
+				return;
+			}
+			if (code === 'ArrowRight' || event.key === 'ArrowRight') {
+				event.preventDefault();
+				this.navigationHistoryService.navigateForward();
+				return;
+			}
+		}
+
+		if (isCtrlOrCmd && (key === 'p' || code === 'KeyP')) {
 			event.preventDefault();
 			this.workspaceService.openModal('file-search');
-		} else if ((event.ctrlKey || event.metaKey) && (event.key === 'o' || event.key === 'O')) {
-			event.preventDefault();
-			this.workspaceService.openDirectoryFromDisk();
-		} else if ((event.ctrlKey || event.metaKey) && (event.key === 'n' || event.key === 'N')) {
-			event.preventDefault();
-			this.workspaceService.openModal('new-file');
-		} else if (
-			(event.ctrlKey || event.metaKey) &&
-			event.shiftKey &&
-			(event.key === 'F' || event.key === 'f')
-		) {
+		} else if (isCtrlOrCmd && isShift && (key === 'f' || code === 'KeyF')) {
 			event.preventDefault();
 			this.workspaceService.setSidebarView('search');
-		} else if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+		} else if (isCtrlOrCmd && !isShift && (key === 'o' || code === 'KeyO')) {
+			event.preventDefault();
+			this.workspaceService.openDirectoryFromDisk();
+		} else if (isCtrlOrCmd && !isShift && (key === 'n' || code === 'KeyN')) {
+			event.preventDefault();
+			this.workspaceService.openModal('new-file');
+		} else if (isCtrlOrCmd && !isShift && (key === 's' || code === 'KeyS')) {
 			event.preventDefault();
 			this.workspaceService.saveCurrentFile();
-		} else if ((event.ctrlKey || event.metaKey) && (event.key === 'b' || event.key === 'B')) {
+		} else if (isCtrlOrCmd && !isShift && (key === 'b' || code === 'KeyB')) {
 			event.preventDefault();
 			this.workspaceService.toggleSidebar();
-		} else if ((event.ctrlKey || event.metaKey) && (event.key === 'h' || event.key === 'H')) {
+		} else if (isCtrlOrCmd && !isShift && (key === 'h' || code === 'KeyH')) {
 			event.preventDefault();
 			this.workspaceService.toggleHiddenFiles();
 		} else if (
 			event.key === 'F5' ||
-			((event.ctrlKey || event.metaKey) && (event.key === 'r' || event.key === 'R'))
+			(isCtrlOrCmd && (key === 'r' || code === 'KeyR'))
 		) {
 			event.preventDefault();
 			this.workspaceService.refreshAll();
 		} else if (
-			(event.ctrlKey || event.metaKey) &&
+			isCtrlOrCmd &&
 			(event.key === '+' ||
 				event.key === '=' ||
-				event.code === 'Equal' ||
-				event.code === 'NumpadAdd')
+				code === 'Equal' ||
+				code === 'NumpadAdd')
 		) {
 			event.preventDefault();
 			this.zoomService.zoomIn();
 		} else if (
-			(event.ctrlKey || event.metaKey) &&
+			isCtrlOrCmd &&
 			(event.key === '-' ||
 				event.key === '_' ||
-				event.code === 'Minus' ||
-				event.code === 'NumpadSubtract')
+				code === 'Minus' ||
+				code === 'NumpadSubtract')
 		) {
 			event.preventDefault();
 			this.zoomService.zoomOut();
 		} else if (
-			(event.ctrlKey || event.metaKey) &&
-			(event.key === '0' || event.code === 'Digit0' || event.code === 'Numpad0')
+			isCtrlOrCmd &&
+			(event.key === '0' || code === 'Digit0' || code === 'Numpad0')
 		) {
 			event.preventDefault();
 			this.zoomService.resetZoom();

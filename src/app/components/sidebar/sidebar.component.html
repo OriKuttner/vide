@@ -123,6 +123,17 @@
         </svg>
       </button>
       <button
+        class="icon-btn btn-theme"
+        [title]="'Switch to ' + (themeService.currentTheme() === 'light' ? 'Dark' : 'Light') + ' Mode'"
+        (click)="themeService.toggleTheme()"
+      >
+        @if (themeService.currentTheme() === 'light') {
+          <span class="theme-icon">🌙</span>
+        } @else {
+          <span class="theme-icon">☀️</span>
+        }
+      </button>
+      <button
         class="icon-btn btn-collapse"
         title="Hide Side Bar (Ctrl+B)"
         (click)="workspaceService.toggleSidebar()"

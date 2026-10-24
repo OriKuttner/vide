@@ -36,7 +36,11 @@
             ],
             "loader": {
               ".ttf": "file"
-            }
+            },
+            "externalDependencies": [
+              "fs",
+              "path"
+            ]
           },
           "configurations": {
             "production": {

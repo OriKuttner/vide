@@ -104,6 +104,10 @@ export class SearchModalComponent {
         } else if (mode === 'ai-settings') {
           // Gemini cloud settings
         }
+
+        setTimeout(() => {
+          this.inputField?.nativeElement?.focus();
+        }, 50);
       }
     });
 

@@ -146,6 +146,13 @@ export class WorkspaceService {
 	// Line jump request (from Grep search or Go to Definition)
 	readonly pendingLineJump = signal<{ lineNumber: number; column?: number; fileId?: string } | null>(null);
 
+	// Navigation history session state and callbacks
+	readonly navigationSessionState = signal<{ history: any[]; index: number } | null>(null);
+	public onBeforeJumpToLine?: (targetFile: WorkspaceFile, targetLine: number, targetCol: number) => void;
+	public onFileOpened?: (file: WorkspaceFile) => void;
+	public onSessionRestored?: (history: any[], index: number) => void;
+	public onWorkspaceReset?: () => void;
+
 	// Programmatic content replacement request (from AI tools / external)
 	readonly pendingContentReplacement = signal<{ fileId: string; newContent: string } | null>(null);
 
@@ -2084,6 +2091,7 @@ export class WorkspaceService {
 	}
 
 	public async jumpToLine(file: WorkspaceFile, lineNumber: number, column = 1): Promise<void> {
+		this.onBeforeJumpToLine?.(file, lineNumber, column);
 		await this.openFile(file);
 		this.pendingLineJump.set({ lineNumber, column, fileId: file.id });
 		this.closeModal();
@@ -2511,6 +2519,9 @@ export class WorkspaceService {
 		if (setActive) {
 			this.activeFileId.set(file.id);
 			this.revealActiveFileInTree(file);
+			if (!this.isRestoringSession()) {
+				this.onFileOpened?.(file);
+			}
 		}
 	}
 
@@ -3049,10 +3060,15 @@ export class WorkspaceService {
 			return item;
 		});
 
-		const state = {
+		const navState = this.navigationSessionState();
+		const state: any = {
 			openFiles,
 			activeFile: activePath,
 		};
+		if (navState && Array.isArray(navState.history) && navState.history.length > 0) {
+			state.navigationHistory = navState.history;
+			state.navigationIndex = navState.index;
+		}
 
 		const jsonStr = JSON.stringify(state, null, 2);
 
@@ -3103,6 +3119,12 @@ export class WorkspaceService {
 								cursor: item.cursor && typeof item.cursor.line === 'number' ? item.cursor : undefined,
 							});
 						}
+					}
+					if (parsed && Array.isArray(parsed.navigationHistory) && parsed.navigationHistory.length > 0) {
+						this.onSessionRestored?.(
+							parsed.navigationHistory,
+							typeof parsed.navigationIndex === 'number' ? parsed.navigationIndex : -1
+						);
 					}
 					return {
 						openFiles: normalizedOpenFiles,
@@ -3247,6 +3269,7 @@ export class WorkspaceService {
 			this.activeFileId.set('');
 			this.diffModeActive.set(false);
 			this.activeDiffFile.set(null);
+			this.onWorkspaceReset?.();
 		});
 
 		try {
@@ -3994,6 +4017,7 @@ export class WorkspaceService {
 		this.diffModeActive.set(false);
 		this.activeDiffFile.set(null);
 		this.gitBranch.set(null);
+		this.onWorkspaceReset?.();
 		this.showNotification('Folder closed');
 	}
 

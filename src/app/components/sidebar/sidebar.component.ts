@@ -7,6 +7,7 @@
 import { Component, inject, signal, computed, ViewChild, ElementRef, effect, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';
+import { ThemeService } from '../../services/theme.service';
 import { AiService } from '../../services/ai.service';
 import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isBinaryFile, GitCommit } from '../../models/file.model';
 
@@ -19,6 +20,7 @@ import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, is
 })
 export class SidebarComponent {
   public workspaceService = inject(WorkspaceService);
+  public themeService = inject(ThemeService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly ngZone = inject(NgZone);
 

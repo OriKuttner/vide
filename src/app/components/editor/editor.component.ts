@@ -28,6 +28,10 @@ import { SymbolNavigationService } from '../../services/symbol-navigation.servic
 import { AiService } from '../../services/ai.service';
 import { ThemeService } from '../../services/theme.service';
 import { ZoomService } from '../../services/zoom.service';
+import { NavigationHistoryService } from '../../services/navigation-history.service';
+import { CodeFormattingService } from '../../services/code-formatting.service';
+// @ts-ignore
+import { MenuRegistry, MenuId } from 'monaco-editor/platform/actions/common/actions.js';
 import { registerOmniFlux } from '../../languages/omniflux.language';
 import { registerAllLanguageSnippets } from '../../languages/snippets.registry';
 import {
@@ -59,6 +63,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private symbolNavigationService = inject(SymbolNavigationService);
   public aiService = inject(AiService);
   private themeService = inject(ThemeService);
+  public navigationHistoryService = inject(NavigationHistoryService);
+  private codeFormattingService = inject(CodeFormattingService);
   private sanitizer = inject(DomSanitizer);
 
   public readonly cursorChange = output<{ line: number; column: number }>();
@@ -502,6 +508,7 @@ ${rawContent}
     registerAllLanguageSnippets(monaco);
     this.inlineCompletionService.registerProviders(monaco);
     this.symbolNavigationService.registerProviders(monaco);
+    this.codeFormattingService.registerProviders(monaco);
     this.registerAiCodeActions();
     this.setupThemes();
     this.createEditor();
@@ -882,6 +889,42 @@ ${rawContent}
       this.workspaceService.saveCurrentFile();
     });
 
+    // Keyboard shortcut: Ctrl+P / Cmd+P to open file search
+    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+      this.workspaceService.openModal('file-search');
+    });
+
+    // Keyboard shortcut: Ctrl+Shift+P / Cmd+Shift+P to open file search / command palette
+    this.editorInstance.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP,
+      () => {
+        this.workspaceService.openModal('file-search');
+      }
+    );
+
+    // Keyboard shortcut: Ctrl+B to toggle sidebar
+    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
+      this.workspaceService.toggleSidebar();
+    });
+
+    // Keyboard shortcut: Ctrl+Shift+F to open global search
+    this.editorInstance.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+      () => {
+        this.workspaceService.setSidebarView('search');
+      }
+    );
+
+    // Keyboard shortcut: Ctrl+O to open folder
+    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO, () => {
+      this.workspaceService.openDirectoryFromDisk();
+    });
+
+    // Keyboard shortcut: Ctrl+N to create new file
+    this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN, () => {
+      this.workspaceService.openModal('new-file');
+    });
+
     // Keyboard shortcuts for Zoom In / Out / Reset
     this.editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Equal, () => {
       this.zoomService.zoomIn();
@@ -912,6 +955,20 @@ ${rawContent}
       }
     );
 
+    // Keyboard shortcut: Shift+Alt+F / Ctrl+Shift+I to Format Document
+    this.editorInstance.addCommand(
+      monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+      () => {
+        this.editorInstance?.getAction('editor.action.formatDocument')?.run();
+      }
+    );
+    this.editorInstance.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI,
+      () => {
+        this.editorInstance?.getAction('editor.action.formatDocument')?.run();
+      }
+    );
+
     // Keyboard shortcut / Command: Ctrl+Alt+P (Cmd+Alt+P) to propagate edit pattern to following lines
     this.editorInstance.addAction({
       id: 'vide.ai.propagatePattern',
@@ -926,15 +983,15 @@ ${rawContent}
       },
     });
 
-    // Action & Shortcut: Shift+F12 to Find All References in clean modal window
+    // Action & Shortcut: Shift+F12 to Find References (at top of context menu)
     this.editorInstance.addAction({
       id: 'vide.findReferences',
-      label: 'Find All References',
+      label: 'Find References',
       keybindings: [
         monaco.KeyMod.Shift | monaco.KeyCode.F12,
       ],
       contextMenuGroupId: 'navigation',
-      contextMenuOrder: 1.3,
+      contextMenuOrder: 0.1,
       run: async (ed) => {
         const pos = ed.getPosition();
         const model = ed.getModel();
@@ -944,10 +1001,79 @@ ${rawContent}
       },
     });
 
-    // Hide "Go to Definition" and "Peek Definition" from context menu when cursor is on a function definition
+    // Action & Shortcut: Alt+Left for Navigation History: Go Back
+    this.editorInstance.addAction({
+      id: 'vide.navigateBack',
+      label: 'Go Back (Alt+←)',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow],
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 0.2,
+      run: async () => {
+        await this.navigationHistoryService.navigateBack();
+      },
+    });
+
+    // Action & Shortcut: Alt+Right for Navigation History: Go Forward
+    this.editorInstance.addAction({
+      id: 'vide.navigateForward',
+      label: 'Go Forward (Alt+→)',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.RightArrow],
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 0.3,
+      run: async () => {
+        await this.navigationHistoryService.navigateForward();
+      },
+    });
+
+    // Action: Show Navigation Stack (Recent 30 Locations)
+    this.editorInstance.addAction({
+      id: 'vide.showNavigationStack',
+      label: 'Navigation Stack (Recent 30 Locations)',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 0.4,
+      run: () => {
+        this.navigationHistoryService.openDropdown();
+      },
+    });
+
+    // Action & Shortcut: Alt+A to manually bookmark/save position in navigation stack
+    this.editorInstance.addAction({
+      id: 'vide.addToStack',
+      label: 'Add to Stack',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyA],
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.25,
+      run: (ed) => {
+        const pos = ed.getPosition();
+        const active = this.workspaceService.activeFile();
+        if (pos && active) {
+          this.navigationHistoryService.addManualLocation(active, pos.lineNumber, pos.column);
+        }
+      },
+    });
+
+    // Reconfigure Monaco MenuRegistry: Move "Go to Symbol..." (editor.action.quickOutline)
+    // from 'navigation' group (where order was 3) into '1_modification' with order 1.05
+    // so it appears immediately above "Rename Symbol" (which has group '1_modification' and order 1.1)
+    try {
+      const menuItems = (MenuRegistry as any).getMenuItems(MenuId.EditorContext);
+      if (Array.isArray(menuItems)) {
+        for (const item of menuItems) {
+          if (item?.command?.id === 'editor.action.quickOutline') {
+            item.group = '1_modification';
+            item.order = 1.05;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not reorder Go to Symbol action in MenuRegistry', e);
+    }
+
+    // Hide "Go to Definition" when on definition, and always unify references
     this.editorInstance.onContextMenu((e) => {
       const pos = e.target?.position || this.editorInstance?.getPosition();
       this.updateDefinitionContext(pos);
+      this.purgeDefinitionMenuItems();
     });
 
     // Precision resize handling for both standard and diff editor
@@ -972,11 +1098,12 @@ ${rawContent}
 
     const atDef = this.symbolNavigationService.isCursorOnDefinition(model, pos);
 
-    // 1. Update Monaco internal context key so Monaco natively omits Go to Definition and Peek Definition
+    // 1. Update Monaco internal context key so Monaco natively omits Go to Definition, Peek Definition, and redundant Go to References
     try {
       const contextKeyService = (this.editorInstance as any)._contextKeyService;
       if (contextKeyService?.setContext) {
         contextKeyService.setContext('editorHasDefinitionProvider', !atDef);
+        contextKeyService.setContext('editorHasReferenceProvider', false);
       }
     } catch {
       // Fallback if Monaco internals change
@@ -985,26 +1112,96 @@ ${rawContent}
     // 2. Toggle body class for instant CSS rule
     document.body.classList.toggle('vide-hide-goto-def', atDef);
 
-    // 3. Proactively cleanse context menu DOM when on definition
-    if (atDef) {
-      this.purgeDefinitionMenuItems();
-    }
+    // 3. Proactively cleanse context menu DOM
+    this.purgeDefinitionMenuItems();
   }
 
   private purgeDefinitionMenuItems(): void {
+    const isAtDef = document.body.classList.contains('vide-hide-goto-def');
     const purge = () => {
       document.querySelectorAll('.monaco-menu .action-item, .context-view .action-item').forEach((item) => {
         const text = (item.textContent || '').trim();
         const aria = item.querySelector('[aria-label]')?.getAttribute('aria-label') || '';
-        if (
-          text.includes('Go to Definition') ||
-          text.includes('Peek Definition') ||
-          aria.includes('Go to Definition') ||
-          aria.includes('Peek Definition')
-        ) {
+        const title = item.getAttribute('title') || '';
+
+        // Purge redundant built-in reference actions (unified to our Find References)
+        const isRedundantRef =
+          (text.toLowerCase().includes('reference') || aria.toLowerCase().includes('reference') || title.toLowerCase().includes('reference')) &&
+          !text.includes('Find References') && !aria.includes('Find References') &&
+          !text.includes('Navigation Stack') && !aria.includes('Navigation Stack');
+
+        if (isRedundantRef) {
           (item as HTMLElement).style.display = 'none';
         }
+
+        // Purge definition actions when cursor is already on definition line
+        if (isAtDef) {
+          if (
+            text.includes('Go to Definition') ||
+            text.includes('Peek Definition') ||
+            aria.includes('Go to Definition') ||
+            aria.includes('Peek Definition')
+          ) {
+            (item as HTMLElement).style.display = 'none';
+          }
+        }
       });
+
+      // Ensure "Go to Symbol..." is visually positioned directly above "Rename Symbol" in DOM
+      const allItems = Array.from(document.querySelectorAll<HTMLElement>('.monaco-menu .action-item, .context-view .action-item'));
+      const gotoSymbolEl = allItems.find((item) => {
+        const t = (item.textContent || '').trim().toLowerCase();
+        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
+        return t.includes('go to symbol') || a.includes('go to symbol');
+      });
+      const renameSymbolEl = allItems.find((item) => {
+        const t = (item.textContent || '').trim().toLowerCase();
+        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
+        return t.includes('rename symbol') || a.includes('rename symbol');
+      });
+
+      if (gotoSymbolEl && renameSymbolEl && gotoSymbolEl.parentElement && gotoSymbolEl.parentElement === renameSymbolEl.parentElement) {
+        if (gotoSymbolEl.nextElementSibling !== renameSymbolEl) {
+          renameSymbolEl.parentElement.insertBefore(gotoSymbolEl, renameSymbolEl);
+        }
+      }
+
+      // Ensure "Add to Stack" is visually positioned directly after "Peek Definition" / "Peek"
+      const addToStackEl = allItems.find((item) => {
+        const t = (item.textContent || '').trim().toLowerCase();
+        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
+        return t.includes('add to stack') || a.includes('add to stack');
+      });
+      const peekEl = allItems.find((item) => {
+        if (item.style.display === 'none') return false;
+        const t = (item.textContent || '').trim().toLowerCase();
+        const a = (item.querySelector('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
+        return t.startsWith('peek') || a.startsWith('peek');
+      });
+
+      if (addToStackEl && peekEl && addToStackEl.parentElement && addToStackEl.parentElement === peekEl.parentElement) {
+        if (peekEl.nextElementSibling !== addToStackEl) {
+          peekEl.parentElement.insertBefore(addToStackEl, peekEl.nextSibling);
+        }
+      }
+
+      // Clean up any redundant consecutive separators in the menu
+      const containers = Array.from(document.querySelectorAll<HTMLElement>('.monaco-menu .actions-container, .context-view .actions-container'));
+      for (const container of containers) {
+        const children = Array.from(container.children) as HTMLElement[];
+        let prevWasSeparator = false;
+        for (const child of children) {
+          if (child.style.display === 'none') continue;
+          const isSep = child.classList.contains('separator') || child.getAttribute('role') === 'presentation';
+          if (isSep && prevWasSeparator) {
+            child.style.display = 'none';
+          } else if (isSep) {
+            prevWasSeparator = true;
+          } else {
+            prevWasSeparator = false;
+          }
+        }
+      }
     };
 
     purge();
@@ -1237,12 +1434,37 @@ ${rawContent}
         this.zoomService.zoomOut();
       }
     );
-    this.diffEditorInstance.getModifiedEditor().addCommand(
-      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Digit0,
-      () => {
-        this.zoomService.resetZoom();
-      }
-    );
+    // Ctrl+P / Ctrl+Shift+P shortcut to open file search in diff view
+    [this.diffEditorInstance.getModifiedEditor(), this.diffEditorInstance.getOriginalEditor()].forEach((ed) => {
+      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+        this.workspaceService.openModal('file-search');
+      });
+      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, () => {
+        this.workspaceService.openModal('file-search');
+      });
+      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {
+        this.workspaceService.toggleSidebar();
+      });
+      ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
+        this.workspaceService.setSidebarView('search');
+      });
+      ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
+        this.navigationHistoryService.navigateBack();
+      });
+      ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
+        this.navigationHistoryService.navigateForward();
+      });
+      ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyA, () => {
+        const pos = ed.getPosition();
+        const active = this.workspaceService.activeDiffFile() || this.workspaceService.activeFile();
+        if (pos && active) {
+          this.navigationHistoryService.addManualLocation(active, pos.lineNumber, pos.column);
+        }
+      });
+      ed.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, () => {
+        ed.getAction('editor.action.formatDocument')?.run();
+      });
+    });
   }
 
   private setupDiffModels(file: WorkspaceFile): void {
