@@ -91,10 +91,30 @@ export class App {
 					.catch(() => {});
 			}
 		});
+
+		if (isTauriApp()) {
+			import('@tauri-apps/api/event')
+				.then(({ listen }) => {
+					listen('window-close-requested', () => {
+						this.workspaceService.promptCloseEditor();
+					});
+				})
+				.catch((err) => {
+					console.warn('Failed to listen to window-close-requested:', err);
+				});
+		}
 	}
 
 	onCursorChange(pos: { line: number; column: number }): void {
 		this.cursor.set(pos);
+	}
+
+	@HostListener('window:beforeunload', ['$event'])
+	onBeforeUnload(event: BeforeUnloadEvent): void {
+		if (this.workspaceService.hasModifiedFiles()) {
+			event.preventDefault();
+			event.returnValue = '';
+		}
 	}
 
 	@HostListener('window:keydown', ['$event'])
@@ -103,6 +123,12 @@ export class App {
 		const isShift = event.shiftKey;
 		const code = event.code;
 		const key = event.key ? event.key.toLowerCase() : '';
+
+		if (isCtrlOrCmd && !isShift && (key === 'q' || code === 'KeyQ')) {
+			event.preventDefault();
+			this.workspaceService.promptCloseEditor();
+			return;
+		}
 
 		if (event.altKey && !isCtrlOrCmd && !isShift) {
 			if (code === 'ArrowLeft' || event.key === 'ArrowLeft') {

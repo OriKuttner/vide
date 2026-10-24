@@ -30,6 +30,7 @@ import { ThemeService } from '../../services/theme.service';
 import { ZoomService } from '../../services/zoom.service';
 import { NavigationHistoryService } from '../../services/navigation-history.service';
 import { CodeFormattingService } from '../../services/code-formatting.service';
+import { EditorConfigService } from '../../services/editor-config.service';
 // @ts-ignore
 import { MenuRegistry, MenuId } from 'monaco-editor/platform/actions/common/actions.js';
 import { registerOmniFlux } from '../../languages/omniflux.language';
@@ -65,6 +66,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
   private themeService = inject(ThemeService);
   public navigationHistoryService = inject(NavigationHistoryService);
   private codeFormattingService = inject(CodeFormattingService);
+  public editorConfigService = inject(EditorConfigService);
   private sanitizer = inject(DomSanitizer);
 
   public readonly cursorChange = output<{ line: number; column: number }>();
@@ -516,6 +518,21 @@ ${rawContent}
     this.workspaceService.registerBeforeCloseCallback(() => {
       this.saveCurrentFileViewState();
     });
+    this.workspaceService.onContentProcessedOnSave = (fileId: string, newContent: string) => {
+      const model = this.fileModels.get(fileId);
+      if (model && model.getValue() !== newContent) {
+        this.isProgrammaticUpdate = true;
+        try {
+          const viewState = this.editorInstance?.saveViewState();
+          model.setValue(newContent);
+          if (viewState && this.currentActiveFileId === fileId) {
+            this.editorInstance?.restoreViewState(viewState);
+          }
+        } finally {
+          this.isProgrammaticUpdate = false;
+        }
+      }
+    };
   }
 
   @HostListener('window:beforeunload')
@@ -1707,8 +1724,11 @@ ${rawContent}
           tabSize: file.tabSize,
         });
       } else {
-        const defInsertSpaces = this.workspaceService.defaultIndentType() === 'spaces';
-        const defTabSize = this.workspaceService.defaultTabSize();
+        const ecRules = this.editorConfigService.getPropertiesForFile(file.name || file.path);
+        const defInsertSpaces = ecRules.indentStyle
+          ? ecRules.indentStyle === 'spaces'
+          : this.workspaceService.defaultIndentType() === 'spaces';
+        const defTabSize = ecRules.indentSize || this.workspaceService.defaultTabSize();
         textModel.detectIndentation(defInsertSpaces, defTabSize);
       }
 
@@ -1776,12 +1796,12 @@ ${rawContent}
     }
 
     let indentSize = fallbackSize;
-    if (modulo2Only > 0) {
-      indentSize = 2;
-    } else if (fallbackSize === 2) {
+    if (modulo2Only > modulo4Count) {
       indentSize = 2;
     } else if (modulo4Count > 0) {
       indentSize = 4;
+    } else if (modulo2Only > 0) {
+      indentSize = 2;
     }
 
     return { isTabs: false, indentSize, tabLines, spaceLines };
@@ -1795,18 +1815,14 @@ ${rawContent}
     fromSize?: number
   ): void {
     const detected = this.detectSourceIndent(model, fromSize || 4);
-    let sourceIsTabs = detected.isTabs;
-    if (fromType) {
-      if (detected.tabLines > 0 && detected.spaceLines === 0) {
-        sourceIsTabs = true;
-      } else if (detected.spaceLines > 0 && detected.tabLines === 0) {
-        sourceIsTabs = false;
-      } else {
-        sourceIsTabs = fromType === 'tabs';
-      }
+    let sourceIsTabs = fromType ? fromType === 'tabs' : detected.isTabs;
+    if (detected.tabLines > 0 && detected.spaceLines === 0) {
+      sourceIsTabs = true;
+    } else if (detected.spaceLines > 0 && detected.tabLines === 0) {
+      sourceIsTabs = false;
     }
 
-    const sourceIndentSize = (fromSize && fromSize === 2) ? 2 : detected.indentSize || 2;
+    const sourceIndentSize = fromSize || detected.indentSize || 4;
 
     const lineCount = model.getLineCount();
     const edits: monaco.editor.ISingleEditOperation[] = [];
@@ -1871,6 +1887,13 @@ ${rawContent}
 
     if (edits.length > 0) {
       model.pushEditOperations([], edits, () => null);
+      const newContent = model.getValue();
+      const active = this.workspaceService.activeFile();
+      if (active) {
+        active.content = newContent;
+        active.isModified = true;
+        this.workspaceService.updateContent(active.id, newContent);
+      }
       const fromLabel = sourceIsTabs ? 'Tabs' : `${sourceIndentSize} Spaces`;
       const toLabel = targetType === 'tabs' ? 'Tabs' : `${targetTabSize} Spaces`;
       this.workspaceService.showNotification(
@@ -1879,11 +1902,15 @@ ${rawContent}
     } else {
       const toLabel = targetType === 'tabs' ? `Tabs (size ${targetTabSize})` : `${targetTabSize} Spaces`;
       this.workspaceService.showNotification(
-        `Indentation already matches ${toLabel}`
+        `Indentation set to ${toLabel}`
       );
     }
 
     model.updateOptions({
+      insertSpaces: targetType === 'spaces',
+      tabSize: targetTabSize,
+    });
+    this.editorInstance?.updateOptions({
       insertSpaces: targetType === 'spaces',
       tabSize: targetTabSize,
     });
@@ -1893,10 +1920,8 @@ ${rawContent}
       active.indentType = targetType;
       active.tabSize = targetTabSize;
       active.isIndentationCustom = true;
-      if (edits.length > 0) {
-        this.workspaceService.updateContent(active.id, model.getValue());
-      }
     }
+    this.workspaceService.syncActiveIndentation(targetType, targetTabSize);
   }
 
   public zoomImgIn(): void {

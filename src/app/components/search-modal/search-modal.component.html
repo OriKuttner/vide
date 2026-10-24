@@ -12,7 +12,7 @@
         <button class="close-x" (click)="close()">×</button>
       </div>
 
-      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm' && workspaceService.activeModal() !== 'references' && workspaceService.activeModal() !== 'git-commit-details') {
+      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'close-editor-confirm' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm' && workspaceService.activeModal() !== 'references' && workspaceService.activeModal() !== 'git-commit-details') {
         <div class="input-container">
           <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
           <input
@@ -20,11 +20,22 @@
             #inputField
             type="text"
             class="modal-input"
+            [class.input-error]="!!errorMessage()"
             [ngModel]="inputValue()"
             (ngModelChange)="onInputChange($event)"
             (keydown.enter)="onEnter()"
             (keydown.escape)="close()"
           />
+          @if (errorMessage()) {
+            <div class="modal-error-message">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <span>{{ errorMessage() }}</span>
+            </div>
+          }
         </div>
       }
 
@@ -44,6 +55,36 @@
           <button type="button" class="btn btn-secondary" (click)="cancelUnsavedClose()">Cancel</button>
           <button type="button" class="btn btn-danger" (click)="discardAndClose()">Don't Save</button>
           <button type="button" class="btn btn-primary" (click)="saveAndClose()">Save</button>
+        </div>
+      }
+
+      @if (workspaceService.activeModal() === 'close-editor-confirm') {
+        <div class="unsaved-modal-body">
+          <div class="unsaved-warning-icon">
+            <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#f59e0b" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div class="unsaved-message-box">
+            <h3 class="unsaved-title">Save changes before closing Vector IDE?</h3>
+            <p class="unsaved-desc">You have unsaved changes in {{ workspaceService.getModifiedFiles().length }} file(s). If you close without saving, your changes will be discarded.</p>
+            <div class="unsaved-files-list">
+              @for (file of workspaceService.getModifiedFiles(); track file.id) {
+                <div class="unsaved-file-item">
+                  <span class="unsaved-file-bullet">•</span>
+                  <span class="unsaved-file-name">{{ file.name }}</span>
+                  @if (file.path && file.path !== file.name) {
+                    <span class="unsaved-file-path">({{ file.path }})</span>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+        <div class="action-footer unsaved-footer">
+          <button type="button" class="btn btn-secondary" (click)="workspaceService.cancelExitApp()">Do Not Close</button>
+          <button type="button" class="btn btn-danger" (click)="workspaceService.discardAndExitApp()">Discard and Close Anyway</button>
+          <button type="button" class="btn btn-primary" (click)="workspaceService.saveAndExitApp()">Save and Close</button>
         </div>
       }
 

@@ -26,6 +26,7 @@ import {
 } from '../models/file.model';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { EditorConfigService } from './editor-config.service';
 
 export function isTauriApp(): boolean {
 	if (typeof window === 'undefined') return false;
@@ -132,7 +133,7 @@ export class WorkspaceService {
 
 	// Active search/modal mode
 	readonly activeModal = signal<
-		'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | 'references' | 'git-commit-details' | null
+		'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'close-editor-confirm' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | 'references' | 'git-commit-details' | null
 	>(null);
 	readonly pendingCommitDetails = signal<GitCommitDetails | null>(null);
 	readonly isLoadingCommitDetails = signal<boolean>(false);
@@ -152,6 +153,10 @@ export class WorkspaceService {
 	public onFileOpened?: (file: WorkspaceFile) => void;
 	public onSessionRestored?: (history: any[], index: number) => void;
 	public onWorkspaceReset?: () => void;
+	public onContentProcessedOnSave?: (fileId: string, newContent: string) => void;
+
+	// EditorConfig support service
+	public readonly editorConfigService = inject(EditorConfigService);
 
 	// Programmatic content replacement request (from AI tools / external)
 	readonly pendingContentReplacement = signal<{ fileId: string; newContent: string } | null>(null);
@@ -1792,6 +1797,7 @@ export class WorkspaceService {
 			| 'indentation'
 			| 'change-language'
 			| 'unsaved-changes'
+			| 'close-editor-confirm'
 			| 'ai-settings'
 			| 'ai-download'
 			| 'delete-file-confirm'
@@ -1914,17 +1920,65 @@ export class WorkspaceService {
 		this.closeModal();
 	}
 
-	public async createNewFile(fileName: string): Promise<void> {
+	public async createNewFile(fileName: string): Promise<{ success: boolean; error?: string }> {
 		const trimmed = fileName.trim();
-		if (!trimmed) return;
+		if (!trimmed) {
+			return { success: false, error: 'Please enter a valid file name.' };
+		}
 		const parts = trimmed.split('/');
 		const baseName = parts[parts.length - 1];
+		if (!baseName) {
+			return { success: false, error: 'File name cannot be empty.' };
+		}
 		const language = detectLanguageFromFilename(baseName);
 		const nativeRoot = this.nativeWorkspacePath();
 		const fsPath = nativeRoot
 			? (nativeRoot.endsWith('/') ? `${nativeRoot}${trimmed}` : `${nativeRoot}/${trimmed}`)
 			: undefined;
 
+		const cleanPath = trimmed.replace(/^[/\\]+/, '');
+		const existingInWorkspace = this.files().find(
+			(f) =>
+				f.path === cleanPath ||
+				f.id === cleanPath ||
+				f.path === trimmed ||
+				f.id === trimmed ||
+				(fsPath && f.fsPath === fsPath)
+		);
+		if (existingInWorkspace) {
+			return {
+				success: false,
+				error: `File "${baseName}" already exists in the workspace.`,
+			};
+		}
+
+		if (isTauriApp() && fsPath) {
+			try {
+				await invoke('get_file_metadata', { filePath: fsPath });
+				return {
+					success: false,
+					error: `File "${baseName}" already exists on disk.`,
+				};
+			} catch {
+				// File does not exist on disk, proceed to create
+			}
+		}
+
+		if (this.recentDirHandle && !isTauriApp()) {
+			try {
+				const existingHandle = await this.recentDirHandle.getFileHandle(trimmed, { create: false });
+				if (existingHandle) {
+					return {
+						success: false,
+						error: `File "${baseName}" already exists.`,
+					};
+				}
+			} catch {
+				// File does not exist, proceed to create
+			}
+		}
+
+		const ecRules = this.editorConfigService.getPropertiesForFile(trimmed);
 		const newFile: WorkspaceFile = {
 			id: trimmed,
 			name: baseName,
@@ -1934,6 +1988,9 @@ export class WorkspaceService {
 			content: '',
 			isLoaded: true,
 			isModified: true,
+			indentType: ecRules.indentStyle || this.defaultIndentType(),
+			tabSize: ecRules.indentSize || this.defaultTabSize(),
+			isIndentationCustom: true,
 		};
 
 		this.files.update((prev) => [newFile, ...prev]);
@@ -1953,17 +2010,46 @@ export class WorkspaceService {
 		await this.openFile(newFile);
 		this.showNotification(`Created file: ${baseName}`);
 		this.closeModal();
+		return { success: true };
 	}
 
-	public createNewFolder(folderPath: string): void {
+	public async createNewFolder(folderPath: string): Promise<{ success: boolean; error?: string }> {
 		const trimmed = folderPath.trim();
-		if (!trimmed) return;
+		if (!trimmed) {
+			return { success: false, error: 'Please enter a valid directory name.' };
+		}
 		const parts = trimmed.split('/');
 		const folderName = parts[parts.length - 1];
+		if (!folderName) {
+			return { success: false, error: 'Directory name cannot be empty.' };
+		}
 		const nativeRoot = this.nativeWorkspacePath();
 		const fsPath = nativeRoot
 			? (nativeRoot.endsWith('/') ? `${nativeRoot}${trimmed}` : `${nativeRoot}/${trimmed}`)
 			: undefined;
+
+		const cleanPath = trimmed.replace(/^[/\\]+/, '');
+		const existingDir = this.fileTree().find(
+			(n) => n.kind === 'directory' && (n.path === cleanPath || n.path === trimmed || (fsPath && n.fsPath === fsPath))
+		);
+		if (existingDir) {
+			return {
+				success: false,
+				error: `Folder "${folderName}" already exists.`,
+			};
+		}
+
+		if (isTauriApp() && fsPath) {
+			try {
+				await invoke('get_file_metadata', { filePath: fsPath });
+				return {
+					success: false,
+					error: `Folder "${folderName}" already exists on disk.`,
+				};
+			} catch {
+				// Does not exist, proceed
+			}
+		}
 
 		const newNode: FileTreeNode = {
 			id: trimmed,
@@ -1987,6 +2073,7 @@ export class WorkspaceService {
 		this.fileTree.update((prev) => [newNode, ...prev]);
 		this.showNotification(`Created folder: ${folderName}`);
 		this.closeModal();
+		return { success: true };
 	}
 
 	public async grepFiles(query: string, options?: GrepOptions): Promise<GrepResult[]> {
@@ -2665,6 +2752,68 @@ export class WorkspaceService {
 		this.pendingUnsavedFile.set(null);
 	}
 
+	public getModifiedFiles(): WorkspaceFile[] {
+		const modifiedMap = new Map<string, WorkspaceFile>();
+		for (const f of this.files()) {
+			if (f.isModified) {
+				modifiedMap.set(f.id, f);
+			}
+		}
+		for (const t of this.openTabs()) {
+			if (t.isModified) {
+				modifiedMap.set(t.id, t);
+			}
+		}
+		return Array.from(modifiedMap.values());
+	}
+
+	public hasModifiedFiles(): boolean {
+		return this.files().some((f) => f.isModified) || this.openTabs().some((t) => t.isModified);
+	}
+
+	public async saveAllModifiedFiles(): Promise<boolean> {
+		const modified = this.getModifiedFiles();
+		let allSaved = true;
+		for (const f of modified) {
+			const ok = await this.saveFile(f);
+			if (!ok) allSaved = false;
+		}
+		return allSaved;
+	}
+
+	public promptCloseEditor(): void {
+		if (this.hasModifiedFiles()) {
+			this.openModal('close-editor-confirm');
+		} else {
+			this.forceExitApp();
+		}
+	}
+
+	public async forceExitApp(): Promise<void> {
+		if (isTauriApp()) {
+			try {
+				await invoke('exit_app');
+			} catch (err) {
+				console.error('Failed to exit via Tauri invoke:', err);
+			}
+		}
+	}
+
+	public async discardAndExitApp(): Promise<void> {
+		this.closeModal();
+		await this.forceExitApp();
+	}
+
+	public async saveAndExitApp(): Promise<void> {
+		await this.saveAllModifiedFiles();
+		this.closeModal();
+		await this.forceExitApp();
+	}
+
+	public cancelExitApp(): void {
+		this.closeModal();
+	}
+
 	public updateContent(fileId: string, content: string): void {
 		this.files.update((files) =>
 			files.map((file) => {
@@ -3272,6 +3421,19 @@ export class WorkspaceService {
 			this.onWorkspaceReset?.();
 		});
 
+		// Load .editorconfig if present in root
+		try {
+			const ecPath = rootPath.endsWith('/') ? `${rootPath}.editorconfig` : `${rootPath}/.editorconfig`;
+			const ecContent = await invoke<string>('read_file_text', { filePath: ecPath });
+			if (ecContent) {
+				this.editorConfigService.loadConfigFromContent(ecContent);
+			} else {
+				this.editorConfigService.clear();
+			}
+		} catch {
+			this.editorConfigService.clear();
+		}
+
 		try {
 			const entries = await invoke<
 				Array<{ name: string; path: string; is_dir: boolean; size: number }>
@@ -3676,6 +3838,20 @@ export class WorkspaceService {
 		try {
 			// Save to IndexedDB and localStorage for one-click reopening
 			this.saveLastDirectoryHandle(dirHandle);
+
+			// Load .editorconfig if present in web directory
+			try {
+				const ecHandle = await dirHandle.getFileHandle('.editorconfig', { create: false });
+				const ecFile = await ecHandle.getFile();
+				const ecContent = await ecFile.text();
+				if (ecContent) {
+					this.editorConfigService.loadConfigFromContent(ecContent);
+				} else {
+					this.editorConfigService.clear();
+				}
+			} catch {
+				this.editorConfigService.clear();
+			}
 
 			// Read ONLY immediate children of the root directory (shallow, instant!)
 			const rootNodes: FileTreeNode[] = [];
@@ -4288,6 +4464,19 @@ export class WorkspaceService {
 		if (file.isBinary || file.isImage) {
 			return true;
 		}
+
+		// Apply .editorconfig rules (trim trailing whitespace, insert final newline, line endings)
+		const processedContent = this.editorConfigService.applySaveRules(file.content, file.name || file.path);
+		if (processedContent !== file.content) {
+			file.content = processedContent;
+			this.onContentProcessedOnSave?.(file.id, processedContent);
+		}
+
+		// If saving .editorconfig itself, dynamically refresh active rules
+		if (file.name === '.editorconfig' || file.path?.endsWith('.editorconfig')) {
+			this.editorConfigService.loadConfigFromContent(file.content);
+		}
+
 		if (isTauriApp() && file.fsPath) {
 			try {
 				await invoke('write_file_text', {

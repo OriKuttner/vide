@@ -86,6 +86,31 @@
       border-color: #007acc;
       box-shadow: 0 0 0 1px #007acc;
     }
+
+    &.input-error {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 1px #ef4444;
+    }
+  }
+
+  .modal-error-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 7px 11px;
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 4px;
+    color: #991b1b;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+
+    svg {
+      flex-shrink: 0;
+      stroke: #dc2626;
+    }
   }
 }
 
@@ -560,6 +585,44 @@
       font-size: 13.5px;
       color: var(--text-secondary, #555555);
       line-height: 1.4;
+    }
+
+    .unsaved-files-list {
+      margin-top: 6px;
+      max-height: 140px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color, #e0e0e0);
+      background-color: var(--bg-item-hover, #f8f8f8);
+      border-radius: 4px;
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .unsaved-file-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-primary, #1e1e1e);
+
+      .unsaved-file-bullet {
+        color: #d97706;
+        font-weight: bold;
+      }
+
+      .unsaved-file-name {
+        font-weight: 600;
+      }
+
+      .unsaved-file-path {
+        color: var(--text-muted, #717171);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     }
   }
 }

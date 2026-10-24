@@ -62,6 +62,7 @@ export class SearchModalComponent {
   public grepResults = signal<GrepResult[]>([]);
   public fileResults = signal<WorkspaceFile[]>([]);
   public isSearching = signal<boolean>(false);
+  public errorMessage = signal<string>('');
 
   // Indentation configuration state
   public selectedIndentType = signal<'tabs' | 'spaces'>('tabs');
@@ -84,6 +85,7 @@ export class SearchModalComponent {
       const mode = this.workspaceService.activeModal();
       if (mode) {
         this.inputValue.set('');
+        this.errorMessage.set('');
         this.grepResults.set([]);
         if (mode === 'file-search') {
           this.fileResults.set(this.workspaceService.findFiles(''));
@@ -169,6 +171,8 @@ export class SearchModalComponent {
         return 'Git: Create Tag';
       case 'unsaved-changes':
         return 'Save Changes?';
+      case 'close-editor-confirm':
+        return 'Unsaved Changes - Close Vector IDE';
       case 'ai-settings':
         return 'AI Assistant Configuration (Google Gemini)';
       case 'references':
@@ -185,6 +189,7 @@ export class SearchModalComponent {
   public getLabel(): string {
     switch (this.workspaceService.activeModal()) {
       case 'unsaved-changes':
+      case 'close-editor-confirm':
       case 'ai-settings':
       case 'references':
       case 'git-commit-details':
@@ -212,6 +217,9 @@ export class SearchModalComponent {
 
   public onInputChange(val: string): void {
     this.inputValue.set(val);
+    if (this.errorMessage()) {
+      this.errorMessage.set('');
+    }
     const mode = this.workspaceService.activeModal();
 
     if (mode === 'file-search') {
@@ -261,10 +269,30 @@ export class SearchModalComponent {
     const mode = this.workspaceService.activeModal();
     const val = this.inputValue().trim();
 
-    if (mode === 'new-file' && val) {
-      await this.workspaceService.createNewFile(val);
-    } else if (mode === 'new-folder' && val) {
-      this.workspaceService.createNewFolder(val);
+    if (mode === 'new-file') {
+      if (!val) {
+        this.errorMessage.set('Please enter a file name.');
+        return;
+      }
+      const res = await this.workspaceService.createNewFile(val);
+      if (!res.success) {
+        this.errorMessage.set(res.error || `File "${val}" already exists.`);
+        setTimeout(() => {
+          this.inputField?.nativeElement?.select();
+        }, 50);
+      }
+    } else if (mode === 'new-folder') {
+      if (!val) {
+        this.errorMessage.set('Please enter a directory name.');
+        return;
+      }
+      const res = await this.workspaceService.createNewFolder(val);
+      if (!res.success) {
+        this.errorMessage.set(res.error || `Folder "${val}" already exists.`);
+        setTimeout(() => {
+          this.inputField?.nativeElement?.select();
+        }, 50);
+      }
     } else if (mode === 'open-folder-path' && val) {
       await this.workspaceService.openDirectoryByPath(val);
     } else if (mode === 'file-search') {
@@ -356,7 +384,7 @@ export class SearchModalComponent {
   }
 
   public applyIndentation(): void {
-    this.workspaceService.setIndentation(this.selectedIndentType(), this.selectedTabSize());
+    this.convertIndentation();
   }
 
   public convertIndentation(): void {
@@ -393,6 +421,7 @@ export class SearchModalComponent {
   }
 
   public close(): void {
+    this.errorMessage.set('');
     this.workspaceService.closeModal();
   }
 

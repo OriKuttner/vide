@@ -2452,6 +2452,11 @@ pub fn run() {
         }
     }
 
+#[tauri::command]
+fn exit_app(app_handle: tauri::AppHandle) {
+    app_handle.exit(0);
+}
+
     tauri::Builder::default()
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -2464,19 +2469,26 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(|_window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                if let Ok(mut guard) = ACTIVE_LISTENER.lock() {
-                    if let Some(active) = guard.take() {
-                        let _ = std::fs::remove_file(&active.socket_path);
-                        let _ = std::fs::remove_file(&active.info_path);
+        .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let _ = window.emit("window-close-requested", ());
+                }
+                tauri::WindowEvent::Destroyed => {
+                    if let Ok(mut guard) = ACTIVE_LISTENER.lock() {
+                        if let Some(active) = guard.take() {
+                            let _ = std::fs::remove_file(&active.socket_path);
+                            let _ = std::fs::remove_file(&active.info_path);
+                        }
+                    }
+                    if let Ok(mut guard) = AI_SIDECAR.lock() {
+                        if let Some(mut proc) = guard.take() {
+                            let _ = proc.child.kill();
+                        }
                     }
                 }
-                if let Ok(mut guard) = AI_SIDECAR.lock() {
-                    if let Some(mut proc) = guard.take() {
-                        let _ = proc.child.kill();
-                    }
-                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -2519,6 +2531,7 @@ pub fn run() {
             log_to_terminal,
             inspect_file,
             read_file_hex,
+            exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
