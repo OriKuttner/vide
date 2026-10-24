@@ -6,13 +6,13 @@
 
 @if (workspaceService.activeModal()) {
   <div class="modal-backdrop" (click)="close()">
-    <div class="modal-card" (click)="$event.stopPropagation()">
+    <div class="modal-card" [class.commit-details-card]="workspaceService.activeModal() === 'git-commit-details'" (click)="$event.stopPropagation()">
       <div class="modal-header">
         <span class="modal-title">{{ getTitle() }}</span>
         <button class="close-x" (click)="close()">×</button>
       </div>
 
-      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm' && workspaceService.activeModal() !== 'references') {
+      @if (workspaceService.activeModal() !== 'indentation' && workspaceService.activeModal() !== 'unsaved-changes' && workspaceService.activeModal() !== 'ai-settings' && workspaceService.activeModal() !== 'delete-file-confirm' && workspaceService.activeModal() !== 'git-untrack-confirm' && workspaceService.activeModal() !== 'references' && workspaceService.activeModal() !== 'git-commit-details') {
         <div class="input-container">
           <label class="input-label" [for]="'modal-search-input'">{{ getLabel() }}</label>
           <input
@@ -589,6 +589,137 @@
           <button class="btn btn-secondary" (click)="close()">Cancel</button>
           <button class="btn btn-primary" (click)="onEnter()">Create</button>
         </div>
+      }
+
+      @if (workspaceService.activeModal() === 'git-commit-details') {
+        @if (workspaceService.isLoadingCommitDetails()) {
+          <div class="commit-details-loading">
+            <div class="mini-spinner"></div>
+            <span>Loading Git commit details...</span>
+          </div>
+        } @else if (workspaceService.pendingCommitDetails(); as c) {
+          <div class="commit-details-body">
+            <!-- Top Controls & Hash -->
+            <div class="commit-top-bar">
+              <div class="commit-hash-group">
+                <span class="commit-hash-pill">{{ c.short_hash }}</span>
+                <code class="commit-full-hash">{{ c.hash }}</code>
+                <button
+                  type="button"
+                  class="btn-icon-copy"
+                  (click)="copyToClipboard(c.hash, 'hash')"
+                  [title]="isCopied('hash') ? 'Copied!' : 'Copy full commit SHA'"
+                >
+                  {{ isCopied('hash') ? '✓ Copied' : '📋 Copy SHA' }}
+                </button>
+              </div>
+
+              <div class="commit-refs-group">
+                @for (ref of c.refs; track ref) {
+                  <span class="commit-ref-pill">{{ ref }}</span>
+                }
+              </div>
+            </div>
+
+            <!-- Commit Subject & Message -->
+            <div class="commit-message-section">
+              <h2 class="commit-subject">{{ c.subject }}</h2>
+              @if (c.body) {
+                <div class="commit-body-text">{{ c.body }}</div>
+              }
+            </div>
+
+            <!-- Meta details (Author, Committer, Date, Parents) -->
+            <div class="commit-meta-grid">
+              <div class="meta-row">
+                <span class="meta-label">Author:</span>
+                <span class="meta-value">
+                  <strong>{{ c.author_name }}</strong>
+                  <span class="meta-email">&lt;{{ c.author_email }}&gt;</span>
+                  <span class="meta-date">• {{ c.author_date }} ({{ c.author_date_relative }})</span>
+                </span>
+              </div>
+
+              @if (c.committer_name && (c.committer_name !== c.author_name || c.committer_date !== c.author_date)) {
+                <div class="meta-row">
+                  <span class="meta-label">Committer:</span>
+                  <span class="meta-value">
+                    <strong>{{ c.committer_name }}</strong>
+                    <span class="meta-email">&lt;{{ c.committer_email }}&gt;</span>
+                    <span class="meta-date">• {{ c.committer_date }}</span>
+                  </span>
+                </div>
+              }
+
+              @if (c.parents.length > 0) {
+                <div class="meta-row">
+                  <span class="meta-label">Parents:</span>
+                  <span class="meta-value commit-parents">
+                    @for (p of c.parents; track p) {
+                      <code class="parent-hash" (click)="workspaceService.openCommitDetails(p)" [title]="'Inspect parent ' + p">{{ p.substring(0, 7) }}</code>
+                    }
+                  </span>
+                </div>
+              }
+            </div>
+
+            <!-- Changed Files Header -->
+            <div class="commit-files-header-bar">
+              <span class="commit-files-title">📁 Changed Files ({{ c.files.length }})</span>
+              @if (c.stat_summary) {
+                <div class="commit-stat-pill" [title]="c.stat_summary">
+                  {{ c.stat_summary }}
+                </div>
+              }
+            </div>
+
+            <!-- Changed Files List with 2 actions per file -->
+            <div class="commit-files-list">
+              @for (file of c.files; track file.path) {
+                <div class="commit-file-row">
+                  <span class="file-status-badge status-{{ file.status.toLowerCase() }}">
+                    {{ file.status }}
+                  </span>
+                  <span class="file-path" [title]="file.path">{{ file.path }}</span>
+                  <span class="file-changes-count">
+                    @if (file.insertions > 0) {
+                      <span class="ins">+{{ file.insertions }}</span>
+                    }
+                    @if (file.deletions > 0) {
+                      <span class="del">-{{ file.deletions }}</span>
+                    }
+                  </span>
+                  <div class="file-actions-right">
+                    <button
+                      type="button"
+                      class="btn-file-action btn-diff"
+                      (click)="workspaceService.openCommitFileDiff(c.hash, file.path, file.status)"
+                      title="Open side-by-side Meld diff"
+                    >
+                      ◫ Side-by-Side Diff
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-file-action btn-open"
+                      (click)="openFileFromCommit(file.path)"
+                      title="Go to current file in workspace"
+                    >
+                      ↗ Go to File
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Footer Actions -->
+          <div class="action-footer commit-footer">
+            <button type="button" class="btn btn-ai-analyze" (click)="analyzeCommitWithAi(c)">
+              ✨ Explain with Vector AI
+            </button>
+            <button type="button" class="btn btn-secondary" (click)="close()">Close</button>
+          </div>
+        }
       }
     </div>
   </div>

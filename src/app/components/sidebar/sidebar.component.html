@@ -752,7 +752,7 @@
                 <div class="empty-commits-msg">No commits found.</div>
               } @else {
                 @for (commit of workspaceService.recentCommits(); track commit.hash) {
-                  <div class="git-commit-row" [title]="commit.hash">
+                  <div class="git-commit-row" [title]="'Click to view details of commit ' + commit.hash" (click)="openCommitDetails(commit)">
                     <div class="commit-row-top">
                       <span class="commit-hash">{{ commit.shortHash }}</span>
                       <span class="commit-msg">{{ commit.message }}</span>

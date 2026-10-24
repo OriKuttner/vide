@@ -15,6 +15,8 @@ import {
 	CliLaunchPayload,
 	CliFileToOpen,
 	GitCommit,
+	GitCommitDetails,
+	GitCommitFileChange,
 	GitSyncStatus,
 	GitBranchItem,
 	HexViewResult,
@@ -130,8 +132,10 @@ export class WorkspaceService {
 
 	// Active search/modal mode
 	readonly activeModal = signal<
-		'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | 'references' | null
+		'grep' | 'file-search' | 'new-file' | 'new-folder' | 'open-folder-path' | 'indentation' | 'change-language' | 'unsaved-changes' | 'ai-settings' | 'ai-download' | 'delete-file-confirm' | 'git-untrack-confirm' | 'git-branches' | 'git-create-tag' | 'references' | 'git-commit-details' | null
 	>(null);
+	readonly pendingCommitDetails = signal<GitCommitDetails | null>(null);
+	readonly isLoadingCommitDetails = signal<boolean>(false);
 	readonly pendingReferencesSymbol = signal<string>('');
 	readonly pendingReferences = signal<GrepResult[]>([]);
 	readonly isSearchingReferences = signal<boolean>(false);
@@ -469,9 +473,28 @@ export class WorkspaceService {
 		this.diffModeActive.set(true);
 	}
 
-	public closeDiffView(): void {
+	public closeDiffView(returnToCommit = true): void {
+		const currentDiff = this.activeDiffFile();
+		const commitHash = currentDiff?.commitDiffInfo?.commitHash;
+
 		this.diffModeActive.set(false);
 		this.activeDiffFile.set(null);
+
+		if (currentDiff?.commitDiffInfo) {
+			const currentTabs = this.openTabs();
+			const newTabs = currentTabs.filter((tab) => tab.id !== currentDiff.id);
+			if (newTabs.length !== currentTabs.length) {
+				this.openTabs.set(newTabs);
+				if (this.activeFileId() === currentDiff.id) {
+					const nextId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : '';
+					this.activeFileId.set(nextId);
+				}
+			}
+		}
+
+		if (returnToCommit && commitHash) {
+			this.openCommitDetails(commitHash);
+		}
 	}
 
 	public toggleDiffSideBySide(): void {
@@ -480,7 +503,7 @@ export class WorkspaceService {
 
 	public toggleCurrentFileDiff(): void {
 		if (this.diffModeActive()) {
-			this.closeDiffView();
+			this.closeDiffView(false);
 		} else {
 			const file = this.activeFile();
 			if (file) {
@@ -621,7 +644,7 @@ export class WorkspaceService {
 		}
 
 		if (this.activeDiffFile()?.id === file.id || this.activeDiffFile()?.path === file.path) {
-			this.closeDiffView();
+			this.closeDiffView(false);
 		}
 
 		// 2. Perform deletion on disk if running under Tauri
@@ -771,7 +794,7 @@ export class WorkspaceService {
 				}))
 			);
 			if (this.diffModeActive()) {
-				this.closeDiffView();
+				this.closeDiffView(false);
 			}
 			await this.refreshGitStatus();
 			return true;
@@ -1769,6 +1792,7 @@ export class WorkspaceService {
 			| 'git-branches'
 			| 'git-create-tag'
 			| 'references'
+			| 'git-commit-details'
 	): void {
 		if (mode === 'grep') {
 			this.setSidebarView('search');
@@ -1779,6 +1803,85 @@ export class WorkspaceService {
 			this.loadGitTags();
 		}
 		this.activeModal.set(mode);
+	}
+
+	public async openCommitDetails(commitHash: string): Promise<void> {
+		const root = this.nativeWorkspacePath();
+		if (!root || !isTauriApp()) return;
+
+		const current = this.pendingCommitDetails();
+		if (current && (current.hash === commitHash || current.short_hash === commitHash)) {
+			this.openModal('git-commit-details');
+			return;
+		}
+
+		this.isLoadingCommitDetails.set(true);
+		this.pendingCommitDetails.set(null);
+		this.openModal('git-commit-details');
+
+		try {
+			const details = await invoke<GitCommitDetails>('get_git_commit_details', {
+				repoPath: root,
+				commitHash,
+			});
+			this.pendingCommitDetails.set(details);
+		} catch (err: any) {
+			console.error('Failed to load git commit details:', err);
+		} finally {
+			this.isLoadingCommitDetails.set(false);
+		}
+	}
+
+	public async openCommitFileDiff(commitHash: string, filePath: string, status?: string): Promise<void> {
+		const root = this.nativeWorkspacePath();
+		if (!root || !isTauriApp()) return;
+
+		this.closeModal();
+
+		try {
+			const pair = await invoke<{ before_content: string; after_content: string }>(
+				'get_git_commit_file_diff_content',
+				{
+					repoPath: root,
+					commitHash,
+					filePath,
+				}
+			);
+
+			const name = filePath.split('/').pop() || filePath;
+			const shortHash = commitHash.substring(0, 7);
+			const gitStatusNormalized: 'modified' | 'added' | 'deleted' =
+				status === 'A' ? 'added' : status === 'D' ? 'deleted' : 'modified';
+
+			const diffFile: WorkspaceFile = {
+				id: `commit-diff-${shortHash}-${filePath}`,
+				name: `${name} (${shortHash})`,
+				path: filePath,
+				language: detectLanguageFromFilename(name),
+				content: pair.after_content,
+				originalContent: pair.before_content,
+				gitStatus: gitStatusNormalized,
+				isLoaded: true,
+				isModified: false,
+				readOnly: true,
+				commitDiffInfo: {
+					commitHash,
+					shortHash,
+					originalTitle: `Before (${shortHash}^)`,
+					modifiedTitle: `Commit (${shortHash})`,
+				},
+			};
+
+			const currentTabs = this.openTabs();
+			if (!currentTabs.some((tab) => tab.id === diffFile.id)) {
+				this.openTabs.set([...currentTabs, diffFile]);
+			}
+			this.activeFileId.set(diffFile.id);
+			this.activeDiffFile.set(diffFile);
+			this.diffModeActive.set(true);
+		} catch (err: any) {
+			console.error('Failed to open commit file diff:', err);
+		}
 	}
 
 	public closeModal(): void {
@@ -2125,8 +2228,17 @@ export class WorkspaceService {
 	 * Lazily loads file text content and opens in editor.
 	 */
 	public async openFile(file: WorkspaceFile, setActive = true): Promise<void> {
+		if (file.commitDiffInfo) {
+			if (setActive) {
+				this.activeFileId.set(file.id);
+			}
+			this.activeDiffFile.set(file);
+			this.diffModeActive.set(true);
+			return;
+		}
+
 		if (this.diffModeActive()) {
-			this.closeDiffView();
+			this.closeDiffView(false);
 		}
 
 		const isImg = isImageFile(file.name);
@@ -2513,7 +2625,15 @@ export class WorkspaceService {
 		this.openTabs.set(newTabs);
 
 		if (this.activeFileId() === fileId) {
-			this.activeFileId.set(newTabs.length > 0 ? newTabs[newTabs.length - 1].id : '');
+			const nextId = newTabs.length > 0 ? newTabs[newTabs.length - 1].id : '';
+			this.activeFileId.set(nextId);
+			if (nextId) {
+				const nextTab = newTabs.find((t) => t.id === nextId);
+				if (nextTab?.commitDiffInfo) {
+					this.activeDiffFile.set(nextTab);
+					this.diffModeActive.set(true);
+				}
+			}
 		}
 		if (this.diffModeActive() && this.activeDiffFile()?.id === fileId) {
 			this.closeDiffView();

@@ -18,7 +18,7 @@ import { FormsModule } from '@angular/forms';
 import { WorkspaceService, GrepResult } from '../../services/workspace.service';
 import { AiService } from '../../services/ai.service';
 import { AssistantService } from '../../services/assistant.service';
-import { WorkspaceFile, isOmniFluxFile, isPhpFile, isPerlFile, GitBranchItem } from '../../models/file.model';
+import { WorkspaceFile, isOmniFluxFile, isPhpFile, isPerlFile, GitBranchItem, GitCommitDetails } from '../../models/file.model';
 
 export interface LanguageItem {
   id: string;
@@ -169,6 +169,10 @@ export class SearchModalComponent {
         return 'AI Assistant Configuration (Google Gemini)';
       case 'references':
         return `References: ${this.workspaceService.pendingReferencesSymbol()}`;
+      case 'git-commit-details': {
+        const c = this.workspaceService.pendingCommitDetails();
+        return c ? `Commit ${c.short_hash}: ${c.subject}` : 'Git Commit Details';
+      }
       default:
         return '';
     }
@@ -179,6 +183,7 @@ export class SearchModalComponent {
       case 'unsaved-changes':
       case 'ai-settings':
       case 'references':
+      case 'git-commit-details':
         return '';
       case 'new-file':
         return 'Enter new file name and extension (e.g. app.of, service.ts):';
@@ -456,5 +461,38 @@ export class SearchModalComponent {
   public jumpToReference(result: GrepResult): void {
     this.workspaceService.jumpToLine(result.file, result.lineNumber);
     this.close();
+  }
+
+  // --- Git Commit Details modal state & helpers ---
+  public copiedStates = signal<{ [key: string]: boolean }>({});
+
+  public copyToClipboard(text: string, key: string): void {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        this.copiedStates.update((s) => ({ ...s, [key]: true }));
+        setTimeout(() => {
+          this.copiedStates.update((s) => ({ ...s, [key]: false }));
+        }, 2000);
+      });
+    }
+  }
+
+  public isCopied(key: string): boolean {
+    return !!this.copiedStates()[key];
+  }
+
+  public analyzeCommitWithAi(commit: GitCommitDetails): void {
+    const fileList = commit.files
+      .map((f) => `• [${f.status}] ${f.path} (+${f.insertions}, -${f.deletions})`)
+      .join('\n');
+    const prompt = `Please analyze and explain this Git commit (${commit.short_hash}): "${commit.subject}".\n\nAuthor: ${commit.author_name} <${commit.author_email}>\nDate: ${commit.author_date} (${commit.author_date_relative})\nSummary: ${commit.stat_summary}\n\nChanged Files:\n${fileList}\n\nCommit Message:\n${commit.subject}\n${commit.body ? '\n' + commit.body : ''}\n\nPlease walk through the architectural intent, key logic modifications, and potential implications of these changes.`;
+
+    this.assistantService.openChat();
+    this.assistantService.sendMessage(prompt);
+  }
+
+  public async openFileFromCommit(path: string): Promise<void> {
+    this.close();
+    await this.workspaceService.openFileByPath(path);
   }
 }

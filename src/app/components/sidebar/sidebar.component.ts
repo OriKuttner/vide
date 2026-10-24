@@ -8,7 +8,7 @@ import { Component, inject, signal, computed, ViewChild, ElementRef, effect, Cha
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';
 import { AiService } from '../../services/ai.service';
-import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isBinaryFile } from '../../models/file.model';
+import { WorkspaceFile, FileTreeNode, isImageFile, isOmniFluxFile, isPhpFile, isPerlFile, isBinaryFile, GitCommit } from '../../models/file.model';
 
 @Component({
   selector: 'app-sidebar',
@@ -446,6 +446,10 @@ export class SidebarComponent {
 
   public toggleCommitsExpanded(): void {
     this.commitsExpanded.update((v) => !v);
+  }
+
+  public openCommitDetails(commit: GitCommit): void {
+    this.workspaceService.openCommitDetails(commit.hash);
   }
 
   // Sidebar Resizing state

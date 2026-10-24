@@ -1286,6 +1286,11 @@ ${rawContent}
         modified: modModel,
       });
 
+      this.diffEditorInstance.updateOptions({
+        originalEditable: false,
+        readOnly: !!file.readOnly,
+      });
+
       // Clear any diagnostic error markers on diff models
       monaco.editor.setModelMarkers(origModel, 'typescript', []);
       monaco.editor.setModelMarkers(origModel, 'javascript', []);

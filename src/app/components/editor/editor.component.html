@@ -8,7 +8,7 @@
   @if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as diffFile) {
     <div class="meld-diff-toolbar">
       <div class="diff-left-section">
-        <span class="meld-tag">MELD DIFF</span>
+        <span class="meld-tag">{{ diffFile.commitDiffInfo ? 'COMMIT DIFF' : 'MELD DIFF' }}</span>
         <span class="diff-file-name">{{ diffFile.name }}</span>
         <span
           class="diff-status-badge"
@@ -28,14 +28,14 @@
       <div class="diff-center-headers">
         <div class="pane-header original-pane-header">
           <span class="legend-indicator red">●</span>
-          <span class="pane-title">HEAD (Commit Baseline)</span>
+          <span class="pane-title">{{ diffFile.commitDiffInfo ? diffFile.commitDiffInfo.originalTitle : 'HEAD (Commit Baseline)' }}</span>
           <span class="pane-tag">Read-only</span>
         </div>
         <div class="pane-separator">⇄</div>
         <div class="pane-header modified-pane-header">
           <span class="legend-indicator green">●</span>
-          <span class="pane-title">Working Tree (Local Changes)</span>
-          <span class="pane-tag editable">Editable</span>
+          <span class="pane-title">{{ diffFile.commitDiffInfo ? diffFile.commitDiffInfo.modifiedTitle : 'Working Tree (Local Changes)' }}</span>
+          <span class="pane-tag" [class.editable]="!diffFile.readOnly">{{ diffFile.readOnly ? 'Read-only' : 'Editable' }}</span>
         </div>
       </div>
 
@@ -51,24 +51,26 @@
           <span>{{ workspaceService.diffRenderSideBySide() ? 'Side-by-Side' : 'Inline' }}</span>
         </button>
 
-        <button
-          type="button"
-          class="diff-action-btn revert-btn"
-          (click)="discardChanges(diffFile.id)"
-          title="Discard all local changes in this file (Restore HEAD)"
-        >
-          <span class="btn-icon">⎌</span>
-          <span>Discard Changes</span>
-        </button>
+        @if (!diffFile.commitDiffInfo && !diffFile.readOnly) {
+          <button
+            type="button"
+            class="diff-action-btn revert-btn"
+            (click)="discardChanges(diffFile.id)"
+            title="Discard all local changes in this file (Restore HEAD)"
+          >
+            <span class="btn-icon">⎌</span>
+            <span>Discard Changes</span>
+          </button>
+        }
 
         <button
           type="button"
           class="diff-action-btn close-btn"
           (click)="workspaceService.closeDiffView()"
-          title="Close Diff View (Return to Editor)"
+          [title]="diffFile.commitDiffInfo ? 'Close Diff View (Return to Commit Details)' : 'Close Diff View (Return to Editor)'"
         >
-          <span class="btn-icon">✕</span>
-          <span>Close Diff</span>
+          <span class="btn-icon">{{ diffFile.commitDiffInfo ? '↩' : '✕' }}</span>
+          <span>{{ diffFile.commitDiffInfo ? 'Back to Commit' : 'Close Diff' }}</span>
         </button>
       </div>
     </div>

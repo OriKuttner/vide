@@ -30,6 +30,13 @@ export interface WorkspaceFile {
   tabSize?: number;
   isIndentationCustom?: boolean;
   cursor?: { line: number; column: number };
+  readOnly?: boolean;
+  commitDiffInfo?: {
+    commitHash: string;
+    shortHash: string;
+    originalTitle: string;
+    modifiedTitle: string;
+  };
 }
 
 export interface HexLine {
@@ -358,6 +365,32 @@ export interface GitCommit {
   date: string;
   message: string;
   tags?: string[];
+}
+
+export interface GitCommitFileChange {
+  path: string;
+  insertions: number;
+  deletions: number;
+  status: string;
+}
+
+export interface GitCommitDetails {
+  hash: string;
+  short_hash: string;
+  author_name: string;
+  author_email: string;
+  author_date: string;
+  author_date_relative: string;
+  committer_name: string;
+  committer_email: string;
+  committer_date: string;
+  subject: string;
+  body: string;
+  parents: string[];
+  refs: string[];
+  stat_summary: string;
+  files: GitCommitFileChange[];
+  patch: string;
 }
 
 export interface GitSyncStatus {

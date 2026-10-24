@@ -48,6 +48,40 @@ pub struct GitCommitItem {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitCommitFileChange {
+    pub path: String,
+    pub insertions: usize,
+    pub deletions: usize,
+    pub status: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitCommitDetails {
+    pub hash: String,
+    pub short_hash: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub author_date: String,
+    pub author_date_relative: String,
+    pub committer_name: String,
+    pub committer_email: String,
+    pub committer_date: String,
+    pub subject: String,
+    pub body: String,
+    pub parents: Vec<String>,
+    pub refs: Vec<String>,
+    pub stat_summary: String,
+    pub files: Vec<GitCommitFileChange>,
+    pub patch: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitCommitFileContentPair {
+    pub before_content: String,
+    pub after_content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GitSyncStatus {
     pub has_remote: bool,
     pub remote_name: Option<String>,
@@ -383,6 +417,193 @@ fn get_git_commits(repo_path: String, limit: Option<usize>) -> Result<Vec<GitCom
     }
 
     Ok(commits)
+}
+
+#[tauri::command]
+fn get_git_commit_details(repo_path: String, commit_hash: String) -> Result<GitCommitDetails, String> {
+    let clean_repo = expand_path(&repo_path);
+    let target = commit_hash.trim();
+    if target.is_empty() {
+        return Err("Commit hash cannot be empty".to_string());
+    }
+
+    // 1. Get commit metadata
+    let meta_output = Command::new("git")
+        .args([
+            "-C",
+            &clean_repo,
+            "show",
+            "-s",
+            "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%ar%x1f%cn%x1f%ce%x1f%cd%x1f%s%x1f%b%x1f%P%x1f%D",
+            target,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run git show: {}", e))?;
+
+    if !meta_output.status.success() {
+        return Err(String::from_utf8_lossy(&meta_output.stderr).to_string());
+    }
+
+    let meta_str = String::from_utf8_lossy(&meta_output.stdout);
+    let parts: Vec<&str> = meta_str.split('\x1f').collect();
+    if parts.len() < 13 {
+        return Err("Unexpected git show metadata format".to_string());
+    }
+
+    let hash = parts[0].trim().to_string();
+    let short_hash = parts[1].trim().to_string();
+    let author_name = parts[2].trim().to_string();
+    let author_email = parts[3].trim().to_string();
+    let author_date = parts[4].trim().to_string();
+    let author_date_relative = parts[5].trim().to_string();
+    let committer_name = parts[6].trim().to_string();
+    let committer_email = parts[7].trim().to_string();
+    let committer_date = parts[8].trim().to_string();
+    let subject = parts[9].trim().to_string();
+    let body = parts[10].trim().to_string();
+
+    let parents: Vec<String> = parts[11]
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+
+    let mut refs = Vec::new();
+    if !parts[12].trim().is_empty() {
+        for r in parts[12].split(',') {
+            let clean_ref = r.trim();
+            if !clean_ref.is_empty() {
+                refs.push(clean_ref.to_string());
+            }
+        }
+    }
+
+    // 2. Short stat summary
+    let stat_output = Command::new("git")
+        .args(["-C", &clean_repo, "show", "--shortstat", "--format=", target])
+        .output()
+        .map_err(|e| format!("Failed to run git shortstat: {}", e))?;
+    let stat_summary = String::from_utf8_lossy(&stat_output.stdout).trim().to_string();
+
+    // 3. Name-status for file change types (M, A, D, R...)
+    let mut file_statuses: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Ok(name_status_out) = Command::new("git")
+        .args(["-C", &clean_repo, "show", "--name-status", "--format=", target])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&name_status_out.stdout).lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let sp: Vec<&str> = line.split('\t').collect();
+            if sp.len() >= 2 {
+                let status_code = sp[0].trim();
+                let file_name = sp[sp.len() - 1].trim();
+                file_statuses.insert(file_name.to_string(), status_code.to_string());
+            }
+        }
+    }
+
+    // 4. Numstat for insertions/deletions per file
+    let mut files: Vec<GitCommitFileChange> = Vec::new();
+    if let Ok(numstat_out) = Command::new("git")
+        .args(["-C", &clean_repo, "show", "--numstat", "--format=", target])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&numstat_out.stdout).lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let sp: Vec<&str> = line.split('\t').collect();
+            if sp.len() >= 3 {
+                let ins = sp[0].trim().parse::<usize>().unwrap_or(0);
+                let del = sp[1].trim().parse::<usize>().unwrap_or(0);
+                let p = sp[2].trim().to_string();
+                let st = file_statuses.get(&p).cloned().unwrap_or_else(|| "M".to_string());
+                files.push(GitCommitFileChange {
+                    path: p,
+                    insertions: ins,
+                    deletions: del,
+                    status: st,
+                });
+            }
+        }
+    }
+
+    // 5. Unified diff / patch (limit to 300 KB to preserve responsiveness)
+    let patch_output = Command::new("git")
+        .args(["-C", &clean_repo, "show", "--patch", "--format=", target])
+        .output()
+        .map_err(|e| format!("Failed to run git show patch: {}", e))?;
+
+    let raw_patch = String::from_utf8_lossy(&patch_output.stdout);
+    let patch = if raw_patch.len() > 300_000 {
+        format!("{}\n\n... [Diff truncated: commit diff exceeds 300 KB]", &raw_patch[..300_000])
+    } else {
+        raw_patch.to_string()
+    };
+
+    Ok(GitCommitDetails {
+        hash,
+        short_hash,
+        author_name,
+        author_email,
+        author_date,
+        author_date_relative,
+        committer_name,
+        committer_email,
+        committer_date,
+        subject,
+        body,
+        parents,
+        refs,
+        stat_summary,
+        files,
+        patch,
+    })
+}
+
+#[tauri::command]
+fn get_git_commit_file_diff_content(
+    repo_path: String,
+    commit_hash: String,
+    file_path: String,
+) -> Result<GitCommitFileContentPair, String> {
+    let clean_repo = expand_path(&repo_path);
+    let target_commit = commit_hash.trim();
+    let clean_path = file_path.trim().trim_start_matches("./").trim_start_matches('/');
+
+    if target_commit.is_empty() || clean_path.is_empty() {
+        return Err("Commit hash and file path cannot be empty".to_string());
+    }
+
+    // 1. Before content (parent commit or empty if added/initial)
+    let before_spec = format!("{}~1:{}", target_commit, clean_path);
+    let before_output = Command::new("git")
+        .args(["-C", &clean_repo, "show", &before_spec])
+        .output();
+
+    let before_content = match before_output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        _ => String::new(),
+    };
+
+    // 2. After content (target commit or empty if deleted)
+    let after_spec = format!("{}:{}", target_commit, clean_path);
+    let after_output = Command::new("git")
+        .args(["-C", &clean_repo, "show", &after_spec])
+        .output();
+
+    let after_content = match after_output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        _ => String::new(),
+    };
+
+    Ok(GitCommitFileContentPair {
+        before_content,
+        after_content,
+    })
 }
 
 #[tauri::command]
@@ -2266,6 +2487,8 @@ pub fn run() {
             get_git_diff_baseline,
             revert_git_file,
             get_git_commits,
+            get_git_commit_details,
+            get_git_commit_file_diff_content,
             create_git_commit,
             get_git_sync_status,
             git_push,
