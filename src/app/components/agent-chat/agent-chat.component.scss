@@ -1128,11 +1128,35 @@
 				font-family: inherit;
 				font-size: 24px;
 				line-height: 1.5;
-				max-height: 160px;
-				min-height: 34px;
+				min-height: 1.5em;
+				min-height: 1lh;
+				max-height: 6em;
+				max-height: 4lh;
+				overflow-y: auto;
+				scrollbar-width: thin;
+				scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 				color: var(--text-primary, #fff);
 				text-align: start;
 				unicode-bidi: plaintext;
+				box-sizing: border-box;
+				padding: 0;
+
+				&::-webkit-scrollbar {
+					width: 6px;
+				}
+
+				&::-webkit-scrollbar-track {
+					background: transparent;
+				}
+
+				&::-webkit-scrollbar-thumb {
+					background: rgba(255, 255, 255, 0.3);
+					border-radius: 4px;
+
+					&:hover {
+						background: rgba(255, 255, 255, 0.5);
+					}
+				}
 			}
 
 			.send-btn {

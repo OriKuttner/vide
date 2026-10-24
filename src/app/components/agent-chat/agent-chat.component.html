@@ -386,6 +386,7 @@
 			<textarea
 				#inputField
 				[(ngModel)]="messageText"
+				(input)="adjustTextareaHeight()"
 				(keydown)="onKeyDown($event)"
 				rows="1"
 				dir="auto"

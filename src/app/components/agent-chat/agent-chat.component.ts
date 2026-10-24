@@ -212,6 +212,7 @@ export class AgentChatComponent implements AfterViewChecked {
 			this.shouldScrollBottom = true;
 			setTimeout(() => {
 				this.inputField?.nativeElement?.focus();
+				this.adjustTextareaHeight();
 			}, 100);
 		}
 	}
@@ -246,6 +247,7 @@ export class AgentChatComponent implements AfterViewChecked {
 
 	clearChat(): void {
 		this.assistantService.clearFeed();
+		this.adjustTextareaHeight();
 	}
 
 	openAiSettings(): void {
@@ -265,6 +267,13 @@ export class AgentChatComponent implements AfterViewChecked {
 		return !!this.expandedThoughts()[msgId];
 	}
 
+	adjustTextareaHeight(): void {
+		const el = this.inputField?.nativeElement;
+		if (!el) return;
+		el.style.height = 'auto';
+		el.style.height = `${el.scrollHeight}px`;
+	}
+
 	onKeyDown(event: KeyboardEvent): void {
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
@@ -276,6 +285,7 @@ export class AgentChatComponent implements AfterViewChecked {
 		const text = this.messageText();
 		if (!text.trim() || this.assistantService.isLoading()) return;
 		this.messageText.set('');
+		this.adjustTextareaHeight();
 		this.isUserScrolledUp.set(false);
 		this.shouldScrollBottom = true;
 		this.scrollToBottom();

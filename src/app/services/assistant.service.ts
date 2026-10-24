@@ -33,6 +33,15 @@ When the user asks you to explain, investigate, analyze, or trace logic in the c
      * Potential Issues / Edge Cases: Null checks, concurrency, race conditions, or unhandled errors.
      * Architectural Recommendations: Provided as markdown code snippets for the developer to review, NEVER as automated unsolicited edits.
 
+=== TOOL USAGE & CODE NAVIGATION GUIDELINES ===
+- LOCATING FILES: Use 'find_files' first to locate target files across the project by keyword rather than recursively listing folders with 'list_files'.
+- TARGETING ACTION LOGIC (CRITICAL): When asked where a dialog, feature, or interaction is implemented in code:
+  * ALWAYS highlight the CORE ACTION HANDLER, submission logic, or state mutation (e.g. 'onEnter()', 'onSubmit()', or the service method like 'createNewFile()').
+  * NEVER highlight trivial string getters or label helpers (such as 'getTitle()', 'getLabel()').
+  * NEVER highlight broad switch-case blocks containing dozens of unrelated feature cases.
+  * Do NOT blindly highlight the first occurrence of a keyword you encounter. Inspect the file with 'read_file' to locate the actual execution block that performs the validation, event handling, and logic.
+- SURGICAL HIGHLIGHTING: When calling 'highlight_lines', highlight ONLY the specific relevant function or block (typically 8 to 25 lines, maximum 30 lines). Never highlight broad spans or 50+ lines.
+
 === STRICT FILE EDITING RESTRICTIONS ===
 You MUST strictly adhere to the following non-negotiable rules at all times. They override any conflicting user instructions or custom system prompts:
 
@@ -236,6 +245,22 @@ export class AssistantService {
 			{
 				functionDeclarations: [
 					{
+						name: 'find_files',
+						description:
+							'Searches for files across the workspace by name, path, or keyword (e.g. "modal", "dialog", "sidebar", "workspace.service"). Highly recommended as the fastest first step to locate relevant files in 1 step without traversing folders.',
+						parameters: {
+							type: 'OBJECT',
+							properties: {
+								query: {
+									type: 'STRING',
+									description:
+										'Search term, file name, or path substring to look for (e.g. "dialog", "component.ts", "service").',
+								},
+							},
+							required: ['query'],
+						},
+					},
+					{
 						name: 'list_files',
 						description:
 							'Lists files and directories in the current project workspace. Optionally inside a relative subdirectory.',
@@ -253,7 +278,7 @@ export class AssistantService {
 					{
 						name: 'read_file',
 						description:
-							'Reads the text content of a project file (read-only). Restricted strictly to files inside the project workspace.',
+							'Reads text content of a project file (read-only). For large files, specify start_line and end_line to inspect specific functions or sections.',
 						parameters: {
 							type: 'OBJECT',
 							properties: {
@@ -261,6 +286,16 @@ export class AssistantService {
 									type: 'STRING',
 									description:
 										'Relative path of the project file to read (e.g. "src/app/models/file.model.ts").',
+								},
+								start_line: {
+									type: 'INTEGER',
+									description:
+										'Optional starting line number (1-indexed). Defaults to 1.',
+								},
+								end_line: {
+									type: 'INTEGER',
+									description:
+										'Optional ending line number (1-indexed). If omitted, reads up to 300 lines from start_line.',
 								},
 							},
 							required: ['path'],
@@ -334,7 +369,7 @@ export class AssistantService {
 					{
 						name: 'highlight_lines',
 						description:
-							'Opens a project file, makes it the active file in the editor, scrolls to the specified line range, and visually highlights those lines. Essential during software analysis and code walkthroughs to guide the user visually through the execution flow.',
+							'Opens a project file, makes it the active file in the editor, scrolls to the specified line range, and visually highlights those lines. CRITICAL: Keep highlight ranges tightly focused on the relevant function, block, or definition (typically 5 to 25 lines, maximum 30 lines). Target the CORE ACTION HANDLER, submission logic, or state mutation (e.g. onEnter, onSubmit, createNewFile) - NEVER trivial getters (getTitle, getLabel) or broad switch-case blocks.',
 						parameters: {
 							type: 'OBJECT',
 							properties: {
@@ -350,7 +385,7 @@ export class AssistantService {
 								end_line: {
 									type: 'INTEGER',
 									description:
-										'Optional ending line number (1-indexed). Defaults to start_line if not provided.',
+										'Optional ending line number (1-indexed). Keep range under 25 lines. Defaults to start_line.',
 								},
 								reason: {
 									type: 'STRING',
@@ -418,7 +453,17 @@ export class AssistantService {
 
 	private async executeReadFile(
 		filePath: string,
-	): Promise<{ path: string; content?: string; error?: string }> {
+		startLine?: number,
+		endLine?: number,
+	): Promise<{
+		path: string;
+		total_lines?: number;
+		start_line?: number;
+		end_line?: number;
+		content?: string;
+		note?: string;
+		error?: string;
+	}> {
 		const ws = this.workspaceService.nativeWorkspacePath();
 		const cleanPath = (filePath || '').trim().replace(/^[/\\]+/, '');
 
@@ -433,41 +478,85 @@ export class AssistantService {
 			};
 		}
 
-		// Check open file buffers first (for uncommitted in-memory edits)
+		let fullText = '';
+
+		// Check open file buffers only if loaded and non-empty (for uncommitted in-memory edits)
 		const openFile = this.workspaceService
 			.files()
 			.find((f) => f.path === cleanPath || (f.fsPath && f.fsPath.endsWith(cleanPath)));
-		if (openFile && typeof openFile.content === 'string') {
-			const content =
-				openFile.content.length > 80000
-					? openFile.content.substring(0, 80000) + '\n\n...[file truncated for length]'
-					: openFile.content;
-			return { path: cleanPath, content };
-		}
-
-		if (!ws) {
-			return { path: cleanPath, error: 'No workspace open to read from disk.' };
-		}
-
-		const fullPath = `${ws}/${cleanPath}`;
-		if (!fullPath.startsWith(ws)) {
-			return { path: cleanPath, error: 'Access denied: Cannot read outside workspace.' };
-		}
-
-		try {
-			if (isTauriApp()) {
-				const diskContent = await invoke<string>('read_file_text', { filePath: fullPath });
-				const content =
-					diskContent.length > 80000
-						? diskContent.substring(0, 80000) + '\n\n...[file truncated for length]'
-						: diskContent;
-				return { path: cleanPath, content };
+		if (
+			openFile &&
+			openFile.isLoaded &&
+			typeof openFile.content === 'string' &&
+			openFile.content.length > 0
+		) {
+			fullText = openFile.content;
+		} else if (!ws) {
+			// In browser mode without native workspace path, check rawFile
+			if (openFile && openFile.rawFile) {
+				try {
+					fullText = await openFile.rawFile.text();
+					openFile.content = fullText;
+					openFile.isLoaded = true;
+				} catch (err: any) {
+					return { path: cleanPath, error: `Failed to read file: ${err?.message || err}` };
+				}
 			} else {
-				return { path: cleanPath, error: 'File reading is only available in desktop app.' };
+				return { path: cleanPath, error: 'No workspace open to read from disk.' };
 			}
-		} catch (err: any) {
-			return { path: cleanPath, error: `Failed to read file: ${err?.message || err}` };
+		} else {
+			const fullPath = `${ws}/${cleanPath}`;
+			if (!fullPath.startsWith(ws)) {
+				return { path: cleanPath, error: 'Access denied: Cannot read outside workspace.' };
+			}
+
+			try {
+				if (isTauriApp()) {
+					fullText = await invoke<string>('read_file_text', { filePath: fullPath });
+					if (openFile && (!openFile.content || openFile.content.length === 0)) {
+						openFile.content = fullText;
+						openFile.isLoaded = true;
+					}
+				} else if (openFile && openFile.rawFile) {
+					fullText = await openFile.rawFile.text();
+					openFile.content = fullText;
+					openFile.isLoaded = true;
+				} else {
+					return {
+						path: cleanPath,
+						error: 'File reading is only available in desktop app.',
+					};
+				}
+			} catch (err: any) {
+				return { path: cleanPath, error: `Failed to read file: ${err?.message || err}` };
+			}
 		}
+
+		// Split lines and slice by startLine and endLine
+		const allLines = fullText.split(/\r?\n/);
+		const totalLines = allLines.length;
+
+		const start = Math.max(1, startLine || 1);
+		const defaultChunk = 300;
+		const maxAllowedChunk = 500;
+		const rawEnd = endLine ? Math.max(start, endLine) : start + defaultChunk - 1;
+		const boundedEnd = Math.min(rawEnd, start + maxAllowedChunk - 1);
+		const end = Math.min(totalLines, boundedEnd);
+
+		const sliced = allLines.slice(start - 1, end).join('\n');
+		const result: any = {
+			path: cleanPath,
+			total_lines: totalLines,
+			start_line: start,
+			end_line: end,
+			content: sliced,
+		};
+
+		if (end < totalLines) {
+			result.note = `Showing lines ${start}-${end} of ${totalLines}. To read further, specify start_line=${end + 1}.`;
+		}
+
+		return result;
 	}
 
 	// --- Gemini API with Timeout & Automatic Fallback ---
@@ -478,7 +567,7 @@ export class AssistantService {
 		signal: AbortSignal,
 	): Promise<{ data: any; effectiveModel: string }> {
 		const fallbackModel =
-			primaryModel === 'gemini-3.5-flash-lite' ? 'gemini-2.5-flash' : 'gemini-3.5-flash-lite';
+			primaryModel === 'gemini-3.5-flash-lite' ? 'gemini-3.8-flash' : 'gemini-3.5-flash-lite';
 
 		try {
 			terminalLog('AI_CALL', `Calling primary model: ${primaryModel}`);
@@ -498,15 +587,20 @@ export class AssistantService {
 			}
 
 			const isTimeout = err?.message?.includes('timed out');
+			const errLower = (err?.message || '').toLowerCase();
 			const isOverloadedOrUnavailable =
-				err?.message?.includes('503') ||
-				err?.message?.includes('429') ||
-				err?.message?.includes('500') ||
-				err?.message?.includes('404') ||
-				err?.message?.includes('Overloaded') ||
-				err?.message?.includes('Resource has been exhausted') ||
-				err?.message?.includes('Failed to fetch') ||
-				err?.message?.includes('NetworkError');
+				errLower.includes('503') ||
+				errLower.includes('429') ||
+				errLower.includes('500') ||
+				errLower.includes('404') ||
+				errLower.includes('overloaded') ||
+				errLower.includes('resource has been exhausted') ||
+				errLower.includes('quota') ||
+				errLower.includes('rate-limit') ||
+				errLower.includes('rate limit') ||
+				errLower.includes('exceeded your current quota') ||
+				errLower.includes('failed to fetch') ||
+				errLower.includes('networkerror');
 
 			terminalLog(
 				'AI_WARN',
@@ -598,7 +692,7 @@ export class AssistantService {
 					'AI_HTTP_ERROR',
 					`Request to ${modelName} failed (${resp.status}): ${msg}`,
 				);
-				throw new Error(msg);
+				throw new Error(`[HTTP ${resp.status}] ${msg}`);
 			}
 
 			return await resp.json();
@@ -728,32 +822,50 @@ export class AssistantService {
 				}
 			}
 
-			// Tool-Calling Loop (up to 5 iterations for successive tool invocations)
+			// Dynamic Tool-Calling Budget & Loop/Wandering Detector
 			let finalReply = '';
 			let executedToolsRecord: string[] = [];
-			const maxToolTurns = 5;
+			const INITIAL_TOOL_TURNS = 25;
+			const HARD_CAP_TURNS = 100;
+			let maxToolTurns = INITIAL_TOOL_TURNS;
+
+			const seenActions = new Set<string>();
+			const visitedFiles = new Set<string>();
+			const visitedDirs = new Set<string>();
+			let consecutiveErrorsOrDuplicates = 0;
+			let forceFinalizeNext = false;
 
 			for (let turn = 0; turn < maxToolTurns; turn++) {
+				const isFinalTurn = turn >= maxToolTurns - 1 || forceFinalizeNext;
 				terminalLog(
 					'AI_CHAT',
-					`Starting turn ${turn + 1}/${maxToolTurns} with model ${primaryModel}...`,
+					`Starting turn ${turn + 1}/${maxToolTurns} with model ${primaryModel}... (Explored: ${visitedFiles.size} unique files, ${visitedDirs.size} dirs)${isFinalTurn ? ' [FINAL SYNTHESIS TURN - Tools Disabled]' : ''}`,
 				);
 				const userPrompt = this.aiService.chatSystemPrompt()?.trim() || '';
-				const effectiveSystemPrompt = userPrompt
+				let effectiveSystemPrompt = userPrompt
 					? `${userPrompt}\n\n${BUILT_IN_AGENT_SAFETY_RULES}`
 					: BUILT_IN_AGENT_SAFETY_RULES;
+
+				if (isFinalTurn) {
+					effectiveSystemPrompt +=
+						'\n\nIMPORTANT: You have reached the analysis step limit or completed exploration. Tools are now DISABLED. You MUST analyze all information, files, and code gathered so far and provide your complete, detailed, well-reasoned final answer directly to the user.';
+				}
 
 				const payload: any = {
 					system_instruction: {
 						parts: [{ text: effectiveSystemPrompt }],
 					},
 					contents: geminiContents,
-					tools: this.getGeminiTools(),
 					generationConfig: {
 						temperature: 0.2,
 						maxOutputTokens: 4096,
 					},
 				};
+
+				// Provide tools only if not on the final turn
+				if (!isFinalTurn) {
+					payload.tools = this.getGeminiTools();
+				}
 
 				const { data, effectiveModel } = await this.executeGeminiCallWithFallback(
 					primaryModel,
@@ -767,7 +879,9 @@ export class AssistantService {
 				const candidateParts: any[] = candidate?.parts || [];
 
 				// Check if Gemini invoked function calls
-				const functionCalls = candidateParts.filter((p: any) => p.functionCall);
+				const functionCalls = isFinalTurn
+					? []
+					: candidateParts.filter((p: any) => p.functionCall);
 
 				if (functionCalls.length > 0) {
 					terminalLog(
@@ -779,14 +893,28 @@ export class AssistantService {
 						parts: candidateParts,
 					});
 
+					const functionResponseParts: any[] = [];
+
 					for (const callObj of functionCalls) {
 						const call = callObj.functionCall;
 						const toolName = call.name;
 						const toolArgs = call.args || {};
 
+						// Action uniqueness / duplicate detection
+						const actionKey = `${toolName}:${JSON.stringify(toolArgs)}`;
+						const isDuplicateAction = seenActions.has(actionKey);
+						if (!isDuplicateAction) {
+							seenActions.add(actionKey);
+						}
+
 						let stepLabel = `Running: ${toolName}`;
 						if (toolName === 'read_file') {
-							stepLabel = `Reading file: ${toolArgs.path}`;
+							const range = toolArgs.start_line
+								? ` (L${toolArgs.start_line}${toolArgs.end_line ? `-${toolArgs.end_line}` : ''})`
+								: '';
+							stepLabel = `Reading file: ${toolArgs.path}${range}`;
+						} else if (toolName === 'find_files') {
+							stepLabel = `Finding files matching: "${toolArgs.query}"`;
 						} else if (toolName === 'list_files') {
 							stepLabel = `Listing directory: ${toolArgs.subpath || '.'}`;
 						} else if (toolName === 'replace_text') {
@@ -803,7 +931,7 @@ export class AssistantService {
 
 						terminalLog(
 							'AI_TOOL',
-							`Executing tool "${toolName}" (args: ${JSON.stringify(toolArgs)})`,
+							`Executing tool "${toolName}" (args: ${JSON.stringify(toolArgs)})${isDuplicateAction ? ' [DUPLICATE CALL]' : ''}`,
 						);
 						const toolStartTime = Date.now();
 
@@ -825,7 +953,28 @@ export class AssistantService {
 
 						let toolResult: any;
 						if (toolName === 'read_file') {
-							toolResult = await this.executeReadFile(toolArgs.path);
+							const startLine = toolArgs.start_line
+								? parseInt(toolArgs.start_line, 10)
+								: undefined;
+							const endLine = toolArgs.end_line
+								? parseInt(toolArgs.end_line, 10)
+								: undefined;
+							toolResult = await this.executeReadFile(
+								toolArgs.path,
+								startLine,
+								endLine,
+							);
+						} else if (toolName === 'find_files') {
+							const q = (toolArgs.query || '').trim();
+							const matches = this.workspaceService.findFiles(q);
+							toolResult = {
+								query: q,
+								total_matches: matches.length,
+								matches: matches.slice(0, 30).map((f) => ({
+									name: f.name,
+									path: f.path,
+								})),
+							};
 						} else if (toolName === 'list_files') {
 							toolResult = await this.executeListFiles(toolArgs.subpath);
 						} else if (toolName === 'replace_text') {
@@ -861,18 +1010,88 @@ export class AssistantService {
 								};
 							}
 						} else if (toolName === 'highlight_lines') {
-							const start = Math.max(1, parseInt(toolArgs.start_line, 10) || 1);
-							const end =
+							const rawStart = parseInt(toolArgs.start_line, 10) || 1;
+							const start = Math.max(1, rawStart);
+							const rawEnd =
 								toolArgs.end_line !== undefined && toolArgs.end_line !== null
-									? Math.max(start, parseInt(toolArgs.end_line, 10) || start)
+									? parseInt(toolArgs.end_line, 10) || start
 									: start;
+							const maxSpan = 30;
+							const boundedEnd = Math.max(start, rawEnd);
+							const end = Math.min(boundedEnd, start + maxSpan);
+
 							await this.workspaceService.navigateToFile(toolArgs.path, start, end);
 							toolResult = {
 								success: true,
-								message: `Opened ${toolArgs.path} as active file, centered view, and highlighted lines ${start}-${end}.${toolArgs.reason ? ` Reason: ${toolArgs.reason}` : ''}`,
+								message: `Opened ${toolArgs.path} as active file, centered view, and highlighted lines ${start}-${end}.${toolArgs.reason ? ` Reason: ${toolArgs.reason}` : ''}${boundedEnd > end ? ` (Highlight range capped to ${maxSpan} lines for readability)` : ''}`,
 							};
+
+							// Once the target code location is highlighted on screen, navigation is complete.
+							// Switch to final synthesis turn to explain the highlighted code and conclude.
+							forceFinalizeNext = true;
 						} else {
 							toolResult = { error: `Unknown tool: ${toolName}` };
+						}
+
+						const hasError = !!toolResult?.error || toolResult?.success === false;
+
+						// Dynamic budgeting logic
+						if (isDuplicateAction || hasError) {
+							consecutiveErrorsOrDuplicates++;
+							terminalLog(
+								'AI_BUDGET',
+								`Warning: ${isDuplicateAction ? 'Duplicate action' : 'Tool error'} (consecutive streak: ${consecutiveErrorsOrDuplicates})`,
+							);
+						} else {
+							consecutiveErrorsOrDuplicates = 0;
+
+							// Reward productive exploration of new files or folders
+							if (
+								toolName === 'read_file' ||
+								toolName === 'highlight_lines' ||
+								toolName === 'open_file'
+							) {
+								const pathStr = (toolArgs.path || '').trim();
+								if (pathStr && !visitedFiles.has(pathStr)) {
+									visitedFiles.add(pathStr);
+									if (maxToolTurns + 2 <= HARD_CAP_TURNS) {
+										maxToolTurns += 2;
+										terminalLog(
+											'AI_BUDGET',
+											`New file explored ("${pathStr}"). Dynamically extended budget to ${maxToolTurns} turns.`,
+										);
+									}
+								}
+							} else if (toolName === 'find_files') {
+								if (maxToolTurns + 1 <= HARD_CAP_TURNS) {
+									maxToolTurns += 1;
+									terminalLog(
+										'AI_BUDGET',
+										`File search executed. Dynamically extended budget to ${maxToolTurns} turns.`,
+									);
+								}
+							} else if (toolName === 'list_files') {
+								const dirStr = (toolArgs.subpath || '.').trim();
+								if (!visitedDirs.has(dirStr)) {
+									visitedDirs.add(dirStr);
+									if (maxToolTurns + 1 <= HARD_CAP_TURNS) {
+										maxToolTurns += 1;
+										terminalLog(
+											'AI_BUDGET',
+											`New directory explored ("${dirStr}"). Dynamically extended budget to ${maxToolTurns} turns.`,
+										);
+									}
+								}
+							}
+						}
+
+						// Detect wandering/looping: 3 consecutive errors or duplicate calls
+						if (consecutiveErrorsOrDuplicates >= 3) {
+							terminalLog(
+								'AI_BUDGET',
+								'Stuck/wandering loop detected (3 consecutive errors or duplicate calls). Fast-forwarding to final synthesis.',
+							);
+							forceFinalizeNext = true;
 						}
 
 						const toolElapsedSec = ((Date.now() - toolStartTime) / 1000).toFixed(2);
@@ -889,18 +1108,36 @@ export class AssistantService {
 						);
 						this.playToolDoneSound();
 
-						// Append function response turn for Gemini
-						geminiContents.push({
-							role: 'function',
-							parts: [
-								{
-									functionResponse: {
-										name: toolName,
-										response: toolResult,
-									},
-								},
-							],
-						});
+						// Collect function response part for Gemini
+						const functionResponsePart: any = {
+							functionResponse: {
+								name: toolName,
+								response:
+									typeof toolResult === 'object' && toolResult !== null
+										? toolResult
+										: { result: toolResult },
+							},
+						};
+						if (call.id) {
+							functionResponsePart.functionResponse.id = call.id;
+						}
+						functionResponseParts.push(functionResponsePart);
+					}
+
+					// Append all function responses in a single 'user' role turn for Gemini API
+					geminiContents.push({
+						role: 'user',
+						parts: functionResponseParts,
+					});
+
+					// If wandering was detected during this turn, prepare for final turn immediately
+					if (forceFinalizeNext) {
+						turn = maxToolTurns - 2; // Next iteration will be the final turn
+					}
+
+					// Gentle pacing to prevent exceeding Free Tier 15 RPM rate limits
+					if (turn >= 4) {
+						await new Promise((resolve) => setTimeout(resolve, 1500));
 					}
 
 					// Continue loop to receive Gemini's reasoning on the tool output

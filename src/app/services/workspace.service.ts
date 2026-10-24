@@ -2306,7 +2306,14 @@ export class WorkspaceService {
 	}
 
 	public findFiles(query: string): WorkspaceFile[] {
-		const term = query.trim().toLowerCase();
+		let term = query.trim().toLowerCase();
+		// Strip glob wildcards like *.component.ts -> component.ts
+		term = term
+			.replace(/^\*+/, '')
+			.replace(/\*+$/, '')
+			.replace(/^\.\*/, '')
+			.replace(/^\./, '')
+			.trim();
 		const all = this.files();
 		if (!term) return all.slice(0, 30);
 		return all
