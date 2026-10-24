@@ -1,24 +1,24 @@
 <!--
-  app.html - Root template container for Vector IDE
-  Part of Vector IDE
-  Written by: Ori Kuttner and Shira (Antigravity agent)
+	app.html - Root template container for Vector IDE
+	Part of Vector IDE
+	Written by: Ori Kuttner and Shira (Antigravity agent)
 -->
 
 <div class="ide-container">
-  <div class="ide-main">
-    @if (workspaceService.sidebarVisible()) {
-      <app-sidebar />
-    }
+	<div class="ide-main">
+		@if (workspaceService.sidebarVisible()) {
+			<app-sidebar />
+		}
 
-    <main class="ide-editor-area">
-      <app-tabs />
-      <div class="editor-viewport">
-        <app-editor (cursorChange)="onCursorChange($event)" />
-      </div>
-    </main>
-  </div>
+		<main class="ide-editor-area">
+			<app-tabs />
+			<div class="editor-viewport">
+				<app-editor (cursorChange)="onCursorChange($event)" />
+			</div>
+		</main>
+	</div>
 
-  <app-status-bar [cursor]="cursor()" />
-  <app-search-modal />
-  <app-agent-chat />
+	<app-status-bar [cursor]="cursor()" />
+	<app-search-modal />
+	<app-agent-chat />
 </div>
