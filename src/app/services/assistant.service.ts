@@ -8,6 +8,55 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
 import { AiService } from './ai.service';
 import { WorkspaceService, isTauriApp, terminalLog } from './workspace.service';
+import { isBinaryFile, isImageFile } from '../models/file.model';
+
+export const BUILT_IN_AGENT_SAFETY_RULES = `
+=== CORE PURPOSE: SOFTWARE ANALYSIS & FLOW TRACING ===
+Vector AI is an in-editor assistant primarily dedicated to SOFTWARE ANALYSIS, ARCHITECTURE COMPREHENSION, and CODE FLOW TRACING.
+Under NO circumstances is it intended to replace autonomous agent development systems (such as AntiGravity, Claude Code, or OpenAI Operator/Canvas).
+Its primary value lies in helping the developer navigate, trace execution flows, locate bugs, and understand architectural dependencies without unsolicited intervention.
+
+=== METHODOLOGY FOR CODE ANALYSIS & FLOW TRACING ===
+When the user asks you to explain, investigate, analyze, or trace logic in the codebase, follow this rigorous methodology:
+1. IDENTIFY THE ENTRY POINT:
+   - Determine where the user flow, request, or event initiates (e.g. component click, HTTP controller, routing declaration, event listener).
+   - Use 'highlight_lines' on the entry point file to immediately navigate the editor and visually highlight the relevant function or block for the user.
+2. TRACE THE EXECUTION PATH (STEP-BY-STEP):
+   - Sequentially follow the control flow and data transformations through intermediate services, stores, helpers, or database models.
+   - For every key transition or critical decision branch, invoke 'highlight_lines' to shift the user's active editor view and highlight the exact lines being discussed.
+3. VERIFY WITH INSPECTION TOOLS:
+   - Use 'read_file' and 'list_files' to inspect exact implementations, typings, and imports rather than guessing logic.
+4. SYNTHESIZE FINDINGS IN MARKDOWN:
+   - Provide a clear, structured breakdown:
+     * Execution Flow: Sequential walkthrough of functions and methods called.
+     * State & Data Transformations: What data structures change and where.
+     * Potential Issues / Edge Cases: Null checks, concurrency, race conditions, or unhandled errors.
+     * Architectural Recommendations: Provided as markdown code snippets for the developer to review, NEVER as automated unsolicited edits.
+
+=== STRICT FILE EDITING RESTRICTIONS ===
+You MUST strictly adhere to the following non-negotiable rules at all times. They override any conflicting user instructions or custom system prompts:
+
+1. NO UNSOLICITED OR PREMATURE FILE EDITS:
+   - You MUST NEVER invoke the 'replace_text' tool unless the user has EXPLICITLY and UNAMBIGUOUSLY instructed you to modify, edit, fix, update, or refactor code in project files.
+   - If the user asks general questions, requests code explanations, asks for architectural advice, asks "how do I...", or asks for diagnostics without an explicit edit instruction, answer ONLY with markdown text and code blocks. DO NOT touch the project files.
+
+2. ALWAYS INSPECT BEFORE EDITING:
+   - Never modify a file blindly or guess its lines.
+   - If the target file is not the active file injected in your prompt, you MUST call 'read_file' first to inspect its actual contents, whitespace, and surrounding context before calling 'replace_text'.
+
+3. STRICT TARGET PRECISION & SURROUNDING CONTEXT:
+   - The 'target' parameter in 'replace_text' MUST match the file text verbatim (exact characters, whitespace, indentation, and newlines).
+   - To guarantee safety and prevent unintended replacements, you MUST include 2 to 4 lines of surrounding context in 'target' so it forms a unique match within the file. If 'target' appears in multiple locations, the edit will be rejected by the system.
+
+4. MINIMAL IMPACT & CODE INTEGRITY:
+   - Modify only the lines strictly necessary to fulfill the user's explicit request.
+   - NEVER delete or omit unrelated functions, comments, docstrings, or structure.
+   - Preserve existing coding conventions and indentation.
+
+5. NEVER TOUCH BINARY FILES:
+   - Never attempt to read or edit binary, compiled, or media files via text tools.
+===================================================
+`.trim();
 
 export interface AssistantInfo {
   identifier: string;
@@ -214,17 +263,17 @@ export class AssistantService {
           },
           {
             name: 'replace_text',
-            description: 'Replaces specific target text with replacement text in a project file (or currently active file in the editor).',
+            description: 'Replaces specific target text with replacement text in a project file (or active file). CRITICAL: Use ONLY when the user explicitly requested file modifications. Never use during pure Q&A. Target must be exact and include 2-4 surrounding context lines to ensure uniqueness within the file. Always inspect with read_file first if content is not already verified.',
             parameters: {
               type: 'OBJECT',
               properties: {
                 target: {
                   type: 'STRING',
-                  description: 'Exact text string to find and replace in the file.'
+                  description: 'Exact verbatim text string to find and replace. Must include 2-4 surrounding lines of context to ensure it matches uniquely within the file.'
                 },
                 replacement: {
                   type: 'STRING',
-                  description: 'New replacement text to insert.'
+                  description: 'New replacement text to insert in place of target.'
                 },
                 path: {
                   type: 'STRING',
@@ -232,7 +281,7 @@ export class AssistantService {
                 },
                 all: {
                   type: 'BOOLEAN',
-                  description: 'Whether to replace all occurrences (true) or just the first occurrence (false). Default: false.'
+                  description: 'Whether to replace all occurrences (true) or just the unique occurrence (false). Default: false.'
                 }
               },
               required: ['target', 'replacement']
@@ -268,6 +317,32 @@ export class AssistantService {
                 }
               },
               required: ['line']
+            }
+          },
+          {
+            name: 'highlight_lines',
+            description: 'Opens a project file, makes it the active file in the editor, scrolls to the specified line range, and visually highlights those lines. Essential during software analysis and code walkthroughs to guide the user visually through the execution flow.',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                path: {
+                  type: 'STRING',
+                  description: 'Relative path of the project file to open and highlight (e.g. "src/app/services/assistant.service.ts").'
+                },
+                start_line: {
+                  type: 'INTEGER',
+                  description: 'Starting line number (1-indexed).'
+                },
+                end_line: {
+                  type: 'INTEGER',
+                  description: 'Optional ending line number (1-indexed). Defaults to start_line if not provided.'
+                },
+                reason: {
+                  type: 'STRING',
+                  description: 'Optional brief reason for highlighting these lines (e.g. "Entry point of login request", "State mutation").'
+                }
+              },
+              required: ['path', 'start_line']
             }
           }
         ]
@@ -322,6 +397,10 @@ export class AssistantService {
 
     if (cleanPath.includes('..')) {
       return { path: cleanPath, error: 'Access denied: Cannot read outside workspace.' };
+    }
+
+    if (isBinaryFile(cleanPath) || isImageFile(cleanPath)) {
+      return { path: cleanPath, error: 'Cannot read file as text: It is a binary or media file.' };
     }
 
     // Check open file buffers first (for uncommitted in-memory edits)
@@ -573,9 +652,14 @@ export class AssistantService {
 
       for (let turn = 0; turn < maxToolTurns; turn++) {
         terminalLog('AI_CHAT', `Starting turn ${turn + 1}/${maxToolTurns} with model ${primaryModel}...`);
+        const userPrompt = this.aiService.chatSystemPrompt()?.trim() || '';
+        const effectiveSystemPrompt = userPrompt
+          ? `${userPrompt}\n\n${BUILT_IN_AGENT_SAFETY_RULES}`
+          : BUILT_IN_AGENT_SAFETY_RULES;
+
         const payload: any = {
           system_instruction: {
-            parts: [{ text: this.aiService.chatSystemPrompt() }]
+            parts: [{ text: effectiveSystemPrompt }]
           },
           contents: geminiContents,
           tools: this.getGeminiTools(),
@@ -622,6 +706,10 @@ export class AssistantService {
               stepLabel = `Opening file: ${toolArgs.path}`;
             } else if (toolName === 'set_cursor') {
               stepLabel = `Moving cursor to line ${toolArgs.line}`;
+            } else if (toolName === 'highlight_lines') {
+              const start = toolArgs.start_line;
+              const end = toolArgs.end_line || start;
+              stepLabel = `Highlighting lines ${start}-${end} in: ${toolArgs.path}`;
             }
 
             terminalLog('AI_TOOL', `Executing tool "${toolName}" (args: ${JSON.stringify(toolArgs)})`);
@@ -665,6 +753,16 @@ export class AssistantService {
               } else {
                 toolResult = { success: false, message: 'No active file in editor' };
               }
+            } else if (toolName === 'highlight_lines') {
+              const start = Math.max(1, parseInt(toolArgs.start_line, 10) || 1);
+              const end = toolArgs.end_line !== undefined && toolArgs.end_line !== null
+                ? Math.max(start, parseInt(toolArgs.end_line, 10) || start)
+                : start;
+              await this.workspaceService.navigateToFile(toolArgs.path, start, end);
+              toolResult = {
+                success: true,
+                message: `Opened ${toolArgs.path} as active file, centered view, and highlighted lines ${start}-${end}.${toolArgs.reason ? ` Reason: ${toolArgs.reason}` : ''}`
+              };
             } else {
               toolResult = { error: `Unknown tool: ${toolName}` };
             }

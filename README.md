@@ -21,9 +21,10 @@
   - **Workspace Tool Calling:**
     - `list_files`: Discover project structure within workspace boundaries.
     - `read_file`: Inspect project code safely without leaving the editor.
-    - `replace_text`: Request automated refactorings and code edits applied directly to the active buffer.
+    - `replace_text`: Guarded, unique-target code modifications strictly gated by explicit user confirmation.
     - `open_file`: Navigate to target files across your workspace.
     - `set_cursor`: Jump directly to specific line and column positions.
+    - `highlight_lines`: Open any project file, make it active, and visually highlight execution flows and line spans in Monaco.
   - **Dual-Model Architecture:** Configure independent models for inline code completions (e.g. `gemini-3.5-flash-lite`) and conversational reasoning (e.g. `gemini-3.8-flash`).
   - **Bilingual & Directional Support:** Seamless LTR / RTL toggle with automatic input language detection (`dir="auto"`).
 - **Single-Instance CLI & IPC:**
@@ -135,6 +136,17 @@ vide /path/to/project src/main.rs --highlight 42-65
 2. In Vector IDE, open Settings (Gear icon in the top header or click the settings icon inside the AI Chat window).
 3. Paste your Gemini API key in the **AI Chat Assistant** section.
 4. Select your preferred reasoning model (default: `gemini-3.8-flash`) and system prompt.
+
+---
+
+## AI Assistant Scope & Purpose
+
+> **Note on Vector AI Scope:**
+> Vector IDE includes an integrated coding assistant specifically tailored for **in-editor software analysis, architecture comprehension, and interactive code flow tracing**.
+> 
+> Vector AI is designed to help developers navigate complex logic, trace execution paths across files, pinpoint bugs, and understand system architecture using real-time editor line highlighting and file context. 
+> 
+> Under no circumstances is it intended to replace autonomous agent development environments or full CLI coding tools such as **Google AntiGravity**, **Anthropic Claude Code**, or **OpenAI Canvas / Operator / Cursor**. Its strength lies in being a fast, lightweight, and disciplined companion inside your native desktop editor.
 
 ---
 

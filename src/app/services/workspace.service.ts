@@ -306,7 +306,7 @@ export class WorkspaceService {
 		highlightEnd?: number | null
 	): Promise<void> {
 		const rootPath = this.nativeWorkspacePath();
-		const cleanPath = filePath.trim();
+		const cleanPath = filePath.trim().replace(/^\.\//, '');
 		if (!cleanPath) return;
 
 		let relPath = cleanPath;
@@ -343,8 +343,8 @@ export class WorkspaceService {
 		if (fileToOpen) {
 			await this.openFile(fileToOpen);
 			if (highlightStart !== undefined && highlightStart !== null) {
-				const s = highlightStart;
-				const e = highlightEnd ?? highlightStart;
+				const s = Math.max(1, highlightStart);
+				const e = Math.max(s, highlightEnd ?? highlightStart);
 				this.pendingHighlight.set({
 					fileId: fileToOpen.id,
 					highlightStart: s,
@@ -2039,6 +2039,14 @@ export class WorkspaceService {
 			return { success: false, message: 'No active or specified file to edit.' };
 		}
 
+		if (file.isBinary || file.isImage || isBinaryFile(file.name) || isImageFile(file.name)) {
+			return { success: false, message: `Refusing to edit ${file.path}: File is binary or media and cannot be edited as text.` };
+		}
+
+		if (typeof target !== 'string' || target.length === 0) {
+			return { success: false, message: 'Target text cannot be empty.' };
+		}
+
 		if (!file.isLoaded && file.fsPath && isTauriApp()) {
 			try {
 				file.content = await invoke<string>('read_file_text', { filePath: file.fsPath });
@@ -2049,13 +2057,48 @@ export class WorkspaceService {
 		}
 
 		const currentContent = file.content || '';
-		if (!currentContent.includes(target)) {
-			return { success: false, message: `Target text was not found in ${file.path}.` };
+		let actualTarget = target;
+		let actualReplacement = replacement ?? '';
+
+		// Normalize line endings if file uses CRLF vs LF
+		if (!currentContent.includes(actualTarget)) {
+			if (currentContent.includes('\r\n') && !actualTarget.includes('\r\n')) {
+				const crlfTarget = actualTarget.replace(/\r?\n/g, '\r\n');
+				if (currentContent.includes(crlfTarget)) {
+					actualTarget = crlfTarget;
+					actualReplacement = actualReplacement.replace(/\r?\n/g, '\r\n');
+				}
+			} else if (!currentContent.includes('\r\n') && actualTarget.includes('\r\n')) {
+				const lfTarget = actualTarget.replace(/\r\n/g, '\n');
+				if (currentContent.includes(lfTarget)) {
+					actualTarget = lfTarget;
+					actualReplacement = actualReplacement.replace(/\r\n/g, '\n');
+				}
+			}
+		}
+
+		if (!currentContent.includes(actualTarget)) {
+			return {
+				success: false,
+				message: `Target text was not found in ${file.path}. Please verify that the target string matches the file content exactly (including whitespace and indentation).`
+			};
+		}
+
+		// Enforce strict uniqueness to prevent unintended replacement when replaceAll is false
+		if (!replaceAll) {
+			const firstIndex = currentContent.indexOf(actualTarget);
+			const lastIndex = currentContent.lastIndexOf(actualTarget);
+			if (firstIndex !== lastIndex) {
+				return {
+					success: false,
+					message: `Target text appears multiple times in ${file.path}. To avoid unintended edits, provide more surrounding context lines so the target is unique, or set all to true if you explicitly intend to replace all occurrences.`
+				};
+			}
 		}
 
 		const newContent = replaceAll
-			? currentContent.split(target).join(replacement)
-			: currentContent.replace(target, replacement);
+			? currentContent.split(actualTarget).join(actualReplacement)
+			: currentContent.replace(actualTarget, actualReplacement);
 
 		// Update in-memory file & tabs
 		this.updateContent(file.id, newContent);
