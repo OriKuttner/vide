@@ -93,6 +93,22 @@ const BACKGROUND_INDEX_IGNORED_DIRS = new Set([
 	'dist',
 	'build',
 	'.angular',
+	'target',
+	'.cargo',
+	'tmp',
+	'temp',
+	'.turbo',
+	'.next',
+	'.nuxt',
+]);
+
+// Machine-generated lockfiles and heavy dependency files skipped during text search
+export const BACKGROUND_INDEX_IGNORED_FILES = new Set([
+	'package-lock.json',
+	'pnpm-lock.yaml',
+	'yarn.lock',
+	'Cargo.lock',
+	'composer.lock',
 ]);
 
 @Injectable({
@@ -2213,7 +2229,37 @@ export class WorkspaceService {
 		return { success: true };
 	}
 
-	public async grepFiles(query: string, options?: GrepOptions): Promise<GrepResult[]> {
+	public async readFileForSearch(file: WorkspaceFile): Promise<string> {
+		if (file.isLoaded && file.content !== undefined) {
+			return file.content;
+		}
+		if (isImageFile(file.name) || file.isBinary) {
+			return '';
+		}
+		try {
+			if (isTauriApp() && file.fsPath) {
+				return await invoke<string>('read_file_text', { filePath: file.fsPath });
+			} else if (file.handle && typeof file.handle.getFile === 'function') {
+				const fileObj = await file.handle.getFile();
+				if (fileObj.size <= 1024 * 1024) {
+					return await fileObj.text();
+				}
+			} else if (file.rawFile) {
+				if (file.rawFile.size <= 1024 * 1024) {
+					return await file.rawFile.text();
+				}
+			}
+		} catch {
+			// Skip inaccessible or locked files gracefully
+		}
+		return '';
+	}
+
+	public async grepFiles(
+		query: string,
+		options?: GrepOptions,
+		abortSignal?: AbortSignal,
+	): Promise<GrepResult[]> {
 		const rawTerm = query.trim();
 		if (!rawTerm) return [];
 
@@ -2237,12 +2283,31 @@ export class WorkspaceService {
 
 		const results: GrepResult[] = [];
 		const allFiles = this.files();
+		const maxTotalResults = 250;
+		const maxMatchesPerFile = 15;
 		let scannedFiles = 0;
 
 		for (const file of allFiles) {
-			const content = await this.ensureFileContent(file);
+			if (abortSignal?.aborted) {
+				return [];
+			}
+
+			// Skip machine-generated lockfiles and files larger than 1MB
+			if (BACKGROUND_INDEX_IGNORED_FILES.has(file.name)) {
+				continue;
+			}
+			if (file.fileSize && file.fileSize > 1024 * 1024) {
+				continue;
+			}
+
+			const content = await this.readFileForSearch(file);
+			if (abortSignal?.aborted) {
+				return [];
+			}
+
 			if (content) {
 				const lines = content.split('\n');
+				let fileMatches = 0;
 				for (let i = 0; i < lines.length; i++) {
 					const line = lines[i];
 					const match = regex.exec(line);
@@ -2254,18 +2319,23 @@ export class WorkspaceService {
 							matchStart: match.index,
 							matchLength: match[0].length,
 						});
-						if (results.length >= 500) break;
+						fileMatches++;
+						if (fileMatches >= maxMatchesPerFile) break;
+						if (results.length >= maxTotalResults) break;
 					}
 				}
 			}
 
 			scannedFiles++;
-			// Yield to the browser event loop periodically to keep the search UI snappy
-			if (scannedFiles % 12 === 0) {
+			// Yield to the browser event loop periodically to keep the search UI snappy and allow abort
+			if (scannedFiles % 10 === 0) {
 				await new Promise((r) => setTimeout(r, 0));
+				if (abortSignal?.aborted) {
+					return [];
+				}
 			}
 
-			if (results.length >= 500) break;
+			if (results.length >= maxTotalResults) break;
 		}
 		return results;
 	}

@@ -59,6 +59,7 @@ export class SidebarComponent {
 	});
 
 	private searchDebounceTimer?: any;
+	private searchAbortController: AbortController | null = null;
 
 	constructor() {
 		effect(() => {
@@ -97,26 +98,46 @@ export class SidebarComponent {
 		this.searchQuery.set(val);
 
 		clearTimeout(this.searchDebounceTimer);
+		if (this.searchAbortController) {
+			this.searchAbortController.abort();
+			this.searchAbortController = null;
+		}
 		this.searchDebounceTimer = setTimeout(() => {
 			this.runSearch();
-		}, 250);
+		}, 350);
 	}
 
 	public async runSearch(): Promise<void> {
 		const query = this.searchQuery().trim();
 		if (!query) {
+			if (this.searchAbortController) {
+				this.searchAbortController.abort();
+				this.searchAbortController = null;
+			}
 			this.searchFileGroups.set([]);
 			this.isSearching.set(false);
 			return;
 		}
 
+		if (this.searchAbortController) {
+			this.searchAbortController.abort();
+		}
+		const controller = new AbortController();
+		this.searchAbortController = controller;
+
 		this.isSearching.set(true);
 		try {
-			const rawResults = await this.workspaceService.grepFiles(query, {
-				matchCase: this.matchCase(),
-				wholeWord: this.wholeWord(),
-				isRegex: this.useRegex(),
-			});
+			const rawResults = await this.workspaceService.grepFiles(
+				query,
+				{
+					matchCase: this.matchCase(),
+					wholeWord: this.wholeWord(),
+					isRegex: this.useRegex(),
+				},
+				controller.signal,
+			);
+
+			if (controller.signal.aborted) return;
 
 			const map = new Map<string, FileGrepGroup>();
 			for (const r of rawResults) {
@@ -131,13 +152,21 @@ export class SidebarComponent {
 			this.searchFileGroups.set(Array.from(map.values()));
 			this.allCollapsed.set(false);
 		} finally {
-			this.isSearching.set(false);
+			if (!controller.signal.aborted) {
+				this.isSearching.set(false);
+			}
 		}
 	}
 
 	public clearSearch(): void {
+		if (this.searchAbortController) {
+			this.searchAbortController.abort();
+			this.searchAbortController = null;
+		}
+		clearTimeout(this.searchDebounceTimer);
 		this.searchQuery.set('');
 		this.searchFileGroups.set([]);
+		this.isSearching.set(false);
 		this.searchInputRef?.nativeElement?.focus();
 	}
 

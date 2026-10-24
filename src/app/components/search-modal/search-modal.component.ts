@@ -86,11 +86,18 @@ export class SearchModalComponent {
 	public tagMessage = signal<string>('');
 
 	private searchDebounceTimer?: any;
+	private grepAbortController: AbortController | null = null;
 
 	constructor() {
 		effect(() => {
 			const mode = this.workspaceService.activeModal();
 			if (mode) {
+				if (this.grepAbortController) {
+					this.grepAbortController.abort();
+					this.grepAbortController = null;
+				}
+				clearTimeout(this.searchDebounceTimer);
+				this.isSearching.set(false);
 				this.inputValue.set('');
 				this.errorMessage.set('');
 				this.grepResults.set([]);
@@ -262,13 +269,30 @@ export class SearchModalComponent {
 			}
 		} else if (mode === 'grep') {
 			clearTimeout(this.searchDebounceTimer);
+			if (this.grepAbortController) {
+				this.grepAbortController.abort();
+				this.grepAbortController = null;
+			}
 			if (val.trim().length >= 2) {
 				this.isSearching.set(true);
 				this.searchDebounceTimer = setTimeout(async () => {
-					const res = await this.workspaceService.grepFiles(val);
-					this.grepResults.set(res);
-					this.isSearching.set(false);
-				}, 250);
+					const controller = new AbortController();
+					this.grepAbortController = controller;
+					try {
+						const res = await this.workspaceService.grepFiles(
+							val,
+							undefined,
+							controller.signal,
+						);
+						if (!controller.signal.aborted) {
+							this.grepResults.set(res);
+						}
+					} finally {
+						if (!controller.signal.aborted) {
+							this.isSearching.set(false);
+						}
+					}
+				}, 350);
 			} else {
 				this.grepResults.set([]);
 				this.isSearching.set(false);
@@ -442,6 +466,11 @@ export class SearchModalComponent {
 	}
 
 	public close(): void {
+		if (this.grepAbortController) {
+			this.grepAbortController.abort();
+			this.grepAbortController = null;
+		}
+		clearTimeout(this.searchDebounceTimer);
 		this.errorMessage.set('');
 		this.workspaceService.closeModal();
 	}
