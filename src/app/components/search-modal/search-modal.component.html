@@ -714,7 +714,13 @@
 
           <!-- Footer Actions -->
           <div class="action-footer commit-footer">
-            <button type="button" class="btn btn-ai-analyze" (click)="analyzeCommitWithAi(c)">
+            <button
+              type="button"
+              class="btn btn-ai-analyze"
+              [disabled]="!canExplainWithAi()"
+              [title]="getAiExplainTooltip()"
+              (click)="analyzeCommitWithAi(c)"
+            >
               ✨ Explain with Vector AI
             </button>
             <button type="button" class="btn btn-secondary" (click)="close()">Close</button>

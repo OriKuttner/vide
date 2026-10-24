@@ -1222,10 +1222,16 @@
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s ease, filter 0.15s ease;
 
-    &:hover {
+    &:hover:not(:disabled) {
       opacity: 0.92;
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      filter: grayscale(0.5);
     }
   }
 }

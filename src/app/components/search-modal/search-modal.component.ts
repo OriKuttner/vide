@@ -495,4 +495,18 @@ export class SearchModalComponent {
     this.close();
     await this.workspaceService.openFileByPath(path);
   }
+
+  public canExplainWithAi(): boolean {
+    return this.assistantService.showFloatingButton() && this.aiService.isChatConfigured();
+  }
+
+  public getAiExplainTooltip(): string {
+    if (!this.aiService.isChatConfigured()) {
+      return 'Please configure an API key in AI Settings to use AI explanations';
+    }
+    if (!this.assistantService.showFloatingButton()) {
+      return 'Please enable "Show Floating Agent Button" in AI Settings to use AI explanations';
+    }
+    return 'Analyze and explain this commit with Vector AI';
+  }
 }
