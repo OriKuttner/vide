@@ -35,6 +35,22 @@
 
 ---
 
+## Screenshots
+
+### Main Workspace & Editor
+![Main Workspace & Editor](docs/screenshots/general1.png)
+
+### In-Editor AI Assistant (Google Gemini)
+![In-Editor AI Assistant](docs/screenshots/agentchat1.png)
+
+### AI Assistant Configuration
+![AI Assistant Configuration](docs/screenshots/aisetup1.png)
+
+### Code Navigation & References
+![Code Navigation & References](docs/screenshots/findref1.png)
+
+---
+
 ## Architecture Overview
 
 ```
