@@ -117,7 +117,7 @@ export class SearchModalComponent {
 					this.initialTabSize.set(this.workspaceService.tabSize());
 				} else if (mode === 'open-folder-path') {
 					this.inputValue.set(
-						this.workspaceService.nativeWorkspacePath() || '/home/ori/work/vide',
+						this.workspaceService.nativeWorkspacePath() || '~',
 					);
 				} else if (mode === 'ai-settings') {
 					// Gemini cloud settings
@@ -217,7 +217,7 @@ export class SearchModalComponent {
 			case 'new-folder':
 				return 'Enter new directory name:';
 			case 'open-folder-path':
-				return 'Enter directory path to open (e.g. ~/work/vide or /home/ori/work/vide):';
+				return 'Enter directory path to open (e.g. ~/projects/my-app or /path/to/folder):';
 			case 'grep':
 				return 'Search query (word or phrase):';
 			case 'file-search':

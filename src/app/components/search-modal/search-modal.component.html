@@ -833,24 +833,19 @@
 						<button
 							type="button"
 							class="path-chip"
-							(click)="setFolderQuickPath('/home/ori/work/vide')"
+							(click)="setFolderQuickPath('~')"
 						>
-							📁 /home/ori/work/vide
+							🏠 Home (~)
 						</button>
-						<button
-							type="button"
-							class="path-chip"
-							(click)="setFolderQuickPath('~/work/vide')"
-						>
-							📁 ~/work/vide
-						</button>
-						<button
-							type="button"
-							class="path-chip"
-							(click)="setFolderQuickPath('/home/ori/work')"
-						>
-							📁 /home/ori/work
-						</button>
+						@if (workspaceService.recentWorkspaceName(); as recent) {
+							<button
+								type="button"
+								class="path-chip"
+								(click)="setFolderQuickPath(workspaceService.nativeWorkspacePath() || recent)"
+							>
+								📁 {{ recent }}
+							</button>
+						}
 						@if (workspaceService.parentWorkspacePath(); as parent) {
 							<button
 								type="button"

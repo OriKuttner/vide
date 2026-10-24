@@ -2,7 +2,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri%20v2-24c8db.svg)](https://tauri.app/)
-[![Frontend: Angular 19](https://img.shields.io/badge/Frontend-Angular%2019-dd0031.svg)](https://angular.dev/)
+[![Frontend: Angular 21](https://img.shields.io/badge/Frontend-Angular%2021-dd0031.svg)](https://angular.dev/)
 [![Editor: Monaco](https://img.shields.io/badge/Editor-Monaco-007acc.svg)](https://microsoft.github.io/monaco-editor/)
 
 **Vector IDE** (`vide`) is an ultra-lightweight, lightning-fast native integrated development environment designed for high-performance coding without the overhead of Electron. Built with **Tauri v2** (Rust backend), **Angular 21** (Signals-driven frontend), and Microsoft's **Monaco Editor**, Vector IDE provides minimal memory consumption (~40–80 MB RAM), and deep AI assistance powered directly by Google Gemini.
@@ -42,7 +42,7 @@
 │                   Vector IDE (vide)                    │
 │                                                        │
 │  ┌──────────────────────────────────────────────────┐  │
-│  │               Angular 19 Frontend                │  │
+│  │               Angular 21 Frontend                │  │
 │  │   • Monaco Editor & Workers (TS, HTML, CSS, JSON)│  │
 │  │   • AI Chat Assistant & Floating Trigger         │  │
 │  │   • File Tree Explorer, Tabs & Status Bar        │  │

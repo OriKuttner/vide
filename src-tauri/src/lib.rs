@@ -130,13 +130,12 @@ pub struct HexViewResult {
 }
 
 fn expand_path(p: &str) -> String {
-	if p.starts_with("~/") {
-		if let Ok(home) = std::env::var("HOME") {
-			return format!("{}{}", home, &p[1..]);
-		}
-	} else if p == "~" {
-		if let Ok(home) = std::env::var("HOME") {
-			return home;
+	let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok();
+	if let Some(h) = home {
+		if p.starts_with("~/") {
+			return format!("{}{}", h, &p[1..]);
+		} else if p == "~" {
+			return h;
 		}
 	}
 	p.to_string()
@@ -1127,7 +1126,9 @@ fn select_directory(current_path: Option<String>) -> Result<Option<String>, Stri
 			expanded
 		}
 	} else {
-		std::env::var("HOME").unwrap_or_else(|_| "/home/ori".to_string())
+		std::env::var("HOME")
+			.or_else(|_| std::env::var("USERPROFILE"))
+			.unwrap_or_else(|_| ".".to_string())
 	};
 
 	let filename_arg = format!("--filename={}/", init_path.trim_end_matches('/'));

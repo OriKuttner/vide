@@ -2054,10 +2054,10 @@ export class WorkspaceService {
 	public async openDirectoryByPath(dirPath: string): Promise<void> {
 		let trimmed = dirPath.trim();
 		if (!trimmed) return;
-		if (trimmed.startsWith('~/')) {
-			trimmed = '/home/ori' + trimmed.substring(1);
-		} else if (trimmed === '~') {
-			trimmed = '/home/ori';
+		if (isTauriApp()) {
+			try {
+				trimmed = await invoke<string>('resolve_path', { path: trimmed });
+			} catch {}
 		}
 		await this.loadFromNativePath(trimmed);
 		this.closeModal();
@@ -3670,7 +3670,7 @@ export class WorkspaceService {
 			try {
 				const current = this.nativeWorkspacePath();
 				const selected = await invoke<string | null>('select_directory', {
-					currentPath: current || '/home/ori/work/vide',
+					currentPath: current || undefined,
 				});
 				if (selected) {
 					await this.loadFromNativePath(selected);
@@ -3725,23 +3725,11 @@ export class WorkspaceService {
 		if (isTauriApp()) {
 			try {
 				rootPath = await invoke<string>('resolve_path', { path: rootPath });
-			} catch {
-				if (rootPath.startsWith('~/')) {
-					rootPath = '/home/ori/' + rootPath.substring(2);
-				} else if (rootPath === '~') {
-					rootPath = '/home/ori';
-				}
-			}
+			} catch {}
 			try {
 				await invoke('register_active_workspace', { workspacePath: rootPath });
 			} catch (err) {
 				console.warn('Failed to register active workspace:', err);
-			}
-		} else {
-			if (rootPath.startsWith('~/')) {
-				rootPath = '/home/ori/' + rootPath.substring(2);
-			} else if (rootPath === '~') {
-				rootPath = '/home/ori';
 			}
 		}
 
@@ -4469,12 +4457,6 @@ export class WorkspaceService {
 		if (lastNative) {
 			const name = lastNative.split('/').filter(Boolean).pop() || lastNative;
 			initialList.push({ name, path: lastNative });
-		}
-		if (!initialList.some((w) => w.path === '/home/ori/work/vide')) {
-			initialList.push({ name: 'vide', path: '/home/ori/work/vide' });
-		}
-		if (!initialList.some((w) => w.path === '/home/ori/work/officemanager')) {
-			initialList.push({ name: 'officemanager', path: '/home/ori/work/officemanager' });
 		}
 		this.recentWorkspaces.set(initialList);
 	}
