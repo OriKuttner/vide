@@ -184,6 +184,12 @@
                       <span class="current-badge">CURRENT</span>
                     }
                     <span class="item-time">{{ formatTimeAgo(item.entry.timestamp) }}</span>
+                    <button
+                      type="button"
+                      class="remove-entry-btn"
+                      (click)="onRemoveNavigationEntry($event, item.originalIndex)"
+                      title="Remove from stack"
+                    >✕</button>
                   </div>
                   @if (getDirectoryPath(item.entry.filePath); as dir) {
                     <div class="item-path">{{ dir }}</div>

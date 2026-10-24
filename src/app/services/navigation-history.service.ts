@@ -95,6 +95,12 @@ export class NavigationHistoryService {
 			this.recordLocation(file, line, col);
 		};
 
+		// Check if session was already restored before this service constructor ran
+		const existingState = this.workspaceService.navigationSessionState();
+		if (existingState && Array.isArray(existingState.history) && existingState.history.length > 0) {
+			this.loadFromState(existingState.history, existingState.index);
+		}
+
 		// Hook into WorkspaceService session restore
 		this.workspaceService.onSessionRestored = (entries, index) => {
 			this.loadFromState(entries, index);
@@ -268,6 +274,30 @@ export class NavigationHistoryService {
 	}
 
 	/**
+	 * Removes a specific entry from the history stack by its original index
+	 */
+	public removeEntryByIndex(index: number): void {
+		const list = this.history();
+		if (index < 0 || index >= list.length) return;
+
+		const currIdx = this.currentIndex();
+		const updated = list.filter((_, i) => i !== index);
+		this.history.set(updated);
+
+		if (updated.length === 0) {
+			this.currentIndex.set(-1);
+			this.lastRecordedLine = -1;
+			this.lastRecordedFile = '';
+		} else if (index < currIdx) {
+			this.currentIndex.set(currIdx - 1);
+		} else if (index === currIdx) {
+			this.currentIndex.set(Math.min(currIdx, updated.length - 1));
+		}
+
+		this.syncToWorkspaceSession();
+	}
+
+	/**
 	 * Clears the entire navigation history stack
 	 */
 	public clearHistory(): void {
@@ -348,5 +378,9 @@ export class NavigationHistoryService {
 			this.lastRecordedLine = entries[validIndex].lineNumber;
 			this.lastRecordedFile = entries[validIndex].filePath;
 		}
+		this.workspaceService.navigationSessionState.set({
+			history: entries,
+			index: validIndex,
+		});
 	}
 }

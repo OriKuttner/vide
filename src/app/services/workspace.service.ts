@@ -3121,10 +3121,10 @@ export class WorkspaceService {
 						}
 					}
 					if (parsed && Array.isArray(parsed.navigationHistory) && parsed.navigationHistory.length > 0) {
-						this.onSessionRestored?.(
-							parsed.navigationHistory,
-							typeof parsed.navigationIndex === 'number' ? parsed.navigationIndex : -1
-						);
+						const navHistory = parsed.navigationHistory;
+						const navIndex = typeof parsed.navigationIndex === 'number' ? parsed.navigationIndex : -1;
+						this.navigationSessionState.set({ history: navHistory, index: navIndex });
+						this.onSessionRestored?.(navHistory, navIndex);
 					}
 					return {
 						openFiles: normalizedOpenFiles,

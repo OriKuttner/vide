@@ -127,6 +127,11 @@ export class TabsComponent {
     this.navigationHistoryService.jumpToEntry(entry, originalIndex);
   }
 
+  public onRemoveNavigationEntry(event: MouseEvent, originalIndex: number): void {
+    event.stopPropagation();
+    this.navigationHistoryService.removeEntryByIndex(originalIndex);
+  }
+
   public formatTimeAgo(timestamp: number): string {
     const diffMs = Date.now() - timestamp;
     const diffSec = Math.floor(diffMs / 1000);
