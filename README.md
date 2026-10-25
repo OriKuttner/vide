@@ -1,6 +1,6 @@
 # Vector IDE (`vide`)
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License: Dual GPLv3 / Commercial](https://img.shields.io/badge/License-Dual%20(GPLv3%20%2F%20Commercial)-blue.svg)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri%20v2-24c8db.svg)](https://tauri.app/)
 [![Frontend: Angular 21](https://img.shields.io/badge/Frontend-Angular%2021-dd0031.svg)](https://angular.dev/)
 [![Editor: Monaco](https://img.shields.io/badge/Editor-Monaco-007acc.svg)](https://microsoft.github.io/monaco-editor/)
@@ -188,9 +188,18 @@ Contributions are welcome! Please follow these guidelines:
 2. Ensure code formatting is clean and tests/builds pass: `npm run build && cargo check --manifest-path src-tauri/Cargo.toml`.
 3. Keep all UI strings, identifiers, and comments in **English**.
 4. Open a Pull Request detailing your changes.
+5. **Contributor License Agreement (CLA):** By contributing code to Vector IDE, you agree that your contributions are licensed under GPLv3 and that the project owners (Helicon Books) retain the right to re-license or dual-license your contributions as part of commercial/proprietary distributions.
 
 ---
 
 ## License
 
-Vector IDE is licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE).
+Vector IDE (`vide`) is distributed under a **Dual Licensing model**:
+
+* **Open Source (GPLv3):** Free to use, modify, and distribute under the terms of the [GNU General Public License v3.0 (GPLv3)](LICENSE). Ideal for open source projects, individual developers, and community contributions complying with copyleft requirements.
+* **Commercial & Proprietary Licensing:** For organizations and companies requiring a dedicated custom build, white-label branding, closed-source deployment, or proprietary integrations exempt from GPLv3 copyleft obligations.
+
+### Need a Custom or Commercial Build?
+For enterprise inquiries, dedicated proprietary builds, custom feature development, or dual-license exemptions, please contact:
+📩 **[info@heliconbooks.com](mailto:info@heliconbooks.com)**
+
