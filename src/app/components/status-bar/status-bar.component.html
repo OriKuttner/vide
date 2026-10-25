@@ -35,11 +35,9 @@
 			<button
 				type="button"
 				class="status-btn terminal-badge"
-				(click)="workspaceService.openSystemTerminal()"
-				[title]="
-					'Open System Terminal in ' +
-					(workspaceService.nativeWorkspacePath() || 'workspace')
-				"
+				[class.active]="terminalService.terminalVisible()"
+				(click)="terminalService.toggleTerminal()"
+				title="Toggle Integrated Terminal (Ctrl+`)"
 			>
 				<svg
 					class="terminal-svg"

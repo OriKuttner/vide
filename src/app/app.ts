@@ -13,9 +13,11 @@ import { EditorComponent } from './components/editor/editor.component';
 import { StatusBarComponent } from './components/status-bar/status-bar.component';
 import { SearchModalComponent } from './components/search-modal/search-modal.component';
 import { AgentChatComponent } from './components/agent-chat/agent-chat.component';
+import { TerminalComponent } from './components/terminal/terminal.component';
 import { isTauriApp, WorkspaceService } from './services/workspace.service';
 import { ZoomService } from './services/zoom.service';
 import { NavigationHistoryService } from './services/navigation-history.service';
+import { TerminalService } from './services/terminal.service';
 
 @Component({
 	selector: 'app-root',
@@ -28,6 +30,7 @@ import { NavigationHistoryService } from './services/navigation-history.service'
 		StatusBarComponent,
 		SearchModalComponent,
 		AgentChatComponent,
+		TerminalComponent,
 	],
 	templateUrl: './app.html',
 	styleUrl: './app.scss',
@@ -36,9 +39,15 @@ export class App {
 	public workspaceService = inject(WorkspaceService);
 	public zoomService = inject(ZoomService);
 	public navigationHistoryService = inject(NavigationHistoryService);
+	public terminalService = inject(TerminalService);
 	private titleService = inject(Title);
 	readonly title = signal('Vector IDE');
 	readonly cursor = signal<{ line: number; column: number }>({ line: 1, column: 1 });
+
+	// Global Context Menu state
+	public readonly contextMenuVisible = signal<boolean>(false);
+	public readonly contextMenuPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
+	private contextTarget: EventTarget | null = null;
 
 	private initialZoomReported = false;
 
@@ -169,6 +178,9 @@ export class App {
 		} else if (isCtrlOrCmd && !isShift && (key === 'h' || code === 'KeyH')) {
 			event.preventDefault();
 			this.workspaceService.toggleHiddenFiles();
+		} else if (isCtrlOrCmd && (event.key === '`' || event.key === '~' || code === 'Backquote')) {
+			event.preventDefault();
+			this.terminalService.toggleTerminal();
 		} else if (event.key === 'F5' || (isCtrlOrCmd && (key === 'r' || code === 'KeyR'))) {
 			event.preventDefault();
 			this.workspaceService.refreshAll();
@@ -191,5 +203,146 @@ export class App {
 			event.preventDefault();
 			this.zoomService.resetZoom();
 		}
+	}
+
+	@HostListener('window:contextmenu', ['$event'])
+	onGlobalContextMenu(event: MouseEvent): void {
+		const target = event.target as HTMLElement | null;
+		// If specialized context menu elements, Monaco Editor, or Terminal are clicked, allow them to handle it
+		if (
+			target?.closest('.monaco-editor') ||
+			target?.closest('.monaco-menu-container') ||
+			target?.closest('.tree-container') ||
+			target?.closest('.clickable-title') ||
+			target?.closest('.tree-context-menu') ||
+			target?.closest('.global-context-menu') ||
+			target?.closest('.terminal-dock') ||
+			event.defaultPrevented
+		) {
+			if (this.contextMenuVisible()) {
+				this.closeContextMenu();
+			}
+			return;
+		}
+
+		// Prevent browser's native WebKit context menu
+		event.preventDefault();
+
+		this.contextTarget = event.target;
+		const menuWidth = 195;
+		const menuHeight = 160;
+		const x = Math.min(event.clientX, window.innerWidth - menuWidth);
+		const y = Math.min(event.clientY, window.innerHeight - menuHeight);
+		this.contextMenuPosition.set({ x: Math.max(0, x), y: Math.max(0, y) });
+		this.contextMenuVisible.set(true);
+	}
+
+	@HostListener('document:click')
+	onDocumentClick(): void {
+		if (this.contextMenuVisible()) {
+			this.closeContextMenu();
+		}
+	}
+
+	@HostListener('document:keydown.escape')
+	onEscape(): void {
+		if (this.contextMenuVisible()) {
+			this.closeContextMenu();
+		}
+	}
+
+	@HostListener('window:wheel', ['$event'])
+	onWindowWheel(event: WheelEvent): void {
+		if (this.contextMenuVisible()) {
+			const target = event.target as HTMLElement | null;
+			if (!target?.closest('.global-context-menu')) {
+				this.closeContextMenu();
+			}
+		}
+	}
+
+	public closeContextMenu(): void {
+		this.contextMenuVisible.set(false);
+	}
+
+	public async cutText(): Promise<void> {
+		const target = this.contextTarget;
+		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+			const start = target.selectionStart ?? 0;
+			const end = target.selectionEnd ?? 0;
+			const selected = target.value.substring(start, end);
+			if (selected) {
+				if (typeof navigator !== 'undefined' && navigator.clipboard) {
+					try {
+						await navigator.clipboard.writeText(selected);
+					} catch {
+						document.execCommand('cut');
+					}
+				}
+				target.setRangeText('', start, end, 'end');
+				target.dispatchEvent(new Event('input', { bubbles: true }));
+			}
+		} else {
+			document.execCommand('cut');
+		}
+		this.closeContextMenu();
+	}
+
+	public async copyText(): Promise<void> {
+		const target = this.contextTarget;
+		let selected = '';
+		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+			const start = target.selectionStart ?? 0;
+			const end = target.selectionEnd ?? 0;
+			selected = target.value.substring(start, end);
+		} else {
+			selected = window.getSelection()?.toString() || '';
+		}
+
+		if (selected) {
+			if (typeof navigator !== 'undefined' && navigator.clipboard) {
+				try {
+					await navigator.clipboard.writeText(selected);
+				} catch {
+					document.execCommand('copy');
+				}
+			} else {
+				document.execCommand('copy');
+			}
+		} else {
+			document.execCommand('copy');
+		}
+		this.closeContextMenu();
+	}
+
+	public async pasteText(): Promise<void> {
+		const target = this.contextTarget;
+		let clipboardText = '';
+		if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+			try {
+				clipboardText = await navigator.clipboard.readText();
+			} catch {
+				// clipboard read blocked or unavailable
+			}
+		}
+
+		if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+			if (clipboardText) {
+				const start = target.selectionStart ?? target.value.length;
+				const end = target.selectionEnd ?? target.value.length;
+				target.setRangeText(clipboardText, start, end, 'end');
+				target.dispatchEvent(new Event('input', { bubbles: true }));
+			} else {
+				document.execCommand('paste');
+			}
+		} else {
+			document.execCommand('paste');
+		}
+		this.closeContextMenu();
+	}
+
+	public refreshApp(): void {
+		this.closeContextMenu();
+		this.workspaceService.refreshAll();
 	}
 }

@@ -3,15 +3,28 @@
  * Part of Vector IDE
  * Written by: Ori Kuttner and Shira (Antigravity agent)
  */
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{Emitter, Manager};
+
+struct PtySession {
+	writer: Box<dyn Write + Send>,
+	master: Box<dyn MasterPty + Send>,
+}
+
+static PTY_SESSIONS: OnceLock<Arc<Mutex<HashMap<String, PtySession>>>> = OnceLock::new();
+
+fn get_pty_sessions() -> &'static Arc<Mutex<HashMap<String, PtySession>>> {
+	PTY_SESSIONS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CliFileToOpen {
@@ -1554,6 +1567,152 @@ fn rename_workspace_entry(
 }
 
 #[tauri::command]
+fn pty_open(
+	app: tauri::AppHandle,
+	session_id: String,
+	cwd: Option<String>,
+	cols: u16,
+	rows: u16,
+) -> Result<(), String> {
+	let sessions = get_pty_sessions();
+	{
+		let guard = sessions.lock().map_err(|e| e.to_string())?;
+		if guard.contains_key(&session_id) {
+			return Ok(());
+		}
+	}
+
+	let pty_system = native_pty_system();
+	let size = PtySize {
+		rows: rows.max(1),
+		cols: cols.max(1),
+		pixel_width: 0,
+		pixel_height: 0,
+	};
+
+	let pair = pty_system
+		.openpty(size)
+		.map_err(|e| format!("Failed to open PTY: {}", e))?;
+
+	#[cfg(unix)]
+	let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+	#[cfg(windows)]
+	let shell = "powershell.exe".to_string();
+
+	let mut cmd = CommandBuilder::new(&shell);
+	#[cfg(unix)]
+	if shell.ends_with("bash") || shell.ends_with("zsh") {
+		cmd.args(["-i"]);
+	}
+
+	if let Some(dir) = cwd {
+		let expanded = expand_path(&dir);
+		let p = Path::new(&expanded);
+		if p.exists() {
+			cmd.cwd(p);
+		}
+	}
+
+	cmd.env("TERM", "xterm-256color");
+	cmd.env("COLORTERM", "truecolor");
+
+	let _child = pair
+		.slave
+		.spawn_command(cmd)
+		.map_err(|e| format!("Failed to spawn shell: {}", e))?;
+
+	drop(pair.slave);
+
+	let mut reader = pair
+		.master
+		.try_clone_reader()
+		.map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
+	let writer = pair
+		.master
+		.take_writer()
+		.map_err(|e| format!("Failed to get PTY writer: {}", e))?;
+
+	let session_id_clone = session_id.clone();
+	let sessions_clone = sessions.clone();
+	let app_handle = app.clone();
+
+	std::thread::spawn(move || {
+		let mut buf = [0u8; 4096];
+		while let Ok(n) = reader.read(&mut buf) {
+			if n == 0 {
+				break;
+			}
+			let data = String::from_utf8_lossy(&buf[..n]).to_string();
+			let _ = app_handle.emit(&format!("pty-data:{}", session_id_clone), data);
+		}
+
+		let _ = app_handle.emit(&format!("pty-exit:{}", session_id_clone), ());
+
+		if let Ok(mut guard) = sessions_clone.lock() {
+			guard.remove(&session_id_clone);
+		}
+	});
+
+	let mut guard = sessions.lock().map_err(|e| e.to_string())?;
+	guard.insert(
+		session_id,
+		PtySession {
+			writer,
+			master: pair.master,
+		},
+	);
+
+	Ok(())
+}
+
+#[tauri::command]
+fn pty_write(session_id: String, data: String) -> Result<(), String> {
+	let sessions = get_pty_sessions();
+	let mut guard = sessions.lock().map_err(|e| e.to_string())?;
+	if let Some(session) = guard.get_mut(&session_id) {
+		session
+			.writer
+			.write_all(data.as_bytes())
+			.map_err(|e| format!("Failed to write to PTY: {}", e))?;
+		session
+			.writer
+			.flush()
+			.map_err(|e| format!("Failed to flush PTY: {}", e))?;
+		Ok(())
+	} else {
+		Err("Session not found".to_string())
+	}
+}
+
+#[tauri::command]
+fn pty_resize(session_id: String, cols: u16, rows: u16) -> Result<(), String> {
+	let sessions = get_pty_sessions();
+	let mut guard = sessions.lock().map_err(|e| e.to_string())?;
+	if let Some(session) = guard.get_mut(&session_id) {
+		session
+			.master
+			.resize(PtySize {
+				rows: rows.max(1),
+				cols: cols.max(1),
+				pixel_width: 0,
+				pixel_height: 0,
+			})
+			.map_err(|e| format!("Failed to resize PTY: {}", e))?;
+		Ok(())
+	} else {
+		Err("Session not found".to_string())
+	}
+}
+
+#[tauri::command]
+fn pty_close(session_id: String) -> Result<(), String> {
+	let sessions = get_pty_sessions();
+	let mut guard = sessions.lock().map_err(|e| e.to_string())?;
+	guard.remove(&session_id);
+	Ok(())
+}
+
+#[tauri::command]
 fn open_system_terminal(dir_path: String) -> Result<(), String> {
 	let clean_path = expand_path(&dir_path);
 	let path = std::path::Path::new(&clean_path);
@@ -2243,6 +2402,10 @@ pub fn run() {
 			get_file_metadata,
 			create_directory,
 			open_system_terminal,
+			pty_open,
+			pty_write,
+			pty_resize,
+			pty_close,
 			get_cli_launch_payload,
 			get_git_diff_for_commit,
 			git_untrack_file,

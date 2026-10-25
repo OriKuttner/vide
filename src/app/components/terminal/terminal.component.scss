@@ -1,0 +1,180 @@
+/**
+ * terminal.component.scss - Styles for integrated terminal dock
+ * Part of Vector IDE
+ * Written by: Ori Kuttner and Shira (Antigravity agent)
+ */
+
+.terminal-dock {
+	position: relative;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	background-color: var(--bg-editor, #ffffff);
+	border-top: 1px solid var(--border-color, #e5e5e5);
+	overflow: hidden;
+	flex-shrink: 0;
+	z-index: 50;
+	box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.terminal-resizer {
+	position: absolute;
+	top: -3px;
+	left: 0;
+	width: 100%;
+	height: 6px;
+	cursor: row-resize;
+	z-index: 100;
+	user-select: none;
+	transition: background-color 0.15s ease;
+
+	&:hover,
+	&.active {
+		background-color: var(--primary-color, #007acc);
+	}
+}
+
+.terminal-header {
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 8px 0 12px;
+	background-color: var(--bg-tabs-bar, #ececec);
+	border-bottom: 1px solid var(--border-color, #e5e5e5);
+	user-select: none;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+	.header-left {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+
+		.terminal-tab-pill {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			font-size: 11px;
+			font-weight: 700;
+			letter-spacing: 0.6px;
+			color: var(--text-primary, #1e1e1e);
+			padding: 2px 8px;
+			border-radius: 4px;
+			background-color: rgba(127, 127, 127, 0.14);
+
+			.tab-icon {
+				font-size: 12px;
+				font-family: monospace;
+				font-weight: 900;
+				color: var(--primary-color, #007acc);
+			}
+
+			.active-dot {
+				color: #10b981;
+				font-size: 10px;
+				margin-left: 2px;
+			}
+		}
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+
+		.term-action-btn {
+			background: transparent;
+			border: none;
+			color: var(--text-muted, #717171);
+			font-size: 12px;
+			padding: 3px 8px;
+			border-radius: 4px;
+			cursor: pointer;
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			transition: background-color 0.12s ease, color 0.12s ease;
+
+			.action-icon {
+				font-size: 12px;
+			}
+
+			.action-text {
+				font-size: 11px;
+				font-weight: 500;
+			}
+
+			&:hover {
+				background-color: rgba(127, 127, 127, 0.16);
+				color: var(--text-primary, #1e1e1e);
+			}
+
+			&.btn-close {
+				font-size: 14px;
+				padding: 3px 7px;
+				font-weight: 700;
+
+				&:hover {
+					background-color: #ef4444;
+					color: #ffffff;
+				}
+			}
+		}
+	}
+}
+
+.terminal-body {
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	height: 100%;
+	background-color: var(--bg-editor, #ffffff);
+	color: var(--text-primary, #1e1e1e);
+	padding: 4px 8px;
+	overflow: hidden;
+	position: relative;
+
+	:deep(.xterm) {
+		height: 100%;
+		padding: 2px;
+		color: var(--text-primary, #1e1e1e);
+
+		.xterm-viewport {
+			background-color: var(--bg-editor, #ffffff) !important;
+
+			&::-webkit-scrollbar {
+				width: 8px;
+			}
+			&::-webkit-scrollbar-thumb {
+				background: var(--scrollbar-thumb, rgba(127, 127, 127, 0.3));
+				border-radius: 4px;
+			}
+			&::-webkit-scrollbar-thumb:hover {
+				background: var(--scrollbar-thumb-hover, rgba(127, 127, 127, 0.5));
+			}
+		}
+
+		.xterm-screen {
+			background-color: transparent !important;
+		}
+
+		.xterm-rows {
+			color: var(--text-primary, #1e1e1e) !important;
+
+			span {
+				&:not([class*='xterm-fg-']) {
+					color: var(--text-primary, #1e1e1e) !important;
+				}
+			}
+		}
+
+		.xterm-cursor {
+			border-color: var(--text-primary, #1e1e1e) !important;
+		}
+
+		.xterm-cursor-block {
+			background-color: var(--text-primary, #1e1e1e) !important;
+			color: var(--bg-editor, #ffffff) !important;
+		}
+	}
+}

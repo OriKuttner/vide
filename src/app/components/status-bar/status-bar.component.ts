@@ -9,6 +9,7 @@ import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ZoomService } from '../../services/zoom.service';
 import { AiService } from '../../services/ai.service';
+import { TerminalService } from '../../services/terminal.service';
 import { isBinaryFile } from '../../models/file.model';
 
 @Component({
@@ -24,6 +25,7 @@ export class StatusBarComponent {
 	public workspaceService = inject(WorkspaceService);
 	public zoomService = inject(ZoomService);
 	public aiService = inject(AiService);
+	public terminalService = inject(TerminalService);
 
 	public cycleZoom(): void {
 		const cur = this.zoomService.zoomPercentage();

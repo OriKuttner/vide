@@ -98,6 +98,11 @@
 			background-color: rgba(255, 255, 255, 0.25);
 		}
 
+		&.active {
+			background-color: rgba(255, 255, 255, 0.35);
+			font-weight: 700;
+		}
+
 		.terminal-svg {
 			display: block;
 		}

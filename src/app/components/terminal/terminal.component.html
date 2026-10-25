@@ -1,0 +1,74 @@
+<!--
+	terminal.component.html - Template for integrated terminal dock
+	Part of Vector IDE
+	Written by: Ori Kuttner and Shira (Antigravity agent)
+-->
+
+<div
+	class="terminal-dock"
+	#terminalDock
+	[style.height.px]="terminalService.terminalHeight()"
+	[style.display]="terminalService.terminalVisible() ? 'flex' : 'none'"
+>
+	<!-- Top Resizer Handle -->
+	<div
+		class="terminal-resizer"
+		[class.active]="isResizing()"
+		(mousedown)="onStartResize($event)"
+		(dblclick)="onResetHeight($event)"
+		title="Drag to resize terminal (double-click to reset)"
+	></div>
+
+	<!-- Terminal Header Bar -->
+	<div class="terminal-header" (dblclick)="toggleMaximize()">
+		<div class="header-left">
+			<span class="terminal-tab-pill active">
+				<span class="tab-icon">>_</span>
+				<span class="tab-title">TERMINAL</span>
+				@if (terminalService.isSessionActive()) {
+					<span class="active-dot" title="Session active">●</span>
+				}
+			</span>
+		</div>
+		<div class="header-actions">
+			<button
+				type="button"
+				class="term-action-btn"
+				(click)="clearScreen()"
+				title="Clear Terminal Screen"
+			>
+				<span class="action-icon">🧹</span>
+				<span class="action-text">Clear</span>
+			</button>
+			<button
+				type="button"
+				class="term-action-btn"
+				(click)="restartSession()"
+				title="Restart Terminal Session"
+			>
+				<span class="action-icon">🔄</span>
+				<span class="action-text">Restart</span>
+			</button>
+			<button
+				type="button"
+				class="term-action-btn"
+				(click)="toggleMaximize()"
+				[title]="isMaximized() ? 'Restore Size (Double-click header)' : 'Maximize Terminal (Double-click header)'"
+			>
+				<span class="action-icon">{{ isMaximized() ? '🗗' : '⤢' }}</span>
+				<span class="action-text">{{ isMaximized() ? 'Restore' : 'Maximize' }}</span>
+			</button>
+			<button
+				type="button"
+				class="term-action-btn btn-close"
+				(click)="closePanel()"
+				title="Hide Terminal (Ctrl+` - session keeps running in background)"
+			>
+				✕
+			</button>
+		</div>
+	</div>
+
+	<!-- Terminal Body (xterm.js mount point) -->
+	<div class="terminal-body" #terminalContainer></div>
+</div>

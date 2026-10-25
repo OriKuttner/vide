@@ -15,10 +15,44 @@
 			<div class="editor-viewport">
 				<app-editor (cursorChange)="onCursorChange($event)" />
 			</div>
+			<app-terminal />
 		</main>
 	</div>
 
 	<app-status-bar [cursor]="cursor()" />
 	<app-search-modal />
 	<app-agent-chat />
+
+	<!-- Global Context Menu -->
+	@if (contextMenuVisible()) {
+		<div
+			class="global-context-menu"
+			[style.left.px]="contextMenuPosition().x"
+			[style.top.px]="contextMenuPosition().y"
+			(click)="$event.stopPropagation()"
+			(contextmenu)="$event.preventDefault()"
+		>
+			<div class="context-item" (click)="cutText()">
+				<span class="context-icon">✂️</span>
+				<span class="context-label">Cut</span>
+				<span class="context-shortcut">Ctrl+X</span>
+			</div>
+			<div class="context-item" (click)="copyText()">
+				<span class="context-icon">📋</span>
+				<span class="context-label">Copy</span>
+				<span class="context-shortcut">Ctrl+C</span>
+			</div>
+			<div class="context-item" (click)="pasteText()">
+				<span class="context-icon">📥</span>
+				<span class="context-label">Paste</span>
+				<span class="context-shortcut">Ctrl+V</span>
+			</div>
+			<div class="context-separator"></div>
+			<div class="context-item" (click)="refreshApp()">
+				<span class="context-icon">🔄</span>
+				<span class="context-label">Refresh</span>
+				<span class="context-shortcut">F5</span>
+			</div>
+		</div>
+	}
 </div>
