@@ -191,6 +191,12 @@ export class App {
 		if (isCtrlOrCmd && (key === 'p' || code === 'KeyP')) {
 			event.preventDefault();
 			this.workspaceService.openModal('file-search');
+		} else if (isCtrlOrCmd && !isShift && (key === 'f' || code === 'KeyF')) {
+			event.preventDefault();
+			this.editorComponent?.triggerFind();
+		} else if (isCtrlOrCmd && !isShift && (key === 'g' || code === 'KeyG')) {
+			event.preventDefault();
+			this.editorComponent?.triggerGotoLine();
 		} else if (isCtrlOrCmd && isShift && (key === 'f' || code === 'KeyF')) {
 			event.preventDefault();
 			this.workspaceService.setSidebarView('search');

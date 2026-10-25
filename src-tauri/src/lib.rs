@@ -153,6 +153,30 @@ fn expand_path(p: &str) -> String {
 	p.to_string()
 }
 
+fn normalize_git_relative_path(repo_path: &str, file_path: &str) -> String {
+	let clean_repo_str = expand_path(repo_path);
+	let clean_repo = Path::new(&clean_repo_str);
+	let file_str = expand_path(file_path);
+	let file_p = Path::new(&file_str);
+
+	// 1. Direct prefix match if file_p starts with clean_repo
+	if let Ok(rel) = file_p.strip_prefix(clean_repo) {
+		let s = rel.to_string_lossy().to_string();
+		return s.trim_start_matches('/').trim_start_matches("./").to_string();
+	}
+
+	// 2. Canonicalized match (handles symlinks or resolved relative paths)
+	if let (Ok(canon_repo), Ok(canon_file)) = (clean_repo.canonicalize(), file_p.canonicalize()) {
+		if let Ok(rel) = canon_file.strip_prefix(&canon_repo) {
+			let s = rel.to_string_lossy().to_string();
+			return s.trim_start_matches('/').trim_start_matches("./").to_string();
+		}
+	}
+
+	// 3. Fallback: already relative path
+	file_path.trim_start_matches('/').trim_start_matches("./").to_string()
+}
+
 #[tauri::command]
 fn get_git_branch(repo_path: String) -> Result<String, String> {
 	let clean_repo = expand_path(&repo_path);
@@ -316,7 +340,7 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
 #[tauri::command]
 fn get_git_diff_baseline(repo_path: String, file_path: String) -> Result<String, String> {
 	let clean_repo = expand_path(&repo_path);
-	let clean_file = file_path.trim_start_matches('/').trim_start_matches("./");
+	let clean_file = normalize_git_relative_path(&clean_repo, &file_path);
 
 	// Try HEAD:./<clean_file> first (works from any subdirectory or root)
 	let git_spec_relative = format!("HEAD:./{}", clean_file);
@@ -349,9 +373,9 @@ fn get_git_diff_baseline(repo_path: String, file_path: String) -> Result<String,
 #[tauri::command]
 fn revert_git_file(repo_path: String, file_path: String) -> Result<String, String> {
 	let clean_repo = expand_path(&repo_path);
-	let clean_file = file_path.trim_start_matches('/').trim_start_matches("./");
+	let clean_file = normalize_git_relative_path(&clean_repo, &file_path);
 	let output = Command::new("git")
-		.args(["-C", &clean_repo, "checkout", "HEAD", "--", clean_file])
+		.args(["-C", &clean_repo, "checkout", "HEAD", "--", &clean_file])
 		.output()
 		.map_err(|e| format!("Failed to revert file: {}", e))?;
 
@@ -360,7 +384,7 @@ fn revert_git_file(repo_path: String, file_path: String) -> Result<String, Strin
 	}
 
 	// Read the reverted content
-	let full_path = Path::new(&clean_repo).join(clean_file);
+	let full_path = Path::new(&clean_repo).join(&clean_file);
 	let bytes = fs::read(&full_path).map_err(|e| format!("Failed to read reverted file: {}", e))?;
 	Ok(String::from_utf8_lossy(&bytes).to_string())
 }
@@ -609,10 +633,7 @@ fn get_git_commit_file_diff_content(
 ) -> Result<GitCommitFileContentPair, String> {
 	let clean_repo = expand_path(&repo_path);
 	let target_commit = commit_hash.trim();
-	let clean_path = file_path
-		.trim()
-		.trim_start_matches("./")
-		.trim_start_matches('/');
+	let clean_path = normalize_git_relative_path(&clean_repo, &file_path);
 
 	if target_commit.is_empty() || clean_path.is_empty() {
 		return Err("Commit hash and file path cannot be empty".to_string());
@@ -686,11 +707,11 @@ fn git_untrack_file(
 	add_to_gitignore: bool,
 ) -> Result<(), String> {
 	let clean_repo = expand_path(&repo_path);
-	let clean_file = file_path.trim_start_matches('/').trim_start_matches("./");
+	let clean_file = normalize_git_relative_path(&clean_repo, &file_path);
 
 	// 1. If tracked in Git index, remove it from cache
 	let _ = Command::new("git")
-		.args(["-C", &clean_repo, "rm", "--cached", "-f", "--", clean_file])
+		.args(["-C", &clean_repo, "rm", "--cached", "-f", "--", &clean_file])
 		.output();
 
 	// 2. Append to .gitignore if requested

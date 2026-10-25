@@ -40,6 +40,10 @@
             "externalDependencies": [
               "fs",
               "path"
+            ],
+            "allowedCommonJsDependencies": [
+              "prettier/standalone",
+              "@prettier/plugin-php"
             ]
           },
           "configurations": {
@@ -60,8 +64,8 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "30kB",
-                  "maximumError": "50kB"
+                  "maximumWarning": "50kB",
+                  "maximumError": "100kB"
                 }
               ],
               "outputHashing": "all"

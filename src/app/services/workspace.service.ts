@@ -483,21 +483,49 @@ export class WorkspaceService {
 	}
 
 	public async openDiffView(file: WorkspaceFile): Promise<void> {
-		if (!file.isLoaded && (file.fsPath || file.handle || file.rawFile)) {
+		if ((!file.isLoaded || !file.isModified) && (file.fsPath || file.handle || file.rawFile)) {
 			try {
 				let content = '';
 				if (isTauriApp() && file.fsPath) {
 					content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+					try {
+						const meta = await invoke<{ mtime_ms: number; size: number }>(
+							'get_file_metadata',
+							{ filePath: file.fsPath },
+						);
+						file.lastDiskMtime = meta.mtime_ms;
+						file.lastDiskSize = meta.size;
+						file.fileSize = meta.size;
+					} catch {}
 				} else if (file.handle && typeof file.handle.getFile === 'function') {
 					const fileObj = await file.handle.getFile();
 					content = await fileObj.text();
+					file.lastDiskMtime = fileObj.lastModified;
+					file.lastDiskSize = fileObj.size;
+					file.fileSize = fileObj.size;
 				} else if (file.rawFile) {
 					content = await file.rawFile.text();
+					file.lastDiskMtime = file.rawFile.lastModified;
+					file.lastDiskSize = file.rawFile.size;
+					file.fileSize = file.rawFile.size;
 				}
 				file.content = content;
+				file.savedContent = content;
 				file.isLoaded = true;
 				this.files.update((files) =>
-					files.map((f) => (f.id === file.id ? { ...f, content, isLoaded: true } : f)),
+					files.map((f) =>
+						f.id === file.id
+							? {
+									...f,
+									content,
+									savedContent: content,
+									isLoaded: true,
+									lastDiskMtime: file.lastDiskMtime,
+									lastDiskSize: file.lastDiskSize,
+									fileSize: file.fileSize,
+								}
+							: f,
+					),
 				);
 			} catch (err) {
 				console.error('Failed to load file content for diff:', err);
@@ -510,7 +538,7 @@ export class WorkspaceService {
 			try {
 				const baseline = await invoke<string>('get_git_diff_baseline', {
 					repoPath: this.nativeWorkspacePath()!,
-					filePath: file.path,
+					filePath: file.fsPath || file.path,
 				});
 				file.originalContent = baseline;
 			} catch (e) {
@@ -553,7 +581,7 @@ export class WorkspaceService {
 			this.openTabs.set([...currentTabs, file]);
 		}
 		this.activeFileId.set(file.id);
-		this.activeDiffFile.set(file);
+		this.activeDiffFile.set({ ...file });
 		this.diffModeActive.set(true);
 	}
 

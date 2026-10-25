@@ -1289,6 +1289,8 @@ ${rawContent}
 			this.purgeDefinitionMenuItems();
 		});
 
+		this.setupKeyboardLayoutFix(this.editorInstance);
+
 		// Precision resize handling for both standard and diff editor
 		this.resizeObserver = new ResizeObserver(() => {
 			this.editorInstance?.layout();
@@ -1810,6 +1812,153 @@ ${rawContent}
 			ed.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, () => {
 				ed.getAction('editor.action.formatDocument')?.run();
 			});
+			this.setupKeyboardLayoutFix(ed);
+		});
+	}
+
+	/**
+	 * Intercepts physical key codes (KeyboardEvent.code) so shortcuts like Ctrl+F, Ctrl+H, Ctrl+/,
+	 * Ctrl+Z, Ctrl+Y, Shift+Alt+F, etc. work seamlessly regardless of active OS keyboard layout (e.g. Hebrew).
+	 */
+	private setupKeyboardLayoutFix(editor: monaco.editor.IStandaloneCodeEditor): void {
+		editor.onKeyDown((e: monaco.IKeyboardEvent) => {
+			const browserEvent = e.browserEvent;
+			if (!browserEvent) return;
+
+			const isCtrlOrCmd = browserEvent.ctrlKey || browserEvent.metaKey;
+			const isShift = browserEvent.shiftKey;
+			const isAlt = browserEvent.altKey;
+			const code = browserEvent.code;
+			const key = browserEvent.key ? browserEvent.key.toLowerCase() : '';
+
+			// If the active layout is English (key matches physical code), let Monaco handle everything natively!
+			const isEnglishKey =
+				(code === 'KeyA' && key === 'a') ||
+				(code === 'KeyZ' && key === 'z') ||
+				(code === 'KeyY' && key === 'y') ||
+				(code === 'KeyD' && key === 'd') ||
+				(code === 'KeyG' && key === 'g') ||
+				(code === 'KeyH' && key === 'h') ||
+				(code === 'KeyF' && key === 'f') ||
+				(code === 'Slash' && key === '/') ||
+				(code === 'KeyK' && key === 'k') ||
+				(code === 'KeyL' && key === 'l') ||
+				(code === 'BracketLeft' && key === '[') ||
+				(code === 'BracketRight' && key === ']');
+
+			if (isEnglishKey) {
+				return;
+			}
+
+			// We are in a non-English layout (e.g. Hebrew)
+			if (isCtrlOrCmd && !isAlt) {
+				// Ctrl+A: Select all
+				if (!isShift && code === 'KeyA') {
+					e.preventDefault();
+					e.stopPropagation();
+					const model = editor.getModel();
+					if (model) {
+						editor.setSelection(model.getFullModelRange());
+					}
+					return;
+				}
+
+				// Ctrl+F: Find
+				if (!isShift && code === 'KeyF') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('actions.find')?.run();
+					return;
+				}
+
+				// Ctrl+H: Replace
+				if (!isShift && code === 'KeyH') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.startFindReplaceAction')?.run();
+					return;
+				}
+
+				// Ctrl+G: Go to line
+				if (!isShift && code === 'KeyG') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.gotoLine')?.run();
+					return;
+				}
+
+				// Ctrl+/: Toggle line comment
+				if (!isShift && (code === 'Slash' || code === 'KeyQ')) {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.commentLine')?.run();
+					return;
+				}
+
+				// Ctrl+Z: Undo
+				if (!isShift && code === 'KeyZ') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.trigger('keyboard', 'undo', null);
+					return;
+				}
+
+				// Ctrl+Y or Ctrl+Shift+Z: Redo
+				if ((!isShift && code === 'KeyY') || (isShift && code === 'KeyZ')) {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.trigger('keyboard', 'redo', null);
+					return;
+				}
+
+				// Ctrl+D: Add selection to next find match
+				if (!isShift && code === 'KeyD') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.addSelectionToNextFindMatch')?.run();
+					return;
+				}
+
+				// Ctrl+Shift+K: Delete line
+				if (isShift && code === 'KeyK') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.deleteLines')?.run();
+					return;
+				}
+
+				// Ctrl+Shift+L: Select all occurrences
+				if (isShift && code === 'KeyL') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.selectHighlights')?.run();
+					return;
+				}
+
+				// Ctrl+[: Outdent lines
+				if (!isShift && code === 'BracketLeft') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.outdentLines')?.run();
+					return;
+				}
+
+				// Ctrl+]: Indent lines
+				if (!isShift && code === 'BracketRight') {
+					e.preventDefault();
+					e.stopPropagation();
+					editor.getAction('editor.action.indentLines')?.run();
+					return;
+				}
+			}
+
+			// Shift+Alt+F: Format Document (in Hebrew)
+			if (isShift && isAlt && !isCtrlOrCmd && code === 'KeyF') {
+				e.preventDefault();
+				e.stopPropagation();
+				editor.getAction('editor.action.formatDocument')?.run();
+				return;
+			}
 		});
 	}
 
@@ -1908,6 +2057,45 @@ ${rawContent}
 			prevIdx = changes.length;
 		}
 		this.goToDiffIndex(prevIdx);
+	}
+
+	public triggerFind(): void {
+		if (this.workspaceService.diffModeActive() && this.diffEditorInstance) {
+			const modified = this.diffEditorInstance.getModifiedEditor();
+			modified.focus();
+			modified.getAction('actions.find')?.run();
+			return;
+		}
+		if (this.editorInstance) {
+			this.editorInstance.focus();
+			this.editorInstance.getAction('actions.find')?.run();
+		}
+	}
+
+	public triggerReplace(): void {
+		if (this.workspaceService.diffModeActive() && this.diffEditorInstance) {
+			const modified = this.diffEditorInstance.getModifiedEditor();
+			modified.focus();
+			modified.getAction('editor.action.startFindReplaceAction')?.run();
+			return;
+		}
+		if (this.editorInstance) {
+			this.editorInstance.focus();
+			this.editorInstance.getAction('editor.action.startFindReplaceAction')?.run();
+		}
+	}
+
+	public triggerGotoLine(): void {
+		if (this.workspaceService.diffModeActive() && this.diffEditorInstance) {
+			const modified = this.diffEditorInstance.getModifiedEditor();
+			modified.focus();
+			modified.getAction('editor.action.gotoLine')?.run();
+			return;
+		}
+		if (this.editorInstance) {
+			this.editorInstance.focus();
+			this.editorInstance.getAction('editor.action.gotoLine')?.run();
+		}
 	}
 
 	public goToDiffIndex(index: number): void {
