@@ -4,6 +4,31 @@
  * Written by: Ori Kuttner and Shira (Antigravity agent)
  */
 
+@mixin custom-sidebar-scrollbar {
+	&::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+
+	&::-webkit-scrollbar-track {
+		background: var(--bg-item-hover, rgba(0, 0, 0, 0.05));
+		border-radius: 4px;
+	}
+
+	&::-webkit-scrollbar-thumb {
+		background: var(--scrollbar-thumb, #c8c8c8);
+		border-radius: 4px;
+
+		&:hover {
+			background: var(--scrollbar-thumb-hover, #a8a8a8);
+		}
+	}
+
+	&::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+}
+
 .sidebar {
 	position: relative;
 	min-width: 180px;
@@ -349,6 +374,7 @@
 	overflow-x: hidden;
 	padding-top: 4px;
 	position: relative;
+	@include custom-sidebar-scrollbar;
 }
 
 .scanning-overlay {
@@ -972,6 +998,7 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		padding-top: 4px;
+		@include custom-sidebar-scrollbar;
 
 		.file-group {
 			margin-bottom: 2px;
@@ -1080,6 +1107,7 @@
 /* Git / Source Control Panel */
 .git-panel {
 	flex: 1;
+	min-height: 0;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
@@ -1352,13 +1380,26 @@
 		}
 	}
 
-	.git-changes-container {
+	.git-content-scroll {
 		flex: 1;
+		min-height: 0;
 		overflow-y: auto;
+		overflow-x: hidden;
+		display: flex;
+		flex-direction: column;
+		@include custom-sidebar-scrollbar;
+	}
+
+	.git-changes-container {
 		display: flex;
 		flex-direction: column;
 
 		.git-changes-header {
+			position: sticky;
+			top: 0;
+			background: var(--bg-sidebar, #f8f8f8);
+			z-index: 2;
+			flex-shrink: 0;
 			display: flex;
 			align-items: center;
 			gap: 8px;
@@ -1379,9 +1420,8 @@
 		}
 
 		.git-files-list {
-			display: flex;
-			flex-direction: column;
-			gap: 1px;
+			position: relative;
+			padding-bottom: 6px;
 		}
 
 		.empty-changes-msg {
@@ -1556,14 +1596,16 @@
 	}
 
 	.git-commits-container {
-		flex-shrink: 0;
-		max-height: 250px;
 		display: flex;
 		flex-direction: column;
 		border-top: 1px solid var(--border-color, #e5e5e5);
 		background: var(--bg-secondary, #fafafa);
 
 		.git-commits-header {
+			position: sticky;
+			top: 0;
+			background: var(--bg-secondary, #fafafa);
+			z-index: 2;
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
@@ -1601,8 +1643,6 @@
 		}
 
 		.git-commits-list {
-			flex: 1;
-			overflow-y: auto;
 			display: flex;
 			flex-direction: column;
 			padding-bottom: 6px;

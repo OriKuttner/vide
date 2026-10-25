@@ -323,7 +323,6 @@ export class WorkspaceService {
 	readonly recentWorkspaces = signal<RecentWorkspaceItem[]>([]);
 	private recentDirHandle: any = null;
 	private recentGitDirHandle: any = null;
-	private autoSyncIntervalId: any = null;
 	private isAutoSyncing = false;
 	readonly isRestoringSession = signal<boolean>(false);
 	private saveSessionTimeout: any = null;
@@ -972,7 +971,7 @@ export class WorkspaceService {
 	}
 
 	private recentCommitsPromise: Promise<void> | null = null;
-	public async loadRecentCommits(): Promise<void> {
+	public async loadRecentCommits(isSilent = false): Promise<void> {
 		if (this.recentCommitsPromise) {
 			return this.recentCommitsPromise;
 		}
@@ -983,7 +982,9 @@ export class WorkspaceService {
 
 		if (isTauriApp() && this.nativeWorkspacePath()) {
 			this.recentCommitsPromise = (async () => {
-				this.isLoadingCommits.set(true);
+				if (!isSilent && this.recentCommits().length === 0) {
+					this.isLoadingCommits.set(true);
+				}
 				try {
 					const repoPath = this.nativeWorkspacePath()!;
 					const commits = await invoke<
@@ -997,16 +998,23 @@ export class WorkspaceService {
 						}>
 					>('get_git_commits', { repoPath, limit: 15 });
 
-					this.recentCommits.set(
-						commits.map((c) => ({
-							hash: c.hash,
-							shortHash: c.short_hash,
-							author: c.author,
-							date: c.date,
-							message: c.message,
-							tags: c.tags || [],
-						})),
-					);
+					const prev = this.recentCommits();
+					const isSame =
+						prev.length === commits.length &&
+						prev.every((c, i) => c.hash === commits[i].hash);
+
+					if (!isSame) {
+						this.recentCommits.set(
+							commits.map((c) => ({
+								hash: c.hash,
+								shortHash: c.short_hash,
+								author: c.author,
+								date: c.date,
+								message: c.message,
+								tags: c.tags || [],
+							})),
+						);
+					}
 				} catch (err) {
 					console.warn('Failed to load git commits:', err);
 					this.recentCommits.set([]);
@@ -1379,10 +1387,13 @@ export class WorkspaceService {
 			.join('');
 	}
 
-	public async refreshGitStatus(dirHandle?: any): Promise<void> {
+	private lastGitStatusSignature = '';
+
+	public async refreshGitStatus(dirHandle?: any, force = false): Promise<void> {
 		if (!this.isRealWorkspace()) {
 			this.gitBranch.set(null);
 			this.gitSyncStatus.set(null);
+			this.lastGitStatusSignature = '';
 			return;
 		}
 
@@ -1391,10 +1402,13 @@ export class WorkspaceService {
 			try {
 				try {
 					const branch = await invoke<string>('get_git_branch', { repoPath });
-					this.gitBranch.set(branch);
+					if (this.gitBranch() !== branch) {
+						this.gitBranch.set(branch);
+						force = true;
+					}
 					if (branch) {
 						await Promise.all([
-							this.loadRecentCommits(),
+							this.loadRecentCommits(true),
 							this.loadGitSyncStatus(),
 							this.loadGitTags(),
 						]);
@@ -1416,6 +1430,16 @@ export class WorkspaceService {
 						staged: boolean;
 					}>
 				>('get_git_status', { repoPath });
+
+				const statusSignature = gitItems
+					.map((item) => `${item.path}:${item.status}:${item.staged ? 1 : 0}`)
+					.sort()
+					.join('|');
+
+				if (!force && this.lastGitStatusSignature === statusSignature) {
+					return;
+				}
+				this.lastGitStatusSignature = statusSignature;
 
 				const statusMap = new Map(
 					gitItems.map((item) => [
@@ -1678,62 +1702,21 @@ export class WorkspaceService {
 	}
 
 	/**
-	 * Sets up auto-synchronization:
-	 * 1. Window focus & visibilitychange listener (e.g. returning from terminal).
-	 * 2. Periodic background check every 60 seconds ONLY while the window is focused.
-	 * When window loses focus or becomes hidden, the timer is stopped to conserve system resources.
+	 * Sets up auto-synchronization on window focus & visibilitychange events
+	 * (e.g. returning from terminal or other external tools).
 	 */
 	private setupAutoSync(): void {
 		if (typeof window === 'undefined') return;
 
 		window.addEventListener('focus', () => {
 			this.syncExternalChanges();
-			this.startAutoSyncTimer();
-		});
-
-		window.addEventListener('blur', () => {
-			this.stopAutoSyncTimer();
 		});
 
 		document.addEventListener('visibilitychange', () => {
 			if (document.visibilityState === 'visible') {
 				this.syncExternalChanges();
-				if (typeof document !== 'undefined' && document.hasFocus()) {
-					this.startAutoSyncTimer();
-				}
-			} else {
-				this.stopAutoSyncTimer();
 			}
 		});
-
-		if (
-			typeof document !== 'undefined' &&
-			document.hasFocus() &&
-			document.visibilityState === 'visible'
-		) {
-			this.startAutoSyncTimer();
-		}
-	}
-
-	private startAutoSyncTimer(): void {
-		if (this.autoSyncIntervalId) return;
-		this.autoSyncIntervalId = setInterval(() => {
-			if (
-				typeof document !== 'undefined' &&
-				(!document.hasFocus() || document.visibilityState !== 'visible')
-			) {
-				this.stopAutoSyncTimer();
-				return;
-			}
-			this.syncExternalChanges();
-		}, 60000);
-	}
-
-	private stopAutoSyncTimer(): void {
-		if (this.autoSyncIntervalId) {
-			clearInterval(this.autoSyncIntervalId);
-			this.autoSyncIntervalId = null;
-		}
 	}
 
 	/**
@@ -1745,9 +1728,9 @@ export class WorkspaceService {
 
 		this.isAutoSyncing = true;
 		try {
-			await this.refreshFileTree();
-			await this.refreshGitStatus();
 			await this.reloadActiveFileIfChangedOnDisk();
+			await this.refreshGitStatus();
+			await this.refreshFileTree();
 		} catch (e) {
 			console.warn('Auto-sync error:', e);
 		} finally {
@@ -1763,7 +1746,7 @@ export class WorkspaceService {
 		this.isRefreshingTree.set(true);
 		try {
 			await this.refreshFileTree();
-			await this.refreshGitStatus();
+			await this.refreshGitStatus(undefined, true);
 			await this.reloadActiveFileIfChangedOnDisk();
 			const nativePath = this.nativeWorkspacePath();
 			if (nativePath) {
@@ -1784,7 +1767,7 @@ export class WorkspaceService {
 	 * If the user has unsaved edits in the editor, preserves them and alerts the user.
 	 */
 	public async reloadActiveFileIfChangedOnDisk(): Promise<void> {
-		const active = this.activeFile();
+		const active = (this.diffModeActive() && this.activeDiffFile()) || this.activeFile();
 		if (
 			!active ||
 			active.isImage ||
@@ -1855,7 +1838,9 @@ export class WorkspaceService {
 			if (!active.isLoaded) {
 				active.content = diskContent;
 				active.savedContent = diskContent;
-				active.originalContent = diskContent;
+				if (active.originalContent === undefined) {
+					active.originalContent = diskContent;
+				}
 				active.isLoaded = true;
 				active.lastDiskMtime = currentMtime;
 				active.lastDiskSize = currentSize;
@@ -1867,7 +1852,7 @@ export class WorkspaceService {
 									...f,
 									content: diskContent!,
 									savedContent: diskContent!,
-									originalContent: diskContent!,
+									originalContent: f.originalContent ?? active.originalContent,
 									isLoaded: true,
 									lastDiskMtime: currentMtime,
 									lastDiskSize: currentSize,
@@ -1925,14 +1910,12 @@ export class WorkspaceService {
 			// Genuinely modified on disk externally by another process
 			if (active.isModified) {
 				active.savedContent = diskContent;
-				active.originalContent = diskContent;
 				this.files.update((files) =>
 					files.map((f) =>
 						f.id === active.id
 							? {
 									...f,
 									savedContent: diskContent!,
-									originalContent: diskContent!,
 									lastDiskMtime: currentMtime,
 									lastDiskSize: currentSize,
 									fileSize: currentSize,
@@ -1946,7 +1929,6 @@ export class WorkspaceService {
 							? {
 									...t,
 									savedContent: diskContent!,
-									originalContent: diskContent!,
 									lastDiskMtime: currentMtime,
 									lastDiskSize: currentSize,
 									fileSize: currentSize,
@@ -1961,7 +1943,25 @@ export class WorkspaceService {
 			} else {
 				active.content = diskContent;
 				active.savedContent = diskContent;
-				active.originalContent = diskContent;
+
+				// Fetch git baseline if missing and tracked in git repo
+				if (
+					active.originalContent === undefined &&
+					isTauriApp() &&
+					this.nativeWorkspacePath() &&
+					active.path
+				) {
+					try {
+						const baseline = await invoke<string>('get_git_diff_baseline', {
+							repoPath: this.nativeWorkspacePath()!,
+							filePath: active.path,
+						});
+						active.originalContent = baseline;
+					} catch {
+						// Not tracked in git or baseline error
+					}
+				}
+
 				active.isModified = false;
 				this.files.update((files) =>
 					files.map((f) =>
@@ -1970,7 +1970,7 @@ export class WorkspaceService {
 									...f,
 									content: diskContent!,
 									savedContent: diskContent!,
-									originalContent: diskContent!,
+									originalContent: f.originalContent ?? active.originalContent,
 									isLoaded: true,
 									isModified: false,
 									lastDiskMtime: currentMtime,
@@ -1987,7 +1987,7 @@ export class WorkspaceService {
 									...t,
 									content: diskContent!,
 									savedContent: diskContent!,
-									originalContent: diskContent!,
+									originalContent: t.originalContent ?? active.originalContent,
 									isLoaded: true,
 									isModified: false,
 									lastDiskMtime: currentMtime,
@@ -1998,15 +1998,24 @@ export class WorkspaceService {
 					),
 				);
 				if (this.diffModeActive() && this.activeDiffFile()?.id === active.id) {
+					const curDiff = this.activeDiffFile()!;
 					this.activeDiffFile.set({
-						...active,
+						...curDiff,
 						content: diskContent,
 						savedContent: diskContent,
-						originalContent: diskContent,
+						originalContent:
+							curDiff.originalContent !== undefined
+								? curDiff.originalContent
+								: active.originalContent,
 						isModified: false,
 						lastDiskMtime: currentMtime,
 						lastDiskSize: currentSize,
 						fileSize: currentSize,
+					});
+				} else {
+					this.pendingContentReplacement.set({
+						fileId: active.id,
+						newContent: diskContent,
 					});
 				}
 				this.triggerSaveSessionState();
@@ -4205,6 +4214,7 @@ export class WorkspaceService {
 			this.activeFileId.set('');
 			this.diffModeActive.set(false);
 			this.activeDiffFile.set(null);
+			this.lastGitStatusSignature = '';
 			this.onWorkspaceReset?.();
 		});
 
@@ -5000,6 +5010,7 @@ export class WorkspaceService {
 		this.diffModeActive.set(false);
 		this.activeDiffFile.set(null);
 		this.gitBranch.set(null);
+		this.lastGitStatusSignature = '';
 		this.selectedFolderPath.set('');
 		this.onWorkspaceReset?.();
 		this.showNotification('Folder closed');

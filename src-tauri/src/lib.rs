@@ -2210,6 +2210,12 @@ fn log_to_terminal(level: String, message: String) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+	// Disable GTK overlay scrolling so scrollbars stay permanently visible and do not fade out
+	#[cfg(target_os = "linux")]
+	unsafe {
+		std::env::set_var("GTK_OVERLAY_SCROLLING", "0");
+	}
+
 	let raw_args: Vec<String> = std::env::args().skip(1).collect();
 
 	// 1. Handle --list-instances

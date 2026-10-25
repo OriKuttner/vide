@@ -126,12 +126,12 @@ body {
 
 /* Dynamic scrollbars matching active theme */
 ::-webkit-scrollbar {
-	width: 10px;
-	height: 10px;
+	width: 8px;
+	height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-	background: var(--scrollbar-bg);
+	background: transparent !important;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -141,6 +141,10 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
 	background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+	background: transparent;
 }
 
 /* VS Code Diff View Highlights */

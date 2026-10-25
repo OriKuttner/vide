@@ -96,6 +96,7 @@ export class SidebarComponent {
 				}, 120);
 			}
 		});
+
 	}
 
 	public onSearchInput(event: Event): void {
