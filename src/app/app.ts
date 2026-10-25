@@ -224,6 +224,8 @@ export class App {
 			target?.closest('.tree-context-menu') ||
 			target?.closest('.global-context-menu') ||
 			target?.closest('.terminal-dock') ||
+			target?.closest('.tab-context-menu') ||
+			target?.closest('.tab') ||
 			event.defaultPrevented
 		) {
 			if (this.contextMenuVisible()) {

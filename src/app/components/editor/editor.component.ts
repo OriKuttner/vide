@@ -1053,6 +1053,9 @@ ${rawContent}
 			this.clearHighlight();
 			const activeFile = this.workspaceService.activeFile();
 			if (activeFile && this.editorInstance) {
+				if (activeFile.isPreview) {
+					this.workspaceService.pinTab(activeFile.id);
+				}
 				const val = this.editorInstance.getValue();
 				this.workspaceService.updateContent(activeFile.id, val);
 				const pos = this.editorInstance.getPosition();
@@ -1665,6 +1668,9 @@ ${rawContent}
 			if (this.isProgrammaticUpdate) return;
 			const activeDiff = this.workspaceService.activeDiffFile();
 			if (activeDiff && this.diffEditorInstance) {
+				if (activeDiff.isPreview) {
+					this.workspaceService.pinTab(activeDiff.id);
+				}
 				const val = this.diffEditorInstance.getModifiedEditor().getValue();
 				this.workspaceService.updateContent(activeDiff.id, val);
 				const pos = this.diffEditorInstance.getModifiedEditor().getPosition();

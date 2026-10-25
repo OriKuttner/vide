@@ -15,6 +15,7 @@ export interface WorkspaceFile {
 	gitStatus?: 'modified' | 'added' | 'deleted' | 'untracked';
 	isLoaded?: boolean;
 	isModified?: boolean;
+	isPreview?: boolean;
 	handle?: any; // FileSystemFileHandle when opened from local disk
 	rawFile?: File; // Raw file fallback
 	fsPath?: string; // Absolute filesystem path in Tauri desktop mode

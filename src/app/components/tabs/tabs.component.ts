@@ -4,7 +4,15 @@
  * Written by: Ori Kuttner and Shira (Antigravity agent)
  */
 
-import { Component, ElementRef, ViewChild, HostListener, effect, inject } from '@angular/core';
+import {
+	Component,
+	ElementRef,
+	ViewChild,
+	HostListener,
+	effect,
+	inject,
+	signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ThemeService } from '../../services/theme.service';
@@ -110,21 +118,88 @@ export class TabsComponent {
 		}
 	}
 
+	public tabContextMenu = signal<{ tab: WorkspaceFile; x: number; y: number } | null>(null);
+
+	public onTabDblClick(tab: WorkspaceFile): void {
+		this.workspaceService.pinTab(tab.id);
+	}
+
+	public onTabContextMenu(event: MouseEvent, tab: WorkspaceFile): void {
+		event.preventDefault();
+		event.stopPropagation();
+		const x = Math.min(event.clientX, window.innerWidth - 200);
+		const y = Math.min(event.clientY, window.innerHeight - 250);
+		this.tabContextMenu.set({ tab, x, y });
+	}
+
+	public closeTabContextMenu(): void {
+		this.tabContextMenu.set(null);
+	}
+
+	public pinTabFromContext(): void {
+		const menu = this.tabContextMenu();
+		if (menu) {
+			this.workspaceService.pinTab(menu.tab.id);
+		}
+		this.closeTabContextMenu();
+	}
+
+	public closeTabFromContext(): void {
+		const menu = this.tabContextMenu();
+		if (menu) {
+			this.workspaceService.closeTab(menu.tab.id);
+		}
+		this.closeTabContextMenu();
+	}
+
+	public closeOtherTabsFromContext(): void {
+		const menu = this.tabContextMenu();
+		if (menu) {
+			this.workspaceService.closeOtherTabs(menu.tab.id);
+		}
+		this.closeTabContextMenu();
+	}
+
+	public closeRightTabsFromContext(): void {
+		const menu = this.tabContextMenu();
+		if (menu) {
+			this.workspaceService.closeTabsToRight(menu.tab.id);
+		}
+		this.closeTabContextMenu();
+	}
+
+	public closeSavedTabsFromContext(): void {
+		this.workspaceService.closeUnmodifiedTabs();
+		this.closeTabContextMenu();
+	}
+
+	public closeAllTabsFromContext(): void {
+		this.workspaceService.closeAllTabs();
+		this.closeTabContextMenu();
+	}
+
 	public getTabTooltip(tab: WorkspaceFile): string {
+		let pathStr = tab.path || tab.name;
 		if (tab.fsPath) {
-			return tab.fsPath;
+			pathStr = tab.fsPath;
+		} else {
+			const nativeRoot = this.workspaceService.nativeWorkspacePath();
+			if (nativeRoot && tab.path && !tab.path.startsWith('/')) {
+				const cleanRoot = nativeRoot.endsWith('/') ? nativeRoot.slice(0, -1) : nativeRoot;
+				const cleanRel = tab.path.startsWith('/') ? tab.path.slice(1) : tab.path;
+				pathStr = `${cleanRoot}/${cleanRel}`;
+			}
 		}
-		const nativeRoot = this.workspaceService.nativeWorkspacePath();
-		if (nativeRoot && tab.path && !tab.path.startsWith('/')) {
-			const cleanRoot = nativeRoot.endsWith('/') ? nativeRoot.slice(0, -1) : nativeRoot;
-			const cleanRel = tab.path.startsWith('/') ? tab.path.slice(1) : tab.path;
-			return `${cleanRoot}/${cleanRel}`;
-		}
-		return tab.path || tab.name;
+		return tab.isPreview
+			? `${pathStr} • (Preview - double-click or edit to keep open)`
+			: pathStr;
 	}
 
 	@HostListener('document:click', ['$event'])
 	public onDocumentClick(event: MouseEvent): void {
+		if (this.tabContextMenu()) {
+			this.closeTabContextMenu();
+		}
 		if (this.navigationHistoryService.isDropdownOpen()) {
 			const navWrapper = this.elementRef.nativeElement.querySelector('.nav-stack-wrapper');
 			if (navWrapper && !navWrapper.contains(event.target as Node)) {
@@ -135,6 +210,9 @@ export class TabsComponent {
 
 	@HostListener('document:keydown.escape')
 	public onEscapeKey(): void {
+		if (this.tabContextMenu()) {
+			this.closeTabContextMenu();
+		}
 		if (this.navigationHistoryService.isDropdownOpen()) {
 			this.navigationHistoryService.closeDropdown();
 		}

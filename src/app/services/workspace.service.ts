@@ -2918,7 +2918,7 @@ export class WorkspaceService {
 	/**
 	 * Lazily loads file text content and opens in editor.
 	 */
-	public async openFile(file: WorkspaceFile, setActive = true): Promise<void> {
+	public async openFile(file: WorkspaceFile, setActive = true, isPreview = false): Promise<void> {
 		if (file.commitDiffInfo) {
 			if (setActive) {
 				this.activeFileId.set(file.id);
@@ -3242,9 +3242,27 @@ export class WorkspaceService {
 		}
 
 		const currentTabs = this.openTabs();
-		if (!currentTabs.some((tab) => tab.id === file.id)) {
-			this.openTabs.set([...currentTabs, file]);
+		const existingTab = currentTabs.find((tab) => tab.id === file.id);
+
+		if (!existingTab) {
+			if (isPreview) {
+				file.isPreview = true;
+				const existingPreviewIdx = currentTabs.findIndex((t) => t.isPreview && !t.isModified);
+				if (existingPreviewIdx !== -1) {
+					const newTabs = [...currentTabs];
+					newTabs[existingPreviewIdx] = file;
+					this.openTabs.set(newTabs);
+				} else {
+					this.openTabs.set([...currentTabs, file]);
+				}
+			} else {
+				file.isPreview = false;
+				this.openTabs.set([...currentTabs, file]);
+			}
 		} else {
+			if (!isPreview) {
+				file.isPreview = false;
+			}
 			this.openTabs.update((tabs) =>
 				tabs.map((tab) =>
 					tab.id === file.id
@@ -3255,6 +3273,7 @@ export class WorkspaceService {
 								fileTypeDescription: file.fileTypeDescription,
 								hexData: file.hexData,
 								fileSize: file.fileSize,
+								isPreview: isPreview ? tab.isPreview : false,
 							}
 						: tab,
 				),
@@ -3432,6 +3451,48 @@ export class WorkspaceService {
 		this.pendingUnsavedFile.set(null);
 	}
 
+	public pinTab(fileId: string): void {
+		this.openTabs.update((tabs) =>
+			tabs.map((t) => (t.id === fileId ? { ...t, isPreview: false } : t)),
+		);
+		const f = this.files().find((file) => file.id === fileId);
+		if (f) {
+			f.isPreview = false;
+		}
+	}
+
+	public closeOtherTabs(fileId: string): void {
+		const tabsToClose = this.openTabs().filter((t) => t.id !== fileId);
+		for (const t of tabsToClose) {
+			this.closeTab(t.id);
+		}
+	}
+
+	public closeTabsToRight(fileId: string): void {
+		const currentTabs = this.openTabs();
+		const idx = currentTabs.findIndex((t) => t.id === fileId);
+		if (idx !== -1) {
+			const tabsToClose = currentTabs.slice(idx + 1);
+			for (const t of tabsToClose) {
+				this.closeTab(t.id);
+			}
+		}
+	}
+
+	public closeUnmodifiedTabs(): void {
+		const tabsToClose = this.openTabs().filter((t) => !t.isModified);
+		for (const t of tabsToClose) {
+			this.forceCloseTab(t.id);
+		}
+	}
+
+	public closeAllTabs(): void {
+		const tabs = [...this.openTabs()];
+		for (const t of tabs) {
+			this.closeTab(t.id);
+		}
+	}
+
 	public getModifiedFiles(): WorkspaceFile[] {
 		const modifiedMap = new Map<string, WorkspaceFile>();
 		for (const f of this.files()) {
@@ -3501,7 +3562,12 @@ export class WorkspaceService {
 					const baseContent =
 						file.savedContent !== undefined ? file.savedContent : file.originalContent;
 					const isModified = baseContent !== undefined ? baseContent !== content : true;
-					return { ...file, content, isModified };
+					return {
+						...file,
+						content,
+						isModified,
+						isPreview: isModified ? false : file.isPreview,
+					};
 				}
 				return file;
 			}),
@@ -3512,7 +3578,12 @@ export class WorkspaceService {
 					const baseContent =
 						tab.savedContent !== undefined ? tab.savedContent : tab.originalContent;
 					const isModified = baseContent !== undefined ? baseContent !== content : true;
-					return { ...tab, content, isModified };
+					return {
+						...tab,
+						content,
+						isModified,
+						isPreview: isModified ? false : tab.isPreview,
+					};
 				}
 				return tab;
 			}),

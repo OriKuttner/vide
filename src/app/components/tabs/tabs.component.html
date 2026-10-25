@@ -24,8 +24,11 @@
 			<div
 				class="tab"
 				[class.active]="tab.id === workspaceService.activeFileId()"
+				[class.preview-tab]="tab.isPreview"
 				[title]="getTabTooltip(tab)"
 				(click)="workspaceService.openFile(tab)"
+				(dblclick)="onTabDblClick(tab)"
+				(contextmenu)="onTabContextMenu($event, tab)"
 			>
 				<span class="tab-title">
 					@if (
@@ -312,4 +315,43 @@
 			}
 		</div>
 	</div>
+
+	@if (tabContextMenu()) {
+		<div
+			class="tab-context-menu"
+			[style.left.px]="tabContextMenu()!.x"
+			[style.top.px]="tabContextMenu()!.y"
+			(click)="$event.stopPropagation()"
+		>
+			@if (tabContextMenu()!.tab.isPreview) {
+				<div class="menu-item highlight" (click)="pinTabFromContext()">
+					<span class="menu-icon">📌</span>
+					<span class="menu-label">Keep Open</span>
+					<span class="menu-shortcut">Double-click</span>
+				</div>
+				<div class="menu-separator"></div>
+			}
+			<div class="menu-item" (click)="closeTabFromContext()">
+				<span class="menu-icon">✕</span>
+				<span class="menu-label">Close</span>
+			</div>
+			<div class="menu-item" (click)="closeOtherTabsFromContext()">
+				<span class="menu-icon"></span>
+				<span class="menu-label">Close Others</span>
+			</div>
+			<div class="menu-item" (click)="closeRightTabsFromContext()">
+				<span class="menu-icon"></span>
+				<span class="menu-label">Close to the Right</span>
+			</div>
+			<div class="menu-item" (click)="closeSavedTabsFromContext()">
+				<span class="menu-icon"></span>
+				<span class="menu-label">Close Unmodified</span>
+			</div>
+			<div class="menu-separator"></div>
+			<div class="menu-item" (click)="closeAllTabsFromContext()">
+				<span class="menu-icon"></span>
+				<span class="menu-label">Close All</span>
+			</div>
+		</div>
+	}
 </div>

@@ -287,7 +287,8 @@
 									node.file && node.file.id === workspaceService.activeFileId()
 								"
 								[style.padding-left.px]="node.level * 16 + 22"
-								(click)="node.file && workspaceService.openFile(node.file)"
+								(click)="node.file && workspaceService.openFile(node.file, true, true)"
+								(dblclick)="node.file && workspaceService.openFile(node.file, true, false)"
 								(contextmenu)="onNodeContextMenu($event, node)"
 							>
 								@if (isImageNode(node.file || node)) {
