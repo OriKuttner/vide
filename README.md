@@ -5,6 +5,20 @@
 [![Frontend: Angular 21](https://img.shields.io/badge/Frontend-Angular%2021-dd0031.svg)](https://angular.dev/)
 [![Editor: Monaco](https://img.shields.io/badge/Editor-Monaco-007acc.svg)](https://microsoft.github.io/monaco-editor/)
 
+### A Note from the Author
+
+For years, I searched for the right programmer’s editor for my daily work. I tried countless tools along the way, but they always fell into the same traps: either they were bloated, sluggish, and consumed gigabytes of RAM, or they were locked behind absurdly expensive enterprise licenses. In the end, I decided to build VIDE — an editor focused purely on speed, control, and zero friction for the developer.
+
+Along the way, I integrated practical AI capabilities powered by Google’s cost-effective models. To be clear: VIDE isn’t trying to compete with massive autonomous coding agents like Antigravity, Claude Code, or OpenAI’s developer agents. Instead, the AI serves as a fast **completion assistant** combined with **built-in code analysis tools** — making it a remarkably powerful aid for exploring, dissecting, and understanding complex codebases without burning through expensive tokens or getting in your way.
+
+---
+
+> **Planning a complex AI initiative or high-scale platform?**  
+> VIDE showcases my architectural philosophy: lean, high-performance systems with zero bloat and disciplined engineering. Beyond tooling, I work as a **senior technical advisor and systems architect**, helping companies design and scale **advanced AI systems**, **complex e-commerce platforms**, and mission-critical software.  
+> Contact: **[info@heliconbooks.com](mailto:info@heliconbooks.com)**
+
+---
+
 **Vector IDE** (`vide`) is an ultra-lightweight, lightning-fast native integrated development environment designed for high-performance coding without the overhead of Electron. Built with **Tauri v2** (Rust backend), **Angular 21** (Signals-driven frontend), and Microsoft's **Monaco Editor**, Vector IDE provides minimal memory consumption (~40–80 MB RAM), and deep AI assistance powered directly by Google Gemini.
 
 ---
@@ -180,6 +194,21 @@ vide /path/to/project src/main.rs --highlight 42-65
 
 ---
 
+## Advisory & Architecture Consulting
+
+VIDE is proof of disciplined, zero-bloat engineering. Building complex systems correctly requires deep architectural clarity before writing a single line of application code.
+
+I advise CTOs, founders, and engineering leaders on designing resilient, cost-effective architectures and navigating technical challenges:
+
+* **Advanced AI Strategy & Architecture:** Designing practical AI architectures, intelligent RAG pipelines, and multi-agent workflows. I help teams leverage models effectively while avoiding runaway cloud bills and brittle agent frameworks.
+* **Complex E-Commerce & Transactional Engines:** Architectural guidance for high-load digital stores, subscription engines, global payment flows, and mission-critical inventory/catalog systems built for five-nines reliability.
+* **System Modernization & Performance Audits:** Identifying hidden bottlenecks, eliminating architecture debt, evaluating technology stacks, and guiding teams transitioning from bloated runtimes to lean, high-throughput architectures.
+* **Technical Strategy & Codebase Health:** High-level code and architecture reviews, technology selection, and helping leadership avoid costly engineering missteps early on.
+
+Looking for an experienced eye on your architecture? Reach out at **[info@heliconbooks.com](mailto:info@heliconbooks.com)**.
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please follow these guidelines:
@@ -201,5 +230,5 @@ Vector IDE (`vide`) is distributed under a **Dual Licensing model**:
 
 ### Need a Custom or Commercial Build?
 For enterprise inquiries, dedicated proprietary builds, custom feature development, or dual-license exemptions, please contact:
-📩 **[info@heliconbooks.com](mailto:info@heliconbooks.com)**
+**[info@heliconbooks.com](mailto:info@heliconbooks.com)**
 
