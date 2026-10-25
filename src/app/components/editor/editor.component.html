@@ -8,9 +8,6 @@
 	@if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as diffFile) {
 		<div class="diff-toolbar">
 			<div class="diff-left-section">
-				<span class="diff-tag">{{
-					diffFile.commitDiffInfo ? 'COMMIT DIFF' : 'WORKING TREE DIFF'
-				}}</span>
 				<span class="diff-file-name">{{ diffFile.name }}</span>
 				<span
 					class="diff-status-badge"
@@ -27,9 +24,30 @@
 					}}
 				</span>
 				@if (diffChunkCount() > 0) {
-					<span class="diff-chunk-pill">
-						{{ diffChunkCount() }} difference{{ diffChunkCount() === 1 ? '' : 's' }}
-					</span>
+					<div class="diff-nav-group">
+						<button
+							type="button"
+							class="diff-nav-btn prev-diff-btn"
+							(click)="prevDiff()"
+							title="Previous Difference (Shift+F7 / Shift+Alt+F5)"
+						>
+							<span class="nav-arrow">↑</span>
+						</button>
+						<span
+							class="diff-counter-pill"
+							title="Current difference / total differences"
+						>
+							{{ currentDiffIndex() > 0 ? currentDiffIndex() : 1 }} of {{ diffChunkCount() }}
+						</span>
+						<button
+							type="button"
+							class="diff-nav-btn next-diff-btn"
+							(click)="nextDiff()"
+							title="Next Difference (F7 / Alt+F5)"
+						>
+							<span class="nav-arrow">↓</span>
+						</button>
+					</div>
 				}
 			</div>
 
@@ -60,7 +78,7 @@
 			<div class="diff-right-actions">
 				<button
 					type="button"
-					class="diff-action-btn view-toggle-btn"
+					class="diff-action-btn view-toggle-btn icon-only"
 					[class.active]="workspaceService.diffRenderSideBySide()"
 					(click)="workspaceService.toggleDiffSideBySide()"
 					[title]="
@@ -71,9 +89,6 @@
 				>
 					<span class="btn-icon">{{
 						workspaceService.diffRenderSideBySide() ? '◫' : '☰'
-					}}</span>
-					<span>{{
-						workspaceService.diffRenderSideBySide() ? 'Side-by-Side' : 'Inline'
 					}}</span>
 				</button>
 

@@ -73,6 +73,7 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 
 	public readonly cursorChange = output<{ line: number; column: number }>();
 	public readonly diffChunkCount = signal<number>(0);
+	public readonly currentDiffIndex = signal<number>(0);
 
 	// Markdown & HTML Live Preview state
 	public previewSplitPercent = signal<number>(50);
@@ -1690,6 +1691,7 @@ ${rawContent}
 				line: e.position.lineNumber,
 				column: e.position.column,
 			});
+			this.updateActiveDiffIndex(e.position.lineNumber, false);
 			const activeDiff = this.workspaceService.activeDiffFile();
 			if (activeDiff) {
 				this.navigationHistoryService.recordCursorMovement(
@@ -1700,10 +1702,36 @@ ${rawContent}
 			}
 		});
 
-		// Track diff changes count
+		// Cursor position in original editor
+		this.diffEditorInstance.getOriginalEditor().onDidChangeCursorPosition((e) => {
+			this.updateActiveDiffIndex(e.position.lineNumber, true);
+		});
+
+		// Track diff changes count and active diff index
 		this.diffEditorInstance.onDidUpdateDiff(() => {
 			const changes = this.diffEditorInstance?.getLineChanges();
-			this.diffChunkCount.set(changes ? changes.length : 0);
+			const count = changes ? changes.length : 0;
+			this.diffChunkCount.set(count);
+			if (count > 0) {
+				if (this.currentDiffIndex() === 0) {
+					this.currentDiffIndex.set(1);
+				}
+				this.updateActiveDiffIndex();
+			} else {
+				this.currentDiffIndex.set(0);
+			}
+		});
+
+		// Scroll change to track which diff is in viewport (e.g. after clicking overview ruler)
+		this.diffEditorInstance.getModifiedEditor().onDidScrollChange(() => {
+			this.updateActiveDiffIndexFromScroll();
+		});
+
+		// Click inside diff editor container (including overview ruler)
+		this.diffContainer.nativeElement.addEventListener('mousedown', () => {
+			setTimeout(() => {
+				this.updateActiveDiffIndex();
+			}, 60);
 		});
 
 		// Ctrl+S shortcut to save file while in diff view
@@ -1724,11 +1752,25 @@ ${rawContent}
 			.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Minus, () => {
 				this.zoomService.zoomOut();
 			});
-		// Ctrl+P / Ctrl+Shift+P shortcut to open file search in diff view
+		// Diff navigation & editor shortcuts in diff view
 		[
 			this.diffEditorInstance.getModifiedEditor(),
 			this.diffEditorInstance.getOriginalEditor(),
 		].forEach((ed) => {
+			// Diff navigation: F7 / Shift+F7 (JetBrains standard)
+			ed.addCommand(monaco.KeyCode.F7, () => {
+				this.nextDiff();
+			});
+			ed.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F7, () => {
+				this.prevDiff();
+			});
+			// Diff navigation: Alt+F5 / Shift+Alt+F5 (VS Code standard)
+			ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.F5, () => {
+				this.nextDiff();
+			});
+			ed.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.F5, () => {
+				this.prevDiff();
+			});
 			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
 				this.workspaceService.openModal('file-search');
 			});
@@ -1842,6 +1884,158 @@ ${rawContent}
 			}
 			this.workspaceService.closeDiffView();
 		}
+	}
+
+	public nextDiff(): void {
+		if (!this.diffEditorInstance) return;
+		const changes = this.diffEditorInstance.getLineChanges();
+		if (!changes || changes.length === 0) return;
+
+		let nextIdx = this.currentDiffIndex() + 1;
+		if (nextIdx > changes.length) {
+			nextIdx = 1;
+		}
+		this.goToDiffIndex(nextIdx);
+	}
+
+	public prevDiff(): void {
+		if (!this.diffEditorInstance) return;
+		const changes = this.diffEditorInstance.getLineChanges();
+		if (!changes || changes.length === 0) return;
+
+		let prevIdx = this.currentDiffIndex() - 1;
+		if (prevIdx < 1) {
+			prevIdx = changes.length;
+		}
+		this.goToDiffIndex(prevIdx);
+	}
+
+	public goToDiffIndex(index: number): void {
+		if (!this.diffEditorInstance) return;
+		const changes = this.diffEditorInstance.getLineChanges();
+		if (!changes || changes.length === 0 || index < 1 || index > changes.length) return;
+
+		this.currentDiffIndex.set(index);
+		const change = changes[index - 1];
+
+		const modifiedLine =
+			change.modifiedStartLineNumber > 0
+				? change.modifiedStartLineNumber
+				: change.modifiedEndLineNumber;
+		const originalLine =
+			change.originalStartLineNumber > 0
+				? change.originalStartLineNumber
+				: change.originalEndLineNumber;
+
+		const modifiedEditor = this.diffEditorInstance.getModifiedEditor();
+		const originalEditor = this.diffEditorInstance.getOriginalEditor();
+
+		if (modifiedLine > 0) {
+			modifiedEditor.revealLineInCenter(modifiedLine);
+			modifiedEditor.setPosition({ lineNumber: modifiedLine, column: 1 });
+			modifiedEditor.focus();
+		} else if (originalLine > 0) {
+			originalEditor.revealLineInCenter(originalLine);
+			originalEditor.setPosition({ lineNumber: originalLine, column: 1 });
+			originalEditor.focus();
+		}
+	}
+
+	public updateActiveDiffIndex(lineNumber?: number, isOriginal = false): void {
+		if (!this.diffEditorInstance) return;
+		const changes = this.diffEditorInstance.getLineChanges();
+		if (!changes || changes.length === 0) {
+			this.currentDiffIndex.set(0);
+			return;
+		}
+
+		let targetLine = lineNumber;
+		if (targetLine === undefined) {
+			const pos = this.diffEditorInstance.getModifiedEditor().getPosition();
+			if (pos) {
+				targetLine = pos.lineNumber;
+				isOriginal = false;
+			} else {
+				const origPos = this.diffEditorInstance.getOriginalEditor().getPosition();
+				if (origPos) {
+					targetLine = origPos.lineNumber;
+					isOriginal = true;
+				}
+			}
+		}
+
+		if (targetLine === undefined) {
+			const ranges = this.diffEditorInstance.getModifiedEditor().getVisibleRanges();
+			if (ranges && ranges.length > 0) {
+				targetLine = ranges[0].startLineNumber;
+			} else {
+				return;
+			}
+		}
+
+		// 1. Check if targetLine is within a diff change block
+		let foundIndex = -1;
+		for (let i = 0; i < changes.length; i++) {
+			const ch = changes[i];
+			const start = isOriginal ? ch.originalStartLineNumber : ch.modifiedStartLineNumber;
+			const end = isOriginal ? ch.originalEndLineNumber : ch.modifiedEndLineNumber;
+			const s = start > 0 ? start : (isOriginal ? ch.originalEndLineNumber : ch.modifiedEndLineNumber);
+			const e = end >= s ? end : s;
+
+			if (targetLine >= s && targetLine <= e) {
+				foundIndex = i + 1;
+				break;
+			}
+		}
+
+		// 2. If not directly inside, find the closest chunk
+		if (foundIndex === -1) {
+			let minDiff = Infinity;
+			for (let i = 0; i < changes.length; i++) {
+				const ch = changes[i];
+				const start = isOriginal ? ch.originalStartLineNumber : ch.modifiedStartLineNumber;
+				const s = start > 0 ? start : (isOriginal ? ch.originalEndLineNumber : ch.modifiedEndLineNumber);
+				const diff = Math.abs(targetLine - (s > 0 ? s : 1));
+				if (diff < minDiff) {
+					minDiff = diff;
+					foundIndex = i + 1;
+				}
+			}
+		}
+
+		if (foundIndex > 0) {
+			this.currentDiffIndex.set(foundIndex);
+		}
+	}
+
+	private updateActiveDiffIndexFromScroll(): void {
+		if (!this.diffEditorInstance) return;
+		const changes = this.diffEditorInstance.getLineChanges();
+		if (!changes || changes.length === 0) {
+			this.currentDiffIndex.set(0);
+			return;
+		}
+
+		const ranges = this.diffEditorInstance.getModifiedEditor().getVisibleRanges();
+		if (!ranges || ranges.length === 0) return;
+
+		const startLine = ranges[0].startLineNumber;
+		const endLine = ranges[0].endLineNumber;
+
+		for (let i = 0; i < changes.length; i++) {
+			const ch = changes[i];
+			const s =
+				ch.modifiedStartLineNumber > 0
+					? ch.modifiedStartLineNumber
+					: ch.modifiedEndLineNumber;
+			if (s >= startLine && s <= endLine) {
+				this.currentDiffIndex.set(i + 1);
+				return;
+			}
+		}
+
+		const midLine = Math.floor((startLine + endLine) / 2);
+		this.updateActiveDiffIndex(midLine, false);
 	}
 
 	@HostListener('window:keydown.escape')

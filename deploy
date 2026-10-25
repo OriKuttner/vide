@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+set -e
+
+# Ensure we are in the project root directory
+cd "$(dirname "$0")"
+
+# Helper function to get current version from package.json
+get_current_version() {
+	node -p "require('./package.json').version"
+}
+
+# Helper function to update version across package.json, tauri.conf.json, and Cargo.toml
+update_version() {
+	local new_ver="$1"
+	echo "Updating version to $new_ver in package.json, tauri.conf.json, and Cargo.toml..."
+
+	# 1. Update package.json
+	node -e '
+		const fs = require("fs");
+		const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+		pkg.version = process.argv[1];
+		fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+	' "$new_ver"
+
+	# 2. Update src-tauri/tauri.conf.json
+	node -e '
+		const fs = require("fs");
+		const conf = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+		conf.version = process.argv[1];
+		fs.writeFileSync("src-tauri/tauri.conf.json", JSON.stringify(conf, null, 2) + "\n");
+	' "$new_ver"
+
+	# 3. Update src-tauri/Cargo.toml (only the first version line under [package])
+	sed -i "0,/^version = .*/s/^version = .*/version = \"$new_ver\"/" src-tauri/Cargo.toml
+}
+
+# Action 1: Run development mode
+run_dev() {
+	echo "Starting development mode (tauri dev)..."
+	npm run desktop
+}
+
+# Action 2: Build deb with incremented build number
+build_deb_increment() {
+	local current_ver
+	current_ver=$(get_current_version)
+
+	IFS='.' read -r major minor build <<< "$current_ver"
+	if [[ -z "$build" ]]; then
+		build=0
+	fi
+	local next_build=$((build + 1))
+	local new_ver="${major}.${minor}.${next_build}"
+
+	echo "Current version: $current_ver"
+	echo "Incrementing build number -> $new_ver"
+
+	update_version "$new_ver"
+	run_deb_build "$new_ver"
+}
+
+# Action 3: Change major.minor version and build deb (build number continues incrementing)
+build_deb_new_version() {
+	local input_ver="$1"
+	local current_ver
+	current_ver=$(get_current_version)
+
+	IFS='.' read -r cur_major cur_minor cur_build <<< "$current_ver"
+	if [[ -z "$cur_build" ]]; then
+		cur_build=0
+	fi
+	local next_build=$((cur_build + 1))
+
+	if [[ -z "$input_ver" ]]; then
+		echo "Current version: $current_ver (next build number will be: $next_build)"
+		read -rp "Enter new version (X.Y format, e.g. 0.2): " input_ver
+	fi
+
+	if ! [[ "$input_ver" =~ ^[0-9]+\.[0-9]+$ ]]; then
+		echo "Error: Invalid version format '$input_ver'. Please use X.Y (e.g. 0.2)."
+		exit 1
+	fi
+
+	local target_ver="${input_ver}.${next_build}"
+
+	echo "Current version: $current_ver"
+	echo "Updating version: $input_ver and incrementing build -> $target_ver"
+	update_version "$target_ver"
+	run_deb_build "$target_ver"
+}
+
+# Compile deb bundle using Tauri CLI and copy to root as vide.deb
+run_deb_build() {
+	local ver="$1"
+	echo "Building .deb bundle for version $ver..."
+	npx tauri build --bundles deb
+
+	local deb_file="src-tauri/target/release/bundle/deb/vide_${ver}_amd64.deb"
+	local root_deb="./vide.deb"
+	echo ""
+	if [[ -f "$deb_file" ]]; then
+		cp "$deb_file" "$root_deb"
+		echo "================================================="
+		echo "Successfully built .deb package!"
+		echo "Internal Version: $ver"
+		echo "Source: $deb_file"
+		echo "Copied to root: $root_deb"
+		echo "Size: $(du -h "$root_deb" | cut -f1)"
+		echo "================================================="
+	else
+		echo "Build completed. Output bundle is located in src-tauri/target/release/bundle/deb/"
+	fi
+}
+
+# Interactive menu
+interactive_menu() {
+	local cur
+	cur=$(get_current_version)
+	echo "============================================="
+	echo "           Vector IDE (vide) Build           "
+	echo "============================================="
+	echo "Current version: $cur"
+	echo ""
+	echo "1) Run development mode (tauri dev)"
+	echo "2) Build .deb (increment build number)"
+	echo "3) Change version (X.Y) and build .deb"
+	echo "4) Exit"
+	echo "============================================="
+	read -rp "Choose option [1-4]: " choice
+
+	case "$choice" in
+		1) run_dev ;;
+		2) build_deb_increment ;;
+		3) build_deb_new_version ;;
+		4) echo "Exiting."; exit 0 ;;
+		*) echo "Invalid option."; exit 1 ;;
+	esac
+}
+
+# CLI routing
+case "$1" in
+	dev|start)
+		run_dev
+		;;
+	deb|build)
+		if [[ -n "$2" ]]; then
+			build_deb_new_version "$2"
+		else
+			build_deb_increment
+		fi
+		;;
+	version|release)
+		build_deb_new_version "$2"
+		;;
+	*)
+		if [[ -z "$1" ]]; then
+			interactive_menu
+		else
+			echo "Usage: $0 [dev | deb | version <X.Y>]"
+			exit 1
+		fi
+		;;
+esac

@@ -4,7 +4,7 @@
  * Written by: Ori Kuttner and Shira (Antigravity agent)
  */
 
-import { Component, HostListener, inject, signal, effect } from '@angular/core';
+import { Component, HostListener, inject, signal, effect, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Title } from '@angular/platform-browser';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
@@ -36,6 +36,8 @@ import { TerminalService } from './services/terminal.service';
 	styleUrl: './app.scss',
 })
 export class App {
+	@ViewChild(EditorComponent) editorComponent?: EditorComponent;
+
 	public workspaceService = inject(WorkspaceService);
 	public zoomService = inject(ZoomService);
 	public navigationHistoryService = inject(NavigationHistoryService);
@@ -142,6 +144,28 @@ export class App {
 			event.preventDefault();
 			this.workspaceService.promptCloseEditor();
 			return;
+		}
+
+		// Diff navigation shortcuts: F7 / Shift+F7 (JetBrains standard) or Alt+F5 / Shift+Alt+F5 (VS Code standard)
+		if (this.workspaceService.diffModeActive()) {
+			if (event.key === 'F7' || code === 'F7') {
+				event.preventDefault();
+				if (isShift) {
+					this.editorComponent?.prevDiff();
+				} else {
+					this.editorComponent?.nextDiff();
+				}
+				return;
+			}
+			if (event.altKey && (event.key === 'F5' || code === 'F5')) {
+				event.preventDefault();
+				if (isShift) {
+					this.editorComponent?.prevDiff();
+				} else {
+					this.editorComponent?.nextDiff();
+				}
+				return;
+			}
 		}
 
 		const activeEl = document.activeElement;

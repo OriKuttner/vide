@@ -4,8 +4,9 @@
  * Written by: Ori Kuttner and Shira (Antigravity agent)
  */
 
-import { Component, input, inject } from '@angular/core';
+import { Component, input, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { getVersion } from '@tauri-apps/api/app';
 import { WorkspaceService } from '../../services/workspace.service';
 import { ZoomService } from '../../services/zoom.service';
 import { AiService } from '../../services/ai.service';
@@ -19,13 +20,30 @@ import { isBinaryFile } from '../../models/file.model';
 	templateUrl: './status-bar.component.html',
 	styleUrl: './status-bar.component.scss',
 })
-export class StatusBarComponent {
+export class StatusBarComponent implements OnInit {
 	public cursor = input<{ line: number; column: number }>({ line: 1, column: 1 });
+	public appVersion = signal<string>('v0.1.0');
 
 	public workspaceService = inject(WorkspaceService);
 	public zoomService = inject(ZoomService);
 	public aiService = inject(AiService);
 	public terminalService = inject(TerminalService);
+
+	public ngOnInit(): void {
+		getVersion()
+			.then((ver) => this.appVersion.set(`v${ver}`))
+			.catch(() => this.appVersion.set('v0.1.0'));
+	}
+
+	public async copyVersion(): Promise<void> {
+		const ver = this.appVersion();
+		try {
+			await navigator.clipboard.writeText(ver);
+			this.workspaceService.showNotification(`✓ Vector IDE version copied: ${ver}`);
+		} catch {
+			this.workspaceService.showNotification(`Vector IDE ${ver}`);
+		}
+	}
 
 	public onTerminalContextMenu(event: MouseEvent): void {
 		event.preventDefault();

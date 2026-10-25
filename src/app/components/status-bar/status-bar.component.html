@@ -145,5 +145,14 @@
 				}}</span
 			>
 		</button>
+
+		<button
+			type="button"
+			class="status-btn version-badge"
+			(click)="copyVersion()"
+			[title]="'Vector IDE ' + appVersion() + ' (Click to copy version)'"
+		>
+			<span>{{ appVersion() }}</span>
+		</button>
 	</div>
 </footer>

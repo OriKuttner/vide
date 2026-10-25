@@ -5,6 +5,7 @@
 /tmp
 /out-tsc
 /bazel-out
+*.deb
 
 # Node
 /node_modules
