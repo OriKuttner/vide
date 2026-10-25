@@ -324,6 +324,7 @@ export class WorkspaceService {
 	private recentDirHandle: any = null;
 	private recentGitDirHandle: any = null;
 	private isAutoSyncing = false;
+	private autoSyncIntervalId: any = null;
 	readonly isRestoringSession = signal<boolean>(false);
 	private saveSessionTimeout: any = null;
 	private beforeCloseCallbacks: Array<() => void | Promise<void>> = [];
@@ -1730,21 +1731,62 @@ export class WorkspaceService {
 	}
 
 	/**
-	 * Sets up auto-synchronization on window focus & visibilitychange events
-	 * (e.g. returning from terminal or other external tools).
+	 * Sets up auto-synchronization:
+	 * 1. Window focus & visibilitychange listeners (e.g. returning from terminal).
+	 * 2. Periodic background check every 30 seconds while the window is focused.
+	 * When the window loses focus or becomes hidden, the timer is stopped to conserve system resources.
 	 */
 	private setupAutoSync(): void {
 		if (typeof window === 'undefined') return;
 
 		window.addEventListener('focus', () => {
 			this.syncExternalChanges();
+			this.startAutoSyncTimer();
+		});
+
+		window.addEventListener('blur', () => {
+			this.stopAutoSyncTimer();
 		});
 
 		document.addEventListener('visibilitychange', () => {
 			if (document.visibilityState === 'visible') {
 				this.syncExternalChanges();
+				if (typeof document !== 'undefined' && document.hasFocus()) {
+					this.startAutoSyncTimer();
+				}
+			} else {
+				this.stopAutoSyncTimer();
 			}
 		});
+
+		if (
+			typeof document !== 'undefined' &&
+			document.hasFocus() &&
+			document.visibilityState === 'visible'
+		) {
+			this.startAutoSyncTimer();
+		}
+	}
+
+	private startAutoSyncTimer(): void {
+		if (this.autoSyncIntervalId) return;
+		this.autoSyncIntervalId = setInterval(() => {
+			if (
+				typeof document !== 'undefined' &&
+				(!document.hasFocus() || document.visibilityState !== 'visible')
+			) {
+				this.stopAutoSyncTimer();
+				return;
+			}
+			this.syncExternalChanges();
+		}, 30000);
+	}
+
+	private stopAutoSyncTimer(): void {
+		if (this.autoSyncIntervalId) {
+			clearInterval(this.autoSyncIntervalId);
+			this.autoSyncIntervalId = null;
+		}
 	}
 
 	/**
