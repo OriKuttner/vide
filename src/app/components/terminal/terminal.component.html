@@ -52,6 +52,15 @@
 			<button
 				type="button"
 				class="term-action-btn"
+				(click)="openExternalTerminal()"
+				title="Open in External System Terminal"
+			>
+				<span class="action-icon">↗</span>
+				<span class="action-text">External</span>
+			</button>
+			<button
+				type="button"
+				class="term-action-btn"
 				(click)="toggleMaximize()"
 				[title]="isMaximized() ? 'Restore Size (Double-click header)' : 'Maximize Terminal (Double-click header)'"
 			>

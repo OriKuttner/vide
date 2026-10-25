@@ -4934,8 +4934,11 @@ export class WorkspaceService {
 		this.showNotification('Folder closed');
 	}
 
-	public async openSystemTerminal(): Promise<void> {
-		const rootPath = this.nativeWorkspacePath();
+	public async openSystemTerminal(targetPath?: string): Promise<void> {
+		let rootPath = targetPath || this.nativeWorkspacePath();
+		if (!rootPath && typeof window !== 'undefined') {
+			rootPath = localStorage.getItem('vector_last_native_path') || '';
+		}
 		if (!this.isDesktop() || !rootPath) {
 			this.showNotification('Terminal is only available in desktop mode with an open folder');
 			return;
@@ -4943,7 +4946,7 @@ export class WorkspaceService {
 
 		try {
 			await invoke('open_system_terminal', { dirPath: rootPath });
-			this.showNotification('Terminal opened');
+			this.showNotification('External terminal opened');
 		} catch (err: any) {
 			console.error('Failed to open system terminal:', err);
 			this.showNotification(`Terminal error: ${err.message || err}`);

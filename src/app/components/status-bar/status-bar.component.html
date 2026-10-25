@@ -37,7 +37,8 @@
 				class="status-btn terminal-badge"
 				[class.active]="terminalService.terminalVisible()"
 				(click)="terminalService.toggleTerminal()"
-				title="Toggle Integrated Terminal (Ctrl+`)"
+				(contextmenu)="onTerminalContextMenu($event)"
+				title="Toggle Integrated Terminal (Ctrl+`) • Right-click to open External Terminal"
 			>
 				<svg
 					class="terminal-svg"

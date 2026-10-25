@@ -27,6 +27,12 @@ export class StatusBarComponent {
 	public aiService = inject(AiService);
 	public terminalService = inject(TerminalService);
 
+	public onTerminalContextMenu(event: MouseEvent): void {
+		event.preventDefault();
+		event.stopPropagation();
+		this.workspaceService.openSystemTerminal();
+	}
+
 	public cycleZoom(): void {
 		const cur = this.zoomService.zoomPercentage();
 		if (cur >= 150) {

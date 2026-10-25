@@ -328,6 +328,11 @@ export class TerminalComponent implements AfterViewInit, OnDestroy {
 		this.terminalService.restartTerminal();
 	}
 
+	public openExternalTerminal(): void {
+		const cwd = this.resolveCurrentDirectory();
+		this.workspaceService.openSystemTerminal(cwd);
+	}
+
 	public closePanel(): void {
 		this.terminalService.closeTerminal();
 	}
