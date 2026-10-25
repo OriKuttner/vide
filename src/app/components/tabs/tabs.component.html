@@ -180,7 +180,7 @@
 								class="stack-nav-btn"
 								[disabled]="!navigationHistoryService.canNavigateBack()"
 								(click)="navigationHistoryService.navigateBack()"
-								title="Go Back (Alt+←)"
+								title="Pop from Stack / Go Back (Ctrl+←)"
 							>
 								← Back
 							</button>
@@ -188,7 +188,7 @@
 								class="stack-nav-btn"
 								[disabled]="!navigationHistoryService.canNavigateForward()"
 								(click)="navigationHistoryService.navigateForward()"
-								title="Go Forward (Alt+→)"
+								title="Go Forward (Ctrl+→)"
 							>
 								Forward →
 							</button>
@@ -286,18 +286,18 @@
 							class="footer-action-btn"
 							[disabled]="!navigationHistoryService.canNavigateBack()"
 							(click)="navigationHistoryService.navigateBack()"
-							title="Go Back (Alt+←)"
+							title="Pop from Stack / Go Back (Ctrl+←)"
 						>
-							<kbd>Alt+←</kbd> Back
+							<kbd>Ctrl+←</kbd> Back
 						</button>
 						<button
 							type="button"
 							class="footer-action-btn"
 							[disabled]="!navigationHistoryService.canNavigateForward()"
 							(click)="navigationHistoryService.navigateForward()"
-							title="Go Forward (Alt+→)"
+							title="Go Forward (Ctrl+→)"
 						>
-							<kbd>Alt+→</kbd> Forward
+							<kbd>Ctrl+→</kbd> Forward
 						</button>
 						<button
 							type="button"

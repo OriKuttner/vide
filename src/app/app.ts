@@ -144,7 +144,14 @@ export class App {
 			return;
 		}
 
-		if (event.altKey && !isCtrlOrCmd && !isShift) {
+		const activeEl = document.activeElement;
+		const isInputFocused =
+			activeEl &&
+			(activeEl.tagName === 'INPUT' ||
+				activeEl.tagName === 'TEXTAREA' ||
+				(activeEl as HTMLElement).isContentEditable);
+
+		if (!isInputFocused && (event.altKey || isCtrlOrCmd) && !isShift) {
 			if (code === 'ArrowLeft' || event.key === 'ArrowLeft') {
 				event.preventDefault();
 				this.navigationHistoryService.navigateBack();

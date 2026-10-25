@@ -68,13 +68,14 @@ export class NavigationHistoryService {
 		const slice = list.slice(start);
 
 		// Return with original indices reversed (newest first)
+		const currIdx = this.currentIndex();
 		return slice
 			.map((entry, offset) => {
 				const originalIndex = start + offset;
 				return {
 					entry,
 					originalIndex,
-					isCurrent: false,
+					isCurrent: originalIndex === currIdx,
 				};
 			})
 			.reverse();
@@ -296,35 +297,10 @@ export class NavigationHistoryService {
 	}
 
 	/**
-	 * Jumps directly to a given navigation entry from the dropdown
+	 * Jumps directly to a given navigation entry from the dropdown without removing it from the stack
 	 */
 	public async jumpToEntry(entry: NavigationEntry, originalIndex?: number): Promise<void> {
-		const currentEntry = this.captureCurrentLocation('jump');
-		const historyList = this.history();
-
-		if (
-			typeof originalIndex === 'number' &&
-			originalIndex >= 0 &&
-			originalIndex < historyList.length
-		) {
-			const poppedAfter = historyList.slice(originalIndex + 1);
-
-			// Truncate history to originalIndex (excluding target entry itself since user is jumping to it)
-			this.history.set(historyList.slice(0, originalIndex));
-			this.currentIndex.set(this.history().length - 1);
-
-			// Forward stack gets current location and popped intermediate entries in forward order
-			const toForward: NavigationEntry[] = [];
-			if (currentEntry) {
-				toForward.push(currentEntry);
-			}
-			for (let i = poppedAfter.length - 1; i >= 0; i--) {
-				toForward.push(poppedAfter[i]);
-			}
-			this.forwardStack.update((fwd) => [...fwd, ...toForward]);
-		}
-
-		await this.performJump(entry);
+		await this.performJump(entry, originalIndex);
 	}
 
 	/**
@@ -513,7 +489,7 @@ export class NavigationHistoryService {
 	/**
 	 * Performs actual file opening and line jumping
 	 */
-	private async performJump(target: NavigationEntry): Promise<void> {
+	private async performJump(target: NavigationEntry, targetIndex?: number): Promise<void> {
 		this.isNavigating = true;
 		try {
 			const file = await this.workspaceService.openFileByPath(target.filePath);
@@ -525,7 +501,8 @@ export class NavigationHistoryService {
 			this.activeFileCol = target.column || 1;
 			this.activeHasInteracted = true;
 			this.closeDropdown();
-			this.currentIndex.set(this.history().length - 1);
+			const newIdx = targetIndex !== undefined ? targetIndex : this.history().length - 1;
+			this.currentIndex.set(newIdx);
 			this.syncToWorkspaceSession();
 		} finally {
 			setTimeout(() => {

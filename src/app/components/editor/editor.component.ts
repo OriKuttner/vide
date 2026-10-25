@@ -1200,11 +1200,14 @@ ${rawContent}
 			},
 		});
 
-		// Action & Shortcut: Alt+Left for Navigation History: Go Back
+		// Action & Shortcut: Ctrl+Left / Alt+Left for Navigation History: Go Back (Pop from stack)
 		this.editorInstance.addAction({
 			id: 'vide.navigateBack',
-			label: 'Go Back (Alt+←)',
-			keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow],
+			label: 'Pop from Stack / Go Back (Ctrl+←)',
+			keybindings: [
+				monaco.KeyMod.CtrlCmd | monaco.KeyCode.LeftArrow,
+				monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow,
+			],
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 0.2,
 			run: async () => {
@@ -1212,11 +1215,14 @@ ${rawContent}
 			},
 		});
 
-		// Action & Shortcut: Alt+Right for Navigation History: Go Forward
+		// Action & Shortcut: Ctrl+Right / Alt+Right for Navigation History: Go Forward
 		this.editorInstance.addAction({
 			id: 'vide.navigateForward',
-			label: 'Go Forward (Alt+→)',
-			keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.RightArrow],
+			label: 'Go Forward (Ctrl+→)',
+			keybindings: [
+				monaco.KeyMod.CtrlCmd | monaco.KeyCode.RightArrow,
+				monaco.KeyMod.Alt | monaco.KeyCode.RightArrow,
+			],
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 0.3,
 			run: async () => {
@@ -1728,6 +1734,12 @@ ${rawContent}
 			});
 			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, () => {
 				this.workspaceService.setSidebarView('search');
+			});
+			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.LeftArrow, () => {
+				this.navigationHistoryService.navigateBack();
+			});
+			ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.RightArrow, () => {
+				this.navigationHistoryService.navigateForward();
 			});
 			ed.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
 				this.navigationHistoryService.navigateBack();
