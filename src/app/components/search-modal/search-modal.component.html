@@ -25,6 +25,7 @@
 				workspaceService.activeModal() !== 'delete-folder-confirm' &&
 				workspaceService.activeModal() !== 'git-untrack-confirm' &&
 				workspaceService.activeModal() !== 'references' &&
+				workspaceService.activeModal() !== 'save-conflict' &&
 				workspaceService.activeModal() !== 'git-commit-details'
 			) {
 				<div class="input-container">
@@ -100,6 +101,51 @@
 					</button>
 					<button type="button" class="btn btn-primary" (click)="saveAndClose()">
 						Save
+					</button>
+				</div>
+			}
+
+			@if (
+				workspaceService.activeModal() === 'save-conflict' &&
+					workspaceService.pendingSaveConflictFile();
+				as conflictFile
+			) {
+				<div class="unsaved-modal-body">
+					<div class="unsaved-warning-icon">
+						<svg
+							viewBox="0 0 24 24"
+							width="38"
+							height="38"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+							/>
+						</svg>
+					</div>
+					<div class="unsaved-message-box">
+						<h3 class="unsaved-title">
+							"{{ conflictFile.name }}" has been modified on disk
+						</h3>
+						<p class="unsaved-desc">
+							The file on disk has changed externally since you opened or last saved it.
+							Do you want to overwrite the disk changes with your current edits, or discard your unsaved edits and reload from disk?
+						</p>
+					</div>
+				</div>
+				<div class="action-footer unsaved-footer">
+					<button type="button" class="btn btn-secondary" (click)="cancelSaveConflict()">
+						Cancel
+					</button>
+					<button type="button" class="btn btn-danger" (click)="discardAndReloadFromDisk()">
+						Discard & Reload
+					</button>
+					<button type="button" class="btn btn-primary" (click)="overwriteDiskFile()">
+						Overwrite
 					</button>
 				</div>
 			}

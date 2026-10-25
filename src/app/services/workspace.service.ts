@@ -176,6 +176,7 @@ export class WorkspaceService {
 		| 'references'
 		| 'git-commit-details'
 		| 'rename-entry'
+		| 'save-conflict'
 		| null
 	>(null);
 	readonly pendingCommitDetails = signal<GitCommitDetails | null>(null);
@@ -184,6 +185,8 @@ export class WorkspaceService {
 	readonly pendingReferences = signal<GrepResult[]>([]);
 	readonly isSearchingReferences = signal<boolean>(false);
 	readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
+	readonly pendingSaveConflictFile = signal<WorkspaceFile | null>(null);
+	readonly pendingSaveConflictDiskContent = signal<string | null>(null);
 	readonly pendingDeleteFile = signal<WorkspaceFile | null>(null);
 	readonly pendingDeleteFolder = signal<FileTreeNode | null>(null);
 	readonly pendingRenameNode = signal<FileTreeNode | null>(null);
@@ -1979,12 +1982,16 @@ export class WorkspaceService {
 
 			// Genuinely modified on disk externally by another process
 			if (active.isModified) {
+				active.hasExternalConflict = true;
+				active.externalDiskContent = diskContent;
 				active.savedContent = diskContent;
 				this.files.update((files) =>
 					files.map((f) =>
 						f.id === active.id
 							? {
 									...f,
+									hasExternalConflict: true,
+									externalDiskContent: diskContent!,
 									savedContent: diskContent!,
 									lastDiskMtime: currentMtime,
 									lastDiskSize: currentSize,
@@ -1998,6 +2005,8 @@ export class WorkspaceService {
 						t.id === active.id
 							? {
 									...t,
+									hasExternalConflict: true,
+									externalDiskContent: diskContent!,
 									savedContent: diskContent!,
 									lastDiskMtime: currentMtime,
 									lastDiskSize: currentSize,
@@ -5354,7 +5363,7 @@ export class WorkspaceService {
 	/**
 	 * Saves a specific file back to disk and updates savedContent & isModified.
 	 */
-	public async saveFile(file: WorkspaceFile): Promise<boolean> {
+	public async saveFile(file: WorkspaceFile, force = false): Promise<boolean> {
 		if (file.isBinary || file.isImage) {
 			return true;
 		}
@@ -5374,6 +5383,58 @@ export class WorkspaceService {
 			this.editorConfigService.loadConfigFromContent(file.content);
 		}
 
+		// Check for external modification conflict before writing to disk unless forced
+		if (!force) {
+			let isConflict = !!file.hasExternalConflict;
+			let diskContent: string | null = file.externalDiskContent ?? null;
+
+			if (!isConflict) {
+				if (isTauriApp() && file.fsPath) {
+					try {
+						const currentOnDisk = await invoke<string>('read_file_text', {
+							filePath: file.fsPath,
+						});
+						const baseContent = file.savedContent ?? file.originalContent;
+						if (
+							baseContent !== undefined &&
+							currentOnDisk !== baseContent &&
+							currentOnDisk !== file.content
+						) {
+							isConflict = true;
+							diskContent = currentOnDisk;
+						}
+					} catch (e) {
+						console.warn('Could not read disk content for conflict check:', e);
+					}
+				} else if (file.handle && typeof file.handle.getFile === 'function') {
+					try {
+						const fileObj = await file.handle.getFile();
+						const currentOnDisk = await fileObj.text();
+						const baseContent = file.savedContent ?? file.originalContent;
+						if (
+							baseContent !== undefined &&
+							currentOnDisk !== baseContent &&
+							currentOnDisk !== file.content
+						) {
+							isConflict = true;
+							diskContent = currentOnDisk;
+						}
+					} catch (e) {
+						console.warn('Could not read handle content for conflict check:', e);
+					}
+				}
+			}
+
+			if (isConflict && diskContent !== null) {
+				file.hasExternalConflict = true;
+				file.externalDiskContent = diskContent;
+				this.pendingSaveConflictFile.set(file);
+				this.pendingSaveConflictDiskContent.set(diskContent);
+				this.activeModal.set('save-conflict');
+				return false;
+			}
+		}
+
 		if (isTauriApp() && file.fsPath) {
 			try {
 				await invoke('write_file_text', {
@@ -5391,12 +5452,16 @@ export class WorkspaceService {
 					file.lastDiskSize = meta.size;
 					file.fileSize = meta.size;
 				} catch {}
+				file.hasExternalConflict = false;
+				file.externalDiskContent = undefined;
 				this.files.update((files) =>
 					files.map((f) =>
 						f.id === file.id
 							? {
 									...f,
 									isModified: false,
+									hasExternalConflict: false,
+									externalDiskContent: undefined,
 									savedContent: file.content,
 									lastDiskMtime: file.lastDiskMtime,
 									lastDiskSize: file.lastDiskSize,
@@ -5411,6 +5476,8 @@ export class WorkspaceService {
 							? {
 									...t,
 									isModified: false,
+									hasExternalConflict: false,
+									externalDiskContent: undefined,
 									savedContent: file.content,
 									lastDiskMtime: file.lastDiskMtime,
 									lastDiskSize: file.lastDiskSize,
@@ -5445,12 +5512,16 @@ export class WorkspaceService {
 					} catch {}
 				}
 
+				file.hasExternalConflict = false;
+				file.externalDiskContent = undefined;
 				this.files.update((files) =>
 					files.map((f) =>
 						f.id === file.id
 							? {
 									...f,
 									isModified: false,
+									hasExternalConflict: false,
+									externalDiskContent: undefined,
 									savedContent: file.content,
 									lastDiskMtime: file.lastDiskMtime,
 									lastDiskSize: file.lastDiskSize,
@@ -5465,6 +5536,8 @@ export class WorkspaceService {
 							? {
 									...t,
 									isModified: false,
+									hasExternalConflict: false,
+									externalDiskContent: undefined,
 									savedContent: file.content,
 									lastDiskMtime: file.lastDiskMtime,
 									lastDiskSize: file.lastDiskSize,
@@ -5483,14 +5556,32 @@ export class WorkspaceService {
 				return false;
 			}
 		} else {
+			file.hasExternalConflict = false;
+			file.externalDiskContent = undefined;
 			this.files.update((files) =>
 				files.map((f) =>
-					f.id === file.id ? { ...f, isModified: false, savedContent: file.content } : f,
+					f.id === file.id
+						? {
+								...f,
+								isModified: false,
+								hasExternalConflict: false,
+								externalDiskContent: undefined,
+								savedContent: file.content,
+							}
+						: f,
 				),
 			);
 			this.openTabs.update((tabs) =>
 				tabs.map((t) =>
-					t.id === file.id ? { ...t, isModified: false, savedContent: file.content } : t,
+					t.id === file.id
+						? {
+								...t,
+								isModified: false,
+								hasExternalConflict: false,
+								externalDiskContent: undefined,
+								savedContent: file.content,
+							}
+						: t,
 				),
 			);
 			this.showNotification(`Updated ${file.name} (in-memory)`);
@@ -5505,6 +5596,114 @@ export class WorkspaceService {
 		const active = this.activeFile();
 		if (!active) return false;
 		return this.saveFile(active);
+	}
+
+	public async resolveSaveConflictOverwrite(): Promise<void> {
+		const file = this.pendingSaveConflictFile();
+		this.pendingSaveConflictFile.set(null);
+		this.pendingSaveConflictDiskContent.set(null);
+		this.closeModal();
+		if (file) {
+			await this.saveFile(file, true);
+		}
+	}
+
+	public async resolveSaveConflictReload(): Promise<void> {
+		const file = this.pendingSaveConflictFile();
+		const diskContent = this.pendingSaveConflictDiskContent();
+		this.pendingSaveConflictFile.set(null);
+		this.pendingSaveConflictDiskContent.set(null);
+		this.closeModal();
+		if (file && diskContent !== null) {
+			await this.reloadFileWithContent(file, diskContent);
+			this.showNotification(`✓ Reloaded ${file.name} from disk (discarded local edits)`);
+		}
+	}
+
+	public cancelSaveConflict(): void {
+		this.pendingSaveConflictFile.set(null);
+		this.pendingSaveConflictDiskContent.set(null);
+		this.closeModal();
+	}
+
+	public async reloadFileWithContent(file: WorkspaceFile, diskContent: string): Promise<void> {
+		file.content = diskContent;
+		file.savedContent = diskContent;
+		file.isModified = false;
+		file.hasExternalConflict = false;
+		file.externalDiskContent = undefined;
+
+		if (isTauriApp() && file.fsPath) {
+			try {
+				const meta = await invoke<{ mtime_ms: number; size: number }>('get_file_metadata', {
+					filePath: file.fsPath,
+				});
+				file.lastDiskMtime = meta.mtime_ms;
+				file.lastDiskSize = meta.size;
+				file.fileSize = meta.size;
+			} catch {}
+		} else if (file.handle && typeof file.handle.getFile === 'function') {
+			try {
+				const fileObj = await file.handle.getFile();
+				file.lastDiskMtime = fileObj.lastModified;
+				file.lastDiskSize = fileObj.size;
+				file.fileSize = fileObj.size;
+			} catch {}
+		}
+
+		this.files.update((files) =>
+			files.map((f) =>
+				f.id === file.id
+					? {
+							...f,
+							content: diskContent,
+							savedContent: diskContent,
+							isModified: false,
+							hasExternalConflict: false,
+							externalDiskContent: undefined,
+							lastDiskMtime: file.lastDiskMtime,
+							lastDiskSize: file.lastDiskSize,
+							fileSize: file.fileSize,
+						}
+					: f,
+			),
+		);
+
+		this.openTabs.update((tabs) =>
+			tabs.map((t) =>
+				t.id === file.id
+					? {
+							...t,
+							content: diskContent,
+							savedContent: diskContent,
+							isModified: false,
+							hasExternalConflict: false,
+							externalDiskContent: undefined,
+							lastDiskMtime: file.lastDiskMtime,
+							lastDiskSize: file.lastDiskSize,
+							fileSize: file.fileSize,
+						}
+					: t,
+			),
+		);
+
+		if (this.diffModeActive() && this.activeDiffFile()?.id === file.id) {
+			const curDiff = this.activeDiffFile()!;
+			this.activeDiffFile.set({
+				...curDiff,
+				content: diskContent,
+				savedContent: diskContent,
+				isModified: false,
+				hasExternalConflict: false,
+				externalDiskContent: undefined,
+				lastDiskMtime: file.lastDiskMtime,
+				lastDiskSize: file.lastDiskSize,
+			});
+		}
+
+		this.pendingContentReplacement.set({ fileId: file.id, newContent: diskContent });
+		this.triggerSaveSessionState();
+		await this.refreshGitStatus();
 	}
 
 	public hasGitChanges(fileOrPath: WorkspaceFile | string): boolean {

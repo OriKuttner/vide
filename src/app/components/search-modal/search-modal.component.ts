@@ -236,6 +236,8 @@ export class SearchModalComponent {
 				const c = this.workspaceService.pendingCommitDetails();
 				return c ? `Commit ${c.short_hash}: ${c.subject}` : 'Git Commit Details';
 			}
+			case 'save-conflict':
+				return 'File Conflict - Modified on Disk';
 			default:
 				return '';
 		}
@@ -246,6 +248,7 @@ export class SearchModalComponent {
 			case 'rename-entry':
 				return 'Enter new name:';
 			case 'unsaved-changes':
+			case 'save-conflict':
 			case 'close-editor-confirm':
 			case 'ai-settings':
 			case 'delete-folder-confirm':
@@ -557,6 +560,18 @@ export class SearchModalComponent {
 	public cancelUnsavedClose(): void {
 		this.workspaceService.pendingUnsavedFile.set(null);
 		this.close();
+	}
+
+	public async overwriteDiskFile(): Promise<void> {
+		await this.workspaceService.resolveSaveConflictOverwrite();
+	}
+
+	public async discardAndReloadFromDisk(): Promise<void> {
+		await this.workspaceService.resolveSaveConflictReload();
+	}
+
+	public cancelSaveConflict(): void {
+		this.workspaceService.cancelSaveConflict();
 	}
 
 	public cancelDeleteFile(): void {

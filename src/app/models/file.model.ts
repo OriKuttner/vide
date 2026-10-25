@@ -32,6 +32,8 @@ export interface WorkspaceFile {
 	isIndentationCustom?: boolean;
 	cursor?: { line: number; column: number };
 	readOnly?: boolean;
+	hasExternalConflict?: boolean;
+	externalDiskContent?: string;
 	commitDiffInfo?: {
 		commitHash: string;
 		shortHash: string;
