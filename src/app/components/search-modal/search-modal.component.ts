@@ -102,7 +102,10 @@ export class SearchModalComponent {
 				this.inputValue.set('');
 				this.errorMessage.set('');
 				this.grepResults.set([]);
-				if (mode === 'new-file' || mode === 'new-folder') {
+				if (mode === 'rename-entry') {
+					const node = this.workspaceService.pendingRenameNode();
+					this.inputValue.set(node?.name || '');
+				} else if (mode === 'new-file' || mode === 'new-folder') {
 					const sel = this.workspaceService.selectedFolderPath();
 					if (sel) {
 						this.inputValue.set(`${sel.replace(/^\/+|\/+$/g, '')}/`);
@@ -135,8 +138,21 @@ export class SearchModalComponent {
 					if (this.inputField?.nativeElement) {
 						const el = this.inputField.nativeElement;
 						el.focus();
-						const len = el.value.length;
-						el.setSelectionRange(len, len);
+						if (mode === 'rename-entry') {
+							const val = el.value;
+							const dotIdx = val.lastIndexOf('.');
+							if (
+								dotIdx > 0 &&
+								this.workspaceService.pendingRenameNode()?.kind === 'file'
+							) {
+								el.setSelectionRange(0, dotIdx);
+							} else {
+								el.select();
+							}
+						} else {
+							const len = el.value.length;
+							el.setSelectionRange(len, len);
+						}
 					}
 				}, 50);
 			}
@@ -182,6 +198,12 @@ export class SearchModalComponent {
 
 	public getTitle(): string {
 		switch (this.workspaceService.activeModal()) {
+			case 'rename-entry': {
+				const node = this.workspaceService.pendingRenameNode();
+				return node
+					? `Rename ${node.kind === 'directory' ? 'Folder' : 'File'}: ${node.name}`
+					: 'Rename';
+			}
 			case 'new-file':
 				return 'Create New File';
 			case 'new-folder':
@@ -221,6 +243,8 @@ export class SearchModalComponent {
 
 	public getLabel(): string {
 		switch (this.workspaceService.activeModal()) {
+			case 'rename-entry':
+				return 'Enter new name:';
 			case 'unsaved-changes':
 			case 'close-editor-confirm':
 			case 'ai-settings':
@@ -328,7 +352,21 @@ export class SearchModalComponent {
 		const mode = this.workspaceService.activeModal();
 		const val = this.inputValue().trim();
 
-		if (mode === 'new-file') {
+		if (mode === 'rename-entry') {
+			if (!val) {
+				this.errorMessage.set('Please enter a valid name.');
+				return;
+			}
+			const node = this.workspaceService.pendingRenameNode();
+			if (!node) return;
+			const res = await this.workspaceService.renameWorkspaceEntry(node, val);
+			if (!res.success) {
+				this.errorMessage.set(res.error || `Failed to rename to "${val}".`);
+				setTimeout(() => {
+					this.inputField?.nativeElement?.select();
+				}, 50);
+			}
+		} else if (mode === 'new-file') {
 			if (!val) {
 				this.errorMessage.set('Please enter a file name.');
 				return;

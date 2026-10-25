@@ -1507,6 +1507,53 @@ fn delete_workspace_file(repo_path: Option<String>, file_path: String) -> Result
 }
 
 #[tauri::command]
+fn rename_workspace_entry(
+	repo_path: Option<String>,
+	old_path: String,
+	new_path: String,
+) -> Result<(), String> {
+	let resolve = |raw: &str| -> String {
+		if let Some(repo) = &repo_path {
+			let repo_clean = expand_path(repo);
+			let p = Path::new(raw);
+			if p.is_absolute() {
+				expand_path(raw)
+			} else {
+				let relative = raw.trim_start_matches('/').trim_start_matches("./");
+				Path::new(&repo_clean).join(relative).to_string_lossy().to_string()
+			}
+		} else {
+			expand_path(raw)
+		}
+	};
+
+	let clean_old = resolve(&old_path);
+	let clean_new = resolve(&new_path);
+
+	let target_old = Path::new(&clean_old);
+	if !target_old.exists() {
+		return Err(format!("Source '{}' does not exist", clean_old));
+	}
+
+	let target_new = Path::new(&clean_new);
+	if target_new.exists() {
+		return Err(format!("Destination '{}' already exists", clean_new));
+	}
+
+	if let Some(parent) = target_new.parent() {
+		if !parent.exists() {
+			fs::create_dir_all(parent)
+				.map_err(|e| format!("Failed to create parent directory for '{}': {}", clean_new, e))?;
+		}
+	}
+
+	fs::rename(target_old, target_new)
+		.map_err(|e| format!("Failed to rename '{}' to '{}': {}", clean_old, clean_new, e))?;
+
+	Ok(())
+}
+
+#[tauri::command]
 fn open_system_terminal(dir_path: String) -> Result<(), String> {
 	let clean_path = expand_path(&dir_path);
 	let path = std::path::Path::new(&clean_path);
@@ -2200,6 +2247,7 @@ pub fn run() {
 			get_git_diff_for_commit,
 			git_untrack_file,
 			delete_workspace_file,
+			rename_workspace_entry,
 			get_git_branches,
 			switch_git_branch,
 			create_git_branch,

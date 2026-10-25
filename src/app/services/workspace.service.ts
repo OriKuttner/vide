@@ -175,6 +175,7 @@ export class WorkspaceService {
 		| 'git-create-tag'
 		| 'references'
 		| 'git-commit-details'
+		| 'rename-entry'
 		| null
 	>(null);
 	readonly pendingCommitDetails = signal<GitCommitDetails | null>(null);
@@ -185,6 +186,7 @@ export class WorkspaceService {
 	readonly pendingUnsavedFile = signal<WorkspaceFile | null>(null);
 	readonly pendingDeleteFile = signal<WorkspaceFile | null>(null);
 	readonly pendingDeleteFolder = signal<FileTreeNode | null>(null);
+	readonly pendingRenameNode = signal<FileTreeNode | null>(null);
 	readonly pendingGitUntrackFile = signal<WorkspaceFile | null>(null);
 	readonly selectedFolderPath = signal<string>('');
 
@@ -2122,7 +2124,8 @@ export class WorkspaceService {
 			| 'git-branches'
 			| 'git-create-tag'
 			| 'references'
-			| 'git-commit-details',
+			| 'git-commit-details'
+			| 'rename-entry',
 	): void {
 		if (mode === 'grep') {
 			this.setSidebarView('search');
@@ -2460,6 +2463,142 @@ export class WorkspaceService {
 
 		this.selectedFolderPath.set(trimmed);
 		this.showNotification(`Created folder: ${folderName}`);
+		this.closeModal();
+		return { success: true };
+	}
+
+	public openRenameModal(node: FileTreeNode): void {
+		this.pendingRenameNode.set(node);
+		this.openModal('rename-entry');
+	}
+
+	public async renameWorkspaceEntry(
+		node: FileTreeNode,
+		newName: string,
+	): Promise<{ success: boolean; error?: string }> {
+		const trimmedName = newName.trim();
+		if (!trimmedName) {
+			return { success: false, error: 'Name cannot be empty.' };
+		}
+		if (trimmedName.includes('/') || trimmedName.includes('\\')) {
+			return { success: false, error: 'Name cannot contain slashes.' };
+		}
+		if (trimmedName === node.name) {
+			this.closeModal();
+			return { success: true };
+		}
+
+		const oldRelPath = node.path.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+		const lastSlash = oldRelPath.lastIndexOf('/');
+		const parentDir = lastSlash !== -1 ? oldRelPath.substring(0, lastSlash) : '';
+		const newRelPath = parentDir ? `${parentDir}/${trimmedName}` : trimmedName;
+
+		// 1. Rename on disk via Tauri
+		if (isTauriApp()) {
+			try {
+				await invoke('rename_workspace_entry', {
+					repoPath: this.nativeWorkspacePath(),
+					oldPath: oldRelPath,
+					newPath: newRelPath,
+				});
+			} catch (err: any) {
+				console.error('Failed to rename on disk:', err);
+				return { success: false, error: err?.message || String(err) };
+			}
+		}
+
+		// 2. Update open tabs
+		const isDir = node.kind === 'directory';
+		this.openTabs.update((tabs) =>
+			tabs.map((tab) => {
+				const normTabPath = tab.path.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+				if (!isDir && (normTabPath === oldRelPath || tab.id === node.id)) {
+					return {
+						...tab,
+						id: newRelPath,
+						name: trimmedName,
+						path: newRelPath,
+						language: detectLanguageFromFilename(trimmedName),
+						fsPath: this.nativeWorkspacePath()
+							? `${this.nativeWorkspacePath()}/${newRelPath}`
+							: undefined,
+					};
+				} else if (isDir && normTabPath.startsWith(`${oldRelPath}/`)) {
+					const updatedPath = normTabPath.replace(oldRelPath, newRelPath);
+					const fileName = updatedPath.split('/').pop() || tab.name;
+					return {
+						...tab,
+						id: updatedPath,
+						name: fileName,
+						path: updatedPath,
+						fsPath: this.nativeWorkspacePath()
+							? `${this.nativeWorkspacePath()}/${updatedPath}`
+							: undefined,
+					};
+				}
+				return tab;
+			}),
+		);
+
+		// 3. Update active file if affected
+		const activeId = this.activeFileId();
+		if (activeId) {
+			const normActive = activeId.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+			if (!isDir && (normActive === oldRelPath || activeId === node.id)) {
+				this.activeFileId.set(newRelPath);
+			} else if (isDir && normActive.startsWith(`${oldRelPath}/`)) {
+				this.activeFileId.set(normActive.replace(oldRelPath, newRelPath));
+			}
+		}
+
+		// 4. Update this.files()
+		this.files.update((allFiles) =>
+			allFiles.map((f) => {
+				const normPath = f.path.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+				if (!isDir && (normPath === oldRelPath || f.id === node.id)) {
+					return {
+						...f,
+						id: newRelPath,
+						name: trimmedName,
+						path: newRelPath,
+						language: detectLanguageFromFilename(trimmedName),
+						fsPath: this.nativeWorkspacePath()
+							? `${this.nativeWorkspacePath()}/${newRelPath}`
+							: undefined,
+					};
+				} else if (isDir && normPath.startsWith(`${oldRelPath}/`)) {
+					const updatedPath = normPath.replace(oldRelPath, newRelPath);
+					const fileName = updatedPath.split('/').pop() || f.name;
+					return {
+						...f,
+						id: updatedPath,
+						name: fileName,
+						path: updatedPath,
+						fsPath: this.nativeWorkspacePath()
+							? `${this.nativeWorkspacePath()}/${updatedPath}`
+							: undefined,
+					};
+				}
+				return f;
+			}),
+		);
+
+		// 5. Update node in tree directly
+		node.name = trimmedName;
+		node.path = newRelPath;
+		node.id = newRelPath;
+		if (this.nativeWorkspacePath()) {
+			node.fsPath = `${this.nativeWorkspacePath()}/${newRelPath}`;
+		}
+		if (node.file) {
+			node.file.name = trimmedName;
+			node.file.path = newRelPath;
+			node.file.id = newRelPath;
+		}
+
+		this.triggerTreeUpdate();
+		await this.refreshGitStatus();
+		this.showNotification(`Renamed to "${trimmedName}"`);
 		this.closeModal();
 		return { success: true };
 	}

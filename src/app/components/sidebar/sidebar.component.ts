@@ -14,6 +14,7 @@ import {
 	effect,
 	ChangeDetectorRef,
 	NgZone,
+	HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorkspaceService, GrepResult, FileGrepGroup } from '../../services/workspace.service';
@@ -61,6 +62,11 @@ export class SidebarComponent {
 	private searchDebounceTimer?: any;
 	private searchAbortController: AbortController | null = null;
 
+	// Tree Context Menu signals
+	public readonly contextMenuVisible = signal<boolean>(false);
+	public readonly contextMenuPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
+	public readonly contextMenuNode = signal<FileTreeNode | null>(null);
+
 	constructor() {
 		effect(() => {
 			this.workspaceService.isScanning();
@@ -81,7 +87,6 @@ export class SidebarComponent {
 
 		effect(() => {
 			const activeId = this.workspaceService.activeFileId();
-			this.workspaceService.fileTree();
 			if (activeId) {
 				setTimeout(() => {
 					const activeEl = document.querySelector('.tree-row.file.active');
@@ -384,6 +389,168 @@ export class SidebarComponent {
 	public onTreeContainerClick(event: MouseEvent): void {
 		if (event.target === event.currentTarget) {
 			this.workspaceService.clearSelectedFolder();
+		}
+	}
+
+	// Context Menu Handlers
+	public onNodeContextMenu(event: MouseEvent, node: FileTreeNode): void {
+		event.preventDefault();
+		event.stopPropagation();
+		const menuWidth = 180;
+		const menuHeight = 160;
+		const x = Math.min(event.clientX, window.innerWidth - menuWidth);
+		const y = Math.min(event.clientY, window.innerHeight - menuHeight);
+		this.contextMenuPosition.set({ x: Math.max(0, x), y: Math.max(0, y) });
+		this.contextMenuNode.set(node);
+		this.contextMenuVisible.set(true);
+	}
+
+	public onTreeContextMenu(event: MouseEvent): void {
+		event.preventDefault();
+		const menuWidth = 180;
+		const menuHeight = 100;
+		const x = Math.min(event.clientX, window.innerWidth - menuWidth);
+		const y = Math.min(event.clientY, window.innerHeight - menuHeight);
+		this.contextMenuPosition.set({ x: Math.max(0, x), y: Math.max(0, y) });
+		this.contextMenuNode.set(null);
+		this.contextMenuVisible.set(true);
+	}
+
+	public onWorkspaceTitleClick(event: MouseEvent): void {
+		event.stopPropagation();
+		if (this.contextMenuVisible()) {
+			this.closeContextMenu();
+			return;
+		}
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const menuWidth = 180;
+		const menuHeight = 100;
+		const x = Math.min(rect.left, window.innerWidth - menuWidth);
+		const y = Math.min(rect.bottom + 4, window.innerHeight - menuHeight);
+		this.contextMenuPosition.set({ x: Math.max(0, x), y: Math.max(0, y) });
+		this.contextMenuNode.set(null);
+		this.contextMenuVisible.set(true);
+	}
+
+	public onWorkspaceTitleContextMenu(event: MouseEvent): void {
+		event.preventDefault();
+		event.stopPropagation();
+		const menuWidth = 180;
+		const menuHeight = 100;
+		const x = Math.min(event.clientX, window.innerWidth - menuWidth);
+		const y = Math.min(event.clientY, window.innerHeight - menuHeight);
+		this.contextMenuPosition.set({ x: Math.max(0, x), y: Math.max(0, y) });
+		this.contextMenuNode.set(null);
+		this.contextMenuVisible.set(true);
+	}
+
+	public closeContextMenu(): void {
+		this.contextMenuVisible.set(false);
+	}
+
+	public onContextRefresh(): void {
+		this.closeContextMenu();
+		this.workspaceService.refreshAll();
+	}
+
+	public onContextNewFile(): void {
+		const node = this.contextMenuNode();
+		this.closeContextMenu();
+		if (node) {
+			if (node.kind === 'directory') {
+				this.workspaceService.selectFolder(node.path);
+			} else {
+				const lastSlash = node.path.lastIndexOf('/');
+				const parent = lastSlash !== -1 ? node.path.substring(0, lastSlash) : '';
+				this.workspaceService.selectFolder(parent);
+			}
+		} else {
+			this.workspaceService.selectFolder('');
+		}
+		this.workspaceService.openModal('new-file');
+	}
+
+	public onContextNewFolder(): void {
+		const node = this.contextMenuNode();
+		this.closeContextMenu();
+		if (node) {
+			if (node.kind === 'directory') {
+				this.workspaceService.selectFolder(node.path);
+			} else {
+				const lastSlash = node.path.lastIndexOf('/');
+				const parent = lastSlash !== -1 ? node.path.substring(0, lastSlash) : '';
+				this.workspaceService.selectFolder(parent);
+			}
+		} else {
+			this.workspaceService.selectFolder('');
+		}
+		this.workspaceService.openModal('new-folder');
+	}
+
+	public onContextRename(): void {
+		const node = this.contextMenuNode();
+		this.closeContextMenu();
+		if (node) {
+			this.workspaceService.openRenameModal(node);
+		}
+	}
+
+	public onContextDelete(): void {
+		const node = this.contextMenuNode();
+		this.closeContextMenu();
+		if (!node) return;
+		if (node.kind === 'directory') {
+			this.workspaceService.confirmDeleteFolder(node);
+		} else {
+			const file =
+				node.file ||
+				this.workspaceService.files().find((f) => f.path === node.path || f.id === node.id) ||
+				({
+					id: node.id,
+					name: node.name,
+					path: node.path,
+					fsPath: node.fsPath,
+					content: '',
+				} as WorkspaceFile);
+			this.workspaceService.confirmDeleteFile(file);
+		}
+	}
+
+	@HostListener('document:click')
+	public onDocumentClick(): void {
+		if (this.contextMenuVisible()) {
+			this.closeContextMenu();
+		}
+	}
+
+	@HostListener('document:keydown.escape')
+	public onEscape(): void {
+		if (this.contextMenuVisible()) {
+			this.closeContextMenu();
+		}
+	}
+
+	@HostListener('window:contextmenu', ['$event'])
+	public onWindowContextMenu(event: MouseEvent): void {
+		if (this.contextMenuVisible()) {
+			const target = event.target as HTMLElement | null;
+			if (
+				!target?.closest('.tree-container') &&
+				!target?.closest('.tree-context-menu') &&
+				!target?.closest('.clickable-title')
+			) {
+				this.closeContextMenu();
+			}
+		}
+	}
+
+	@HostListener('window:wheel', ['$event'])
+	public onWindowWheel(event: WheelEvent): void {
+		if (this.contextMenuVisible()) {
+			const target = event.target as HTMLElement | null;
+			if (!target?.closest('.tree-context-menu')) {
+				this.closeContextMenu();
+			}
 		}
 	}
 

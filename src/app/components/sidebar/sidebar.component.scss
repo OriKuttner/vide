@@ -96,21 +96,15 @@
 			}
 		}
 
-		&.btn-new-folder {
-			.part-folder {
-				fill: var(--color-icon-folder);
-			}
-			.part-plus {
-				fill: var(--color-icon-plus);
-			}
-		}
+		&.btn-refresh {
+			color: var(--text-muted, #717171);
 
-		&.btn-new-file {
-			.part-file {
-				fill: var(--color-icon-file);
+			&:hover {
+				color: var(--text-primary, #1e1e1e);
 			}
-			.part-plus {
-				fill: var(--color-icon-plus);
+
+			&.spinning .svg-icon {
+				animation: spin 0.8s linear infinite;
 			}
 		}
 
@@ -196,9 +190,33 @@
 	.title-left {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
 		overflow: hidden;
 		min-width: 0;
+
+		&.clickable-title {
+			cursor: pointer;
+			padding: 2px 6px;
+			border-radius: 4px;
+			transition: background-color 0.15s ease, color 0.15s ease;
+
+			&:hover {
+				background-color: var(--bg-item-hover, rgba(0, 0, 0, 0.06));
+				color: var(--text-primary, #1e1e1e);
+
+				.title-dropdown-arrow {
+					opacity: 1;
+				}
+			}
+		}
+
+		.title-dropdown-arrow {
+			font-size: 13px;
+			opacity: 0.55;
+			transition: opacity 0.15s ease;
+			flex-shrink: 0;
+			user-select: none;
+		}
 
 		.arrow {
 			font-size: 14px;
@@ -1671,3 +1689,77 @@
 		}
 	}
 }
+
+.tree-context-menu {
+	position: fixed;
+	z-index: 10000;
+	min-width: 175px;
+	background-color: var(--bg-card, var(--bg-editor, #ffffff));
+	color: var(--text-primary, #1e1e1e);
+	border: 1px solid var(--border-color, #e1e4e8);
+	border-radius: 6px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
+	padding: 4px;
+	display: flex;
+	flex-direction: column;
+	user-select: none;
+	animation: contextMenuFadeIn 0.1s ease-out;
+
+	.context-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		font-size: 13px;
+		font-weight: 500;
+		border-radius: 4px;
+		cursor: pointer;
+		color: var(--text-primary, #1e1e1e);
+		transition: background-color 0.12s ease, color 0.12s ease;
+
+		.context-icon {
+			font-size: 14px;
+			width: 16px;
+			text-align: center;
+			opacity: 0.85;
+		}
+
+		.context-label {
+			flex: 1;
+		}
+
+		&:hover {
+			background-color: var(--primary-color, #007acc);
+			color: #ffffff;
+
+			.context-icon {
+				opacity: 1;
+			}
+		}
+
+		&.delete-item {
+			&:hover {
+				background-color: #ef4444;
+				color: #ffffff;
+			}
+		}
+	}
+
+	.context-separator {
+		height: 1px;
+		background-color: var(--border-color, #e1e4e8);
+		margin: 4px 2px;
+	}
+}
+
+@keyframes contextMenuFadeIn {
+	from {
+		opacity: 0;
+		transform: scale(0.96);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+

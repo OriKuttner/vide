@@ -20,38 +20,24 @@
 					<rect class="part-accent" x="5.5" y="9.5" width="5" height="3" rx="0.5" />
 				</svg>
 			</button>
-			<button
-				class="icon-btn btn-new-folder"
-				title="New Folder"
-				(click)="workspaceService.openModal('new-folder')"
-			>
-				<svg class="svg-icon" viewBox="0 0 16 16">
-					<path
-						class="part-folder"
-						d="M14.5 4h-5.79l-1.35-1.35A.5.5 0 0 0 7 2.5H2a1 1 0 0 0-1 1V13a1 1 0 0 0 1 1h6.5a.5.5 0 0 0 0-1H2V4.5h5.21l1.35 1.35a.5.5 0 0 0 .35.15H14v2.5a.5.5 0 0 0 1 0V4.5a.5.5 0 0 0-.5-.5z"
-					/>
-					<path
-						class="part-plus"
-						d="M12.5 9a.5.5 0 0 0-.5.5V11H10.5a.5.5 0 0 0 0 1H12v1.5a.5.5 0 0 0 1 0V12h1.5a.5.5 0 0 0 0-1H13V9.5a.5.5 0 0 0-.5-.5z"
-					/>
-				</svg>
-			</button>
-			<button
-				class="icon-btn btn-new-file"
-				title="New File"
-				(click)="workspaceService.openModal('new-file')"
-			>
-				<svg class="svg-icon" viewBox="0 0 16 16">
-					<path
-						class="part-file"
-						d="M9 1.5H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h5.5a.5.5 0 0 0 0-1H3V2.5h5.5V5a1 1 0 0 0 1 1h2.5v2.5a.5.5 0 0 0 1 0V5.71a1 1 0 0 0-.29-.71l-3.5-3.5A1 1 0 0 0 9 1.5zm.5 1.21L12.29 5H9.5V2.71z"
-					/>
-					<path
-						class="part-plus"
-						d="M12.5 9a.5.5 0 0 0-.5.5V11H10.5a.5.5 0 0 0 0 1H12v1.5a.5.5 0 0 0 1 0V12h1.5a.5.5 0 0 0 0-1H13V9.5a.5.5 0 0 0-.5-.5z"
-					/>
-				</svg>
-			</button>
+			@if (workspaceService.isRealWorkspace()) {
+				<button
+					class="icon-btn btn-refresh"
+					[class.spinning]="workspaceService.isRefreshingTree()"
+					title="Refresh Workspace & Git (F5)"
+					(click)="workspaceService.refreshAll()"
+				>
+					<svg class="svg-icon" viewBox="0 0 16 16" fill="currentColor">
+						<path
+							fill-rule="evenodd"
+							d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"
+						/>
+						<path
+							d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"
+						/>
+					</svg>
+				</button>
+			}
 			<button
 				class="icon-btn btn-grep"
 				[class.active]="workspaceService.sidebarView() === 'search'"
@@ -167,7 +153,12 @@
 
 	@if (workspaceService.sidebarView() === 'explorer') {
 		<div class="section-title">
-			<div class="title-left">
+			<div
+				class="title-left clickable-title"
+				(click)="onWorkspaceTitleClick($event)"
+				(contextmenu)="onWorkspaceTitleContextMenu($event)"
+				title="Folder actions (New File, New Folder)"
+			>
 				<span
 					class="workspace-label"
 					[title]="
@@ -176,6 +167,7 @@
 				>
 					{{ workspaceService.workspaceName() }}
 				</span>
+				<span class="title-dropdown-arrow">▾</span>
 			</div>
 			<div class="title-actions">
 				@if (workspaceService.parentWorkspacePath(); as parent) {
@@ -186,25 +178,6 @@
 						[title]="'Go up to parent folder: ' + parent"
 					>
 						⬆
-					</button>
-				}
-				@if (workspaceService.isRealWorkspace()) {
-					<button
-						type="button"
-						class="refresh-tree-btn"
-						[class.spinning]="workspaceService.isRefreshingTree()"
-						(click)="workspaceService.refreshAll()"
-						title="Refresh Explorer & Git (F5)"
-					>
-						<svg class="svg-btn-icon" viewBox="0 0 16 16" fill="currentColor">
-							<path
-								fill-rule="evenodd"
-								d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"
-							/>
-							<path
-								d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"
-							/>
-						</svg>
 					</button>
 				}
 				@if (workspaceService.isRealWorkspace()) {
@@ -239,7 +212,11 @@
 			</div>
 		}
 
-		<div class="tree-container" (click)="onTreeContainerClick($event)">
+		<div
+			class="tree-container"
+			(click)="onTreeContainerClick($event)"
+			(contextmenu)="onTreeContextMenu($event)"
+		>
 			@if (workspaceService.isScanning()) {
 				<div class="scanning-overlay">
 					<div class="spinner"></div>
@@ -255,6 +232,7 @@
 								[class.selected]="workspaceService.selectedFolderPath() === node.path"
 								[style.padding-left.px]="node.level * 16 + 10"
 								(click)="onDirectoryClick(node, $event)"
+								(contextmenu)="onNodeContextMenu($event, node)"
 							>
 								<span
 									class="chevron"
@@ -310,6 +288,7 @@
 								"
 								[style.padding-left.px]="node.level * 16 + 22"
 								(click)="node.file && workspaceService.openFile(node.file)"
+								(contextmenu)="onNodeContextMenu($event, node)"
 							>
 								@if (isImageNode(node.file || node)) {
 									<span class="file-badge image-badge" title="Image">
@@ -1052,4 +1031,46 @@
 		(dblclick)="onResetWidth($event)"
 		title="Drag to resize sidebar (double-click to reset)"
 	></div>
+
+	<!-- Tree Context Menu -->
+	@if (contextMenuVisible()) {
+		<div
+			class="tree-context-menu"
+			[style.left.px]="contextMenuPosition().x"
+			[style.top.px]="contextMenuPosition().y"
+			(click)="$event.stopPropagation()"
+			(contextmenu)="$event.preventDefault()"
+		>
+			@if (!contextMenuNode() || contextMenuNode()?.kind === 'directory') {
+				<div class="context-item" (click)="onContextNewFile()">
+					<span class="context-icon">📄</span>
+					<span class="context-label">New File...</span>
+				</div>
+				<div class="context-item" (click)="onContextNewFolder()">
+					<span class="context-icon">📁</span>
+					<span class="context-label">New Folder...</span>
+				</div>
+				@if (contextMenuNode()) {
+					<div class="context-separator"></div>
+				}
+			}
+			@if (contextMenuNode()) {
+				<div class="context-item" (click)="onContextRename()">
+					<span class="context-icon">✏️</span>
+					<span class="context-label">Rename...</span>
+				</div>
+				<div class="context-item delete-item" (click)="onContextDelete()">
+					<span class="context-icon">🗑️</span>
+					<span class="context-label">Delete</span>
+				</div>
+			}
+			@if (!contextMenuNode()) {
+				<div class="context-separator"></div>
+				<div class="context-item" (click)="onContextRefresh()">
+					<span class="context-icon">🔄</span>
+					<span class="context-label">Refresh (F5)</span>
+				</div>
+			}
+		</div>
+	}
 </aside>
