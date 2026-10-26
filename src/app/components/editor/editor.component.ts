@@ -60,6 +60,18 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 	@ViewChild('diffContainer', { static: true })
 	private diffContainer!: ElementRef<HTMLDivElement>;
 
+	@ViewChild('markdownBody')
+	private markdownBodyRef?: ElementRef<HTMLDivElement>;
+
+	@ViewChild('htmlPreviewIframe')
+	private htmlPreviewIframeRef?: ElementRef<HTMLIFrameElement>;
+
+	@ViewChild('previewFindInput')
+	private previewFindInputRef?: ElementRef<HTMLInputElement>;
+
+	@ViewChild('hexFindInput')
+	private hexFindInputRef?: ElementRef<HTMLInputElement>;
+
 	public workspaceService = inject(WorkspaceService);
 	public zoomService = inject(ZoomService);
 	private inlineCompletionService = inject(InlineCompletionService);
@@ -74,6 +86,19 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 	public readonly cursorChange = output<{ line: number; column: number }>();
 	public readonly diffChunkCount = signal<number>(0);
 	public readonly currentDiffIndex = signal<number>(0);
+
+	// Preview search state
+	public previewFindVisible = signal<boolean>(false);
+	public previewFindQuery = '';
+	public previewFindMatches: HTMLElement[] = [];
+	public previewFindTotal = signal<number>(0);
+	public previewFindCurrent = signal<number>(0);
+
+	// Hex Viewer search state
+	public hexFindVisible = signal<boolean>(false);
+	public hexFindQuery = '';
+	public hexMatchIndices = signal<number[]>([]);
+	public currentHexMatchPos = signal<number>(0);
 
 	// Markdown & HTML Live Preview state
 	public previewSplitPercent = signal<number>(50);
@@ -325,6 +350,8 @@ ${rawContent}
 				const active = this.workspaceService.activeFile();
 				if (active) {
 					untracked(() => {
+						this.closePreviewFind();
+						this.closeHexFind();
 						const isImg = active.isImage || isImageFile(active.name);
 						const isBin =
 							active.isBinary ||
@@ -2120,6 +2147,14 @@ ${rawContent}
 	}
 
 	public triggerFind(): void {
+		if (this.activeFileIsBinary()) {
+			this.openHexFind();
+			return;
+		}
+		if (this.isFullPreview() || (this.isPreviewActive() && this.previewFindVisible())) {
+			this.openPreviewFind();
+			return;
+		}
 		if (this.workspaceService.diffModeActive() && this.diffEditorInstance) {
 			const modified = this.diffEditorInstance.getModifiedEditor();
 			modified.focus();
@@ -2129,6 +2164,286 @@ ${rawContent}
 		if (this.editorInstance) {
 			this.editorInstance.focus();
 			this.editorInstance.getAction('actions.find')?.run();
+		}
+	}
+
+	public openPreviewFind(): void {
+		this.previewFindVisible.set(true);
+		setTimeout(() => {
+			this.previewFindInputRef?.nativeElement?.select();
+			this.previewFindInputRef?.nativeElement?.focus();
+		}, 50);
+	}
+
+	public closePreviewFind(): void {
+		this.previewFindVisible.set(false);
+		this.previewFindQuery = '';
+		this.clearPreviewHighlights();
+		this.previewFindMatches = [];
+		this.previewFindTotal.set(0);
+		this.previewFindCurrent.set(0);
+	}
+
+	public onPreviewFindInput(val: string): void {
+		this.previewFindQuery = val;
+		const query = val.trim();
+		if (!query) {
+			this.clearPreviewHighlights();
+			this.previewFindMatches = [];
+			this.previewFindTotal.set(0);
+			this.previewFindCurrent.set(0);
+			return;
+		}
+
+		let container: HTMLElement | null = null;
+		if (this.isCurrentHtml()) {
+			const iframe = this.htmlPreviewIframeRef?.nativeElement;
+			if (iframe && iframe.contentDocument) {
+				container = iframe.contentDocument.body;
+				this.ensureIframeHighlightStyles(iframe.contentDocument);
+			}
+		} else {
+			container = this.markdownBodyRef?.nativeElement ?? null;
+		}
+
+		if (!container) return;
+
+		this.previewFindMatches = this.highlightPreviewMatches(container, query);
+		this.previewFindTotal.set(this.previewFindMatches.length);
+		this.previewFindCurrent.set(0);
+
+		if (this.previewFindMatches.length > 0) {
+			this.activatePreviewMatch(0);
+		}
+	}
+
+	public nextPreviewFind(): void {
+		const total = this.previewFindMatches.length;
+		if (total === 0) return;
+		const next = (this.previewFindCurrent() + 1) % total;
+		this.activatePreviewMatch(next);
+	}
+
+	public prevPreviewFind(): void {
+		const total = this.previewFindMatches.length;
+		if (total === 0) return;
+		const prev = (this.previewFindCurrent() - 1 + total) % total;
+		this.activatePreviewMatch(prev);
+	}
+
+	private activatePreviewMatch(index: number): void {
+		if (index < 0 || index >= this.previewFindMatches.length) return;
+		const prevEl = this.previewFindMatches[this.previewFindCurrent()];
+		prevEl?.classList.remove('current');
+
+		const currEl = this.previewFindMatches[index];
+		if (currEl) {
+			currEl.classList.add('current');
+			currEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
+		this.previewFindCurrent.set(index);
+	}
+
+	private clearPreviewHighlights(): void {
+		let container: HTMLElement | null = null;
+		if (this.isCurrentHtml()) {
+			const iframe = this.htmlPreviewIframeRef?.nativeElement;
+			if (iframe && iframe.contentDocument) {
+				container = iframe.contentDocument.body;
+			}
+		} else {
+			container = this.markdownBodyRef?.nativeElement ?? null;
+		}
+		if (!container) return;
+
+		const marks = container.querySelectorAll('mark.preview-match');
+		marks.forEach((mark) => {
+			const parent = mark.parentNode;
+			if (parent) {
+				parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+				parent.normalize();
+			}
+		});
+	}
+
+	private ensureIframeHighlightStyles(doc: Document): void {
+		if (doc.getElementById('vide-preview-find-styles')) return;
+		const style = doc.createElement('style');
+		style.id = 'vide-preview-find-styles';
+		style.textContent = `
+			mark.preview-match {
+				background-color: rgba(255, 235, 59, 0.45) !important;
+				color: inherit !important;
+				border-radius: 2px !important;
+				padding: 1px 2px !important;
+			}
+			mark.preview-match.current {
+				background-color: #ff9800 !important;
+				color: #000000 !important;
+				outline: 2px solid #e65100 !important;
+			}
+		`;
+		doc.head?.appendChild(style);
+	}
+
+	private highlightPreviewMatches(root: HTMLElement, query: string): HTMLElement[] {
+		this.clearPreviewHighlights();
+		if (!query) return [];
+
+		const matches: HTMLElement[] = [];
+		const qLower = query.toLowerCase();
+
+		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+		const textNodes: Text[] = [];
+		let currentNode = walker.nextNode();
+		while (currentNode) {
+			textNodes.push(currentNode as Text);
+			currentNode = walker.nextNode();
+		}
+
+		for (const node of textNodes) {
+			const parent = node.parentNode;
+			if (
+				!parent ||
+				parent.nodeName === 'SCRIPT' ||
+				parent.nodeName === 'STYLE' ||
+				(parent as HTMLElement).classList?.contains('preview-match')
+			) {
+				continue;
+			}
+
+			const val = node.nodeValue || '';
+			const lower = val.toLowerCase();
+			let lastIdx = 0;
+			let matchIdx = lower.indexOf(qLower, lastIdx);
+			if (matchIdx === -1) continue;
+
+			const frag = document.createDocumentFragment();
+			while (matchIdx !== -1) {
+				if (matchIdx > lastIdx) {
+					frag.appendChild(document.createTextNode(val.substring(lastIdx, matchIdx)));
+				}
+				const mark = document.createElement('mark');
+				mark.className = 'preview-match';
+				mark.textContent = val.substring(matchIdx, matchIdx + query.length);
+				frag.appendChild(mark);
+				matches.push(mark);
+
+				lastIdx = matchIdx + query.length;
+				matchIdx = lower.indexOf(qLower, lastIdx);
+			}
+			if (lastIdx < val.length) {
+				frag.appendChild(document.createTextNode(val.substring(lastIdx)));
+			}
+			parent.replaceChild(frag, node);
+		}
+
+		return matches;
+	}
+
+	public onPreviewKeydown(event: KeyboardEvent): void {
+		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+			event.preventDefault();
+			event.stopPropagation();
+			this.openPreviewFind();
+		} else if (event.key === 'Escape' && this.previewFindVisible()) {
+			event.preventDefault();
+			this.closePreviewFind();
+		}
+	}
+
+	public openHexFind(): void {
+		this.hexFindVisible.set(true);
+		setTimeout(() => {
+			this.hexFindInputRef?.nativeElement?.select();
+			this.hexFindInputRef?.nativeElement?.focus();
+		}, 50);
+	}
+
+	public closeHexFind(): void {
+		this.hexFindVisible.set(false);
+		this.hexFindQuery = '';
+		this.hexMatchIndices.set([]);
+		this.currentHexMatchPos.set(0);
+	}
+
+	public onHexFindInput(val: string, binFile: WorkspaceFile): void {
+		this.hexFindQuery = val;
+		const rawQuery = val.trim().toLowerCase();
+		if (!rawQuery || !binFile.hexData?.lines) {
+			this.hexMatchIndices.set([]);
+			this.currentHexMatchPos.set(0);
+			return;
+		}
+
+		const cleanHexQuery = rawQuery.replace(/[\s:]+/g, '');
+		const lines = binFile.hexData.lines;
+		const matches: number[] = [];
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			const asciiLower = line.ascii.toLowerCase();
+			const hexCombined = (line.hex_part1 + ' ' + line.hex_part2).toLowerCase();
+			const hexStripped = (line.hex_part1 + line.hex_part2).toLowerCase().replace(/\s+/g, '');
+			const offsetLower = line.offset.toLowerCase();
+
+			if (
+				asciiLower.includes(rawQuery) ||
+				hexCombined.includes(rawQuery) ||
+				hexStripped.includes(cleanHexQuery) ||
+				offsetLower.includes(rawQuery)
+			) {
+				matches.push(i);
+			}
+		}
+
+		this.hexMatchIndices.set(matches);
+		this.currentHexMatchPos.set(0);
+
+		if (matches.length > 0) {
+			this.scrollHexMatchIntoView(matches[0]);
+		}
+	}
+
+	public nextHexMatch(): void {
+		const indices = this.hexMatchIndices();
+		if (indices.length === 0) return;
+		const next = (this.currentHexMatchPos() + 1) % indices.length;
+		this.currentHexMatchPos.set(next);
+		this.scrollHexMatchIntoView(indices[next]);
+	}
+
+	public prevHexMatch(): void {
+		const indices = this.hexMatchIndices();
+		if (indices.length === 0) return;
+		const prev = (this.currentHexMatchPos() - 1 + indices.length) % indices.length;
+		this.currentHexMatchPos.set(prev);
+		this.scrollHexMatchIntoView(indices[prev]);
+	}
+
+	private scrollHexMatchIntoView(lineIndex: number): void {
+		const el = document.getElementById(`hex-row-${lineIndex}`);
+		el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+	}
+
+	public isHexRowMatched(idx: number): boolean {
+		return this.hexMatchIndices().includes(idx);
+	}
+
+	public isHexRowActiveMatch(idx: number): boolean {
+		const indices = this.hexMatchIndices();
+		if (indices.length === 0) return false;
+		return indices[this.currentHexMatchPos()] === idx;
+	}
+
+	public onBinaryKeydown(event: KeyboardEvent): void {
+		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+			event.preventDefault();
+			event.stopPropagation();
+			this.openHexFind();
+		} else if (event.key === 'Escape' && this.hexFindVisible()) {
+			event.preventDefault();
+			this.closeHexFind();
 		}
 	}
 

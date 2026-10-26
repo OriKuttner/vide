@@ -85,6 +85,16 @@
 			<div class="diff-right-actions">
 				<button
 					type="button"
+					class="diff-action-btn find-btn"
+					(click)="triggerFind()"
+					title="Find in Diff (Ctrl+F)"
+				>
+					<span class="btn-icon">🔍</span>
+					<span>Find</span>
+				</button>
+
+				<button
+					type="button"
 					class="diff-action-btn view-toggle-btn icon-only"
 					[class.active]="workspaceService.diffRenderSideBySide()"
 					(click)="workspaceService.toggleDiffSideBySide()"
@@ -230,7 +240,11 @@
 		}
 
 		@if (activeFileIsBinary(); as binFile) {
-			<div class="binary-viewer-container">
+			<div
+				class="binary-viewer-container"
+				tabindex="0"
+				(keydown)="onBinaryKeydown($event)"
+			>
 				<div class="binary-toolbar">
 					<div class="bin-left-meta">
 						<span class="bin-badge">
@@ -259,6 +273,65 @@
 							}}</span>
 						</div>
 					</div>
+
+					<div class="bin-right-actions">
+						@if (hexFindVisible()) {
+							<div class="hex-find-bar">
+								<input
+									#hexFindInput
+									type="text"
+									class="hex-find-input"
+									[value]="hexFindQuery"
+									(input)="onHexFindInput($any($event.target).value, binFile)"
+									(keydown.enter)="$any($event).shiftKey ? prevHexMatch() : nextHexMatch()"
+									(keydown.escape)="closeHexFind()"
+									aria-label="Find in hex"
+								/>
+								<span class="find-count">
+									@if (hexMatchIndices().length > 0) {
+										{{ currentHexMatchPos() + 1 }} of {{ hexMatchIndices().length }}
+									} @else if (hexFindQuery) {
+										0 of 0
+									}
+								</span>
+								<button
+									type="button"
+									class="find-nav-btn"
+									(click)="prevHexMatch()"
+									[disabled]="hexMatchIndices().length === 0"
+									title="Previous match (Shift+Enter)"
+								>
+									▲
+								</button>
+								<button
+									type="button"
+									class="find-nav-btn"
+									(click)="nextHexMatch()"
+									[disabled]="hexMatchIndices().length === 0"
+									title="Next match (Enter)"
+								>
+									▼
+								</button>
+								<button
+									type="button"
+									class="find-close-btn"
+									(click)="closeHexFind()"
+									title="Close find (Esc)"
+								>
+									✕
+								</button>
+							</div>
+						} @else {
+							<button
+								type="button"
+								class="bin-tool-btn"
+								(click)="openHexFind()"
+								title="Find in Hex / Text (Ctrl+F)"
+							>
+								🔍 Find
+							</button>
+						}
+					</div>
 				</div>
 
 				<div class="hex-viewer-stage">
@@ -273,7 +346,12 @@
 							</div>
 							<div class="hex-lines">
 								@for (line of hex.lines || []; track $index) {
-									<div class="hex-row">
+									<div
+										class="hex-row"
+										[id]="'hex-row-' + $index"
+										[class.search-matched]="isHexRowMatched($index)"
+										[class.search-active]="isHexRowActiveMatch($index)"
+									>
 										<span class="hex-col-offset">{{ line.offset }}</span>
 										<span class="hex-col-bytes">{{
 											line.hex_part1 + '  ' + line.hex_part2
@@ -487,6 +565,8 @@
 		@if (isPreviewActive()) {
 			<div
 				class="preview-pane-container"
+				tabindex="0"
+				(keydown)="onPreviewKeydown($event)"
 				[class.full-screen]="isFullPreview()"
 				[style.width.%]="isFullPreview() ? 100 : 100 - previewSplitPercent()"
 			>
@@ -517,6 +597,63 @@
 					</div>
 
 					<div class="preview-mode-switch">
+						@if (previewFindVisible()) {
+							<div class="preview-find-bar">
+								<input
+									#previewFindInput
+									type="text"
+									class="preview-find-input"
+									[value]="previewFindQuery"
+									(input)="onPreviewFindInput($any($event.target).value)"
+									(keydown.enter)="$any($event).shiftKey ? prevPreviewFind() : nextPreviewFind()"
+									(keydown.escape)="closePreviewFind()"
+									aria-label="Find in preview"
+								/>
+								<span class="find-count">
+									@if (previewFindTotal() > 0) {
+										{{ previewFindCurrent() + 1 }} of {{ previewFindTotal() }}
+									} @else if (previewFindQuery) {
+										0 of 0
+									}
+								</span>
+								<button
+									type="button"
+									class="find-nav-btn"
+									(click)="prevPreviewFind()"
+									[disabled]="previewFindTotal() === 0"
+									title="Previous match (Shift+Enter)"
+								>
+									▲
+								</button>
+								<button
+									type="button"
+									class="find-nav-btn"
+									(click)="nextPreviewFind()"
+									[disabled]="previewFindTotal() === 0"
+									title="Next match (Enter)"
+								>
+									▼
+								</button>
+								<button
+									type="button"
+									class="find-close-btn"
+									(click)="closePreviewFind()"
+									title="Close find (Esc)"
+								>
+									✕
+								</button>
+							</div>
+						} @else {
+							<button
+								type="button"
+								class="preview-tool-btn"
+								(click)="openPreviewFind()"
+								title="Find in Preview (Ctrl+F)"
+							>
+								🔍 Find
+							</button>
+						}
+
 						<button
 							type="button"
 							class="preview-tool-btn"
@@ -561,6 +698,7 @@
 				<div class="preview-viewport">
 					@if (isCurrentHtml()) {
 						<iframe
+							#htmlPreviewIframe
 							class="html-preview-iframe"
 							[srcdoc]="renderedHtmlDoc()"
 							sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
@@ -569,6 +707,7 @@
 					} @else {
 						<div class="markdown-preview-scroll">
 							<div
+								#markdownBody
 								class="markdown-body"
 								[style.font-size.px]="zoomService.editorFontSize()"
 								[innerHTML]="renderedMarkdownHtml()"
