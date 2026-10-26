@@ -1573,6 +1573,18 @@
 					}
 				}
 
+				.git-staged-removal-hint {
+					font-size: 11px;
+					color: #ef4444;
+					background: rgba(239, 68, 68, 0.1);
+					border: 1px solid rgba(239, 68, 68, 0.25);
+					padding: 1px 6px;
+					border-radius: 3px;
+					white-space: nowrap;
+					user-select: none;
+					line-height: 1.4;
+				}
+
 				.status-letter-badge {
 					font-size: 13px;
 					font-weight: 700;
@@ -1589,6 +1601,10 @@
 
 					&.badge-u {
 						color: #10b981;
+					}
+
+					&.badge-d {
+						color: #ef4444;
 					}
 				}
 			}

@@ -1029,7 +1029,7 @@ export class WorkspaceService {
 				this.pendingGitUntrackFile.set(null);
 				this.closeModal();
 				this.showNotification(
-					`✓ Removed "${file.name}" from Git tracking (file kept on disk)`,
+					`✓ Staged "${file.name}" for removal from Git (commit to finalize)`,
 				);
 				await this.refreshFileTree();
 				await this.refreshGitStatus();

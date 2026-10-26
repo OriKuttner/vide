@@ -867,7 +867,7 @@
 									workspaceService.activeDiffFile()?.id === file.id
 								"
 								(click)="workspaceService.openDiffView(file)"
-								title="Click to view Side-by-Side Diff"
+								[title]="getGitFileTooltip(file)"
 							>
 								@if (isImageNode(file)) {
 									<span class="file-icon-badge image-badge" title="Image">
@@ -916,51 +916,68 @@
 										>{{ getFileIcon(file) }}</span
 									>
 								}
-								<div class="git-file-meta">
+								<div class="git-file-meta" [title]="getGitFileTooltip(file)">
 									<span class="git-file-name">{{ file.name }}</span>
 									<span class="git-file-path">{{ file.path }}</span>
 								</div>
 								<div class="git-file-actions">
-									<button
-										type="button"
-										class="git-action-btn untrack-btn"
-										[title]="
-											file.gitStatus === 'untracked'
-												? 'Remove untracked file (ignore or delete)'
-												: 'Remove from Git tracking (keep on disk)'
-										"
-										(click)="onUntrackFile(file, $event)"
-									>
-										🗑
-									</button>
+									@if (file.gitStatus === 'deleted') {
+										<span
+											class="git-staged-removal-hint"
+											title="Staged for removal from Git (commit to finalize)"
+										>
+											Staged removal
+										</span>
+									} @else {
+										<button
+											type="button"
+											class="git-action-btn untrack-btn"
+											[title]="
+												file.gitStatus === 'untracked'
+													? 'Remove untracked file (ignore or delete)'
+													: 'Remove from Git tracking (keep on disk)'
+											"
+											(click)="onUntrackFile(file, $event)"
+										>
+											🗑
+										</button>
+									}
 									<button
 										type="button"
 										class="git-action-btn revert-btn"
-										title="Discard changes (Revert to HEAD)"
+										[title]="
+											file.gitStatus === 'deleted'
+												? 'Restore to Git tracking (undo removal)'
+												: 'Discard changes (Revert to HEAD)'
+										"
 										(click)="onRevertFile(file, $event)"
 									>
 										⎌
-									</button>
-									<button
-										type="button"
-										class="git-action-btn diff-btn"
-										title="Open Side-by-Side Diff"
-										(click)="onOpenDiff(file, $event)"
-									>
-										◫
 									</button>
 									<span
 										class="status-letter-badge"
 										[class.badge-m]="file.gitStatus === 'modified'"
 										[class.badge-a]="file.gitStatus === 'added'"
 										[class.badge-u]="file.gitStatus === 'untracked'"
+										[class.badge-d]="file.gitStatus === 'deleted'"
+										[title]="
+											file.gitStatus === 'added'
+												? 'Added'
+												: file.gitStatus === 'untracked'
+													? 'Untracked'
+													: file.gitStatus === 'deleted'
+														? 'Deleted / Removed from repository'
+														: 'Modified'
+										"
 									>
 										{{
 											file.gitStatus === 'added'
 												? 'A'
 												: file.gitStatus === 'untracked'
 													? 'U'
-													: 'M'
+													: file.gitStatus === 'deleted'
+														? 'D'
+														: 'M'
 										}}
 									</span>
 								</div>

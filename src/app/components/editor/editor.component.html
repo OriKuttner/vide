@@ -8,7 +8,7 @@
 	@if (workspaceService.diffModeActive() && workspaceService.activeDiffFile(); as diffFile) {
 		<div class="diff-toolbar">
 			<div class="diff-left-section">
-				<span class="diff-file-name">{{ diffFile.name }}</span>
+				<span class="diff-file-name" [title]="getDiffFileTooltip(diffFile)">{{ diffFile.name }}</span>
 				<span
 					class="diff-status-badge"
 					[class.status-m]="!diffFile.isDiskDiff && diffFile.gitStatus === 'modified'"

@@ -2146,6 +2146,20 @@ ${rawContent}
 		this.goToDiffIndex(prevIdx);
 	}
 
+	public getDiffFileTooltip(diffFile: WorkspaceFile): string {
+		if (!diffFile) return '';
+		if (diffFile.fsPath) {
+			return diffFile.fsPath;
+		}
+		const nativeRoot = this.workspaceService.nativeWorkspacePath();
+		if (nativeRoot && diffFile.path) {
+			const cleanRoot = nativeRoot.replace(/[/\\]+$/, '');
+			const cleanRel = diffFile.path.replace(/^[/\\]+/, '');
+			return `${cleanRoot}/${cleanRel}`;
+		}
+		return diffFile.path || diffFile.name;
+	}
+
 	public triggerFind(): void {
 		if (this.activeFileIsBinary()) {
 			this.openHexFind();

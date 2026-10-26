@@ -319,6 +319,20 @@ export class SidebarComponent {
 		}
 	}
 
+	public getGitFileTooltip(file: WorkspaceFile): string {
+		if (!file) return '';
+		if (file.fsPath) {
+			return file.fsPath;
+		}
+		const nativeRoot = this.workspaceService.nativeWorkspacePath();
+		if (nativeRoot && file.path) {
+			const cleanRoot = nativeRoot.replace(/[/\\]+$/, '');
+			const cleanRel = file.path.replace(/^[/\\]+/, '');
+			return `${cleanRoot}/${cleanRel}`;
+		}
+		return file.path || file.name;
+	}
+
 	public onOpenDiff(file: WorkspaceFile, event: MouseEvent): void {
 		event.stopPropagation();
 		this.workspaceService.openDiffView(file);
