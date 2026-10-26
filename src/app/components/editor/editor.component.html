@@ -11,16 +11,19 @@
 				<span class="diff-file-name">{{ diffFile.name }}</span>
 				<span
 					class="diff-status-badge"
-					[class.status-m]="diffFile.gitStatus === 'modified'"
-					[class.status-a]="diffFile.gitStatus === 'added'"
-					[class.status-u]="diffFile.gitStatus === 'untracked'"
+					[class.status-m]="!diffFile.isDiskDiff && diffFile.gitStatus === 'modified'"
+					[class.status-a]="!diffFile.isDiskDiff && diffFile.gitStatus === 'added'"
+					[class.status-u]="!diffFile.isDiskDiff && diffFile.gitStatus === 'untracked'"
+					[class.status-disk]="diffFile.isDiskDiff"
 				>
 					{{
-						diffFile.gitStatus === 'added'
-							? 'Added'
-							: diffFile.gitStatus === 'untracked'
-								? 'Untracked'
-								: 'Modified'
+						diffFile.isDiskDiff
+							? 'Disk Diff'
+							: diffFile.gitStatus === 'added'
+								? 'Added'
+								: diffFile.gitStatus === 'untracked'
+									? 'Untracked'
+									: 'Modified'
 					}}
 				</span>
 				@if (diffChunkCount() > 0) {
@@ -55,9 +58,11 @@
 				<div class="pane-header original-pane-header">
 					<span class="legend-indicator red">●</span>
 					<span class="pane-title">{{
-						diffFile.commitDiffInfo
-							? diffFile.commitDiffInfo.originalTitle
-							: 'HEAD (Commit Baseline)'
+						diffFile.isDiskDiff
+							? 'Saved on Disk'
+							: diffFile.commitDiffInfo
+								? diffFile.commitDiffInfo.originalTitle
+								: 'HEAD (Commit Baseline)'
 					}}</span>
 					<span class="pane-tag">Read-only</span>
 				</div>
@@ -65,9 +70,11 @@
 				<div class="pane-header modified-pane-header">
 					<span class="legend-indicator green">●</span>
 					<span class="pane-title">{{
-						diffFile.commitDiffInfo
-							? diffFile.commitDiffInfo.modifiedTitle
-							: 'Working Tree (Local Changes)'
+						diffFile.isDiskDiff
+							? 'Memory Buffer (Unsaved)'
+							: diffFile.commitDiffInfo
+								? diffFile.commitDiffInfo.modifiedTitle
+								: 'Working Tree (Local Changes)'
 					}}</span>
 					<span class="pane-tag" [class.editable]="!diffFile.readOnly">{{
 						diffFile.readOnly ? 'Read-only' : 'Editable'
@@ -92,7 +99,26 @@
 					}}</span>
 				</button>
 
-				@if (!diffFile.commitDiffInfo && !diffFile.readOnly) {
+				@if (diffFile.isDiskDiff) {
+					<button
+						type="button"
+						class="diff-action-btn save-disk-btn"
+						(click)="saveDiskDiff(diffFile.id)"
+						title="Save unsaved memory content to disk (Override)"
+					>
+						<span class="btn-icon">💾</span>
+						<span>Save</span>
+					</button>
+					<button
+						type="button"
+						class="diff-action-btn discard-disk-btn"
+						(click)="discardDiskDiff(diffFile.id)"
+						title="Discard memory changes and reload from disk"
+					>
+						<span class="btn-icon">⎌</span>
+						<span>Discard</span>
+					</button>
+				} @else if (!diffFile.commitDiffInfo && !diffFile.readOnly) {
 					<button
 						type="button"
 						class="diff-action-btn revert-btn"

@@ -953,6 +953,11 @@
 				background-color: rgba(16, 185, 129, 0.15);
 				color: #10b981;
 			}
+
+			&.status-disk {
+				background-color: rgba(14, 165, 233, 0.15);
+				color: #0284c7;
+			}
 		}
 
 		.diff-chunk-pill {
@@ -1104,6 +1109,24 @@
 				.btn-icon {
 					font-size: 15px;
 				}
+			}
+
+			&.save-disk-btn {
+				background-color: var(--primary-color, #007acc);
+				border-color: var(--primary-color, #007acc);
+				color: #ffffff;
+
+				&:hover {
+					background-color: #0062a3;
+					border-color: #0062a3;
+					color: #ffffff;
+				}
+			}
+
+			&.discard-disk-btn:hover {
+				background-color: #fee2e2;
+				border-color: #ef4444;
+				color: #b91c1c;
 			}
 
 			&.revert-btn:hover {

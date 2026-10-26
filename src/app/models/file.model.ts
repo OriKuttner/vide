@@ -40,6 +40,7 @@ export interface WorkspaceFile {
 		originalTitle: string;
 		modifiedTitle: string;
 	};
+	isDiskDiff?: boolean;
 }
 
 export interface HexLine {

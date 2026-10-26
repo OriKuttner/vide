@@ -628,6 +628,41 @@ export class WorkspaceService {
 		}
 	}
 
+	/**
+	 * Opens a side-by-side diff comparing the saved disk content with the modified memory buffer.
+	 */
+	public async openDiskDiffView(file: WorkspaceFile): Promise<void> {
+		let diskContent = file.savedContent;
+		try {
+			if (isTauriApp() && file.fsPath) {
+				diskContent = await invoke<string>('read_file_text', { filePath: file.fsPath });
+			} else if (file.handle && typeof file.handle.getFile === 'function') {
+				const fileObj = await file.handle.getFile();
+				diskContent = await fileObj.text();
+			} else if (file.rawFile) {
+				diskContent = await file.rawFile.text();
+			}
+		} catch (err) {
+			console.warn('Failed to read live disk content for disk diff, using savedContent:', err);
+		}
+
+		if (diskContent === undefined) {
+			diskContent = file.savedContent ?? '';
+		}
+
+		const currentTabs = this.openTabs();
+		if (!currentTabs.some((tab) => tab.id === file.id)) {
+			this.openTabs.set([...currentTabs, file]);
+		}
+		this.activeFileId.set(file.id);
+		this.activeDiffFile.set({
+			...file,
+			isDiskDiff: true,
+			originalContent: diskContent,
+		});
+		this.diffModeActive.set(true);
+	}
+
 	public setPreviewMode(mode: 'none' | 'split' | 'full'): void {
 		this.previewMode.set(mode);
 	}
@@ -4100,6 +4135,149 @@ export class WorkspaceService {
 		}
 	}
 
+	private hasEnsuredVideInGitignore = false;
+
+	/**
+	 * Automatically ensures that .vide/ is in .gitignore for Git repositories,
+	 * notifying the user so they know local IDE session state is excluded.
+	 */
+	public async ensureVideInGitignore(): Promise<void> {
+		if (!this.isRealWorkspace()) return;
+		if (this.hasEnsuredVideInGitignore) return;
+		this.hasEnsuredVideInGitignore = true;
+
+		// 1. Native desktop (Tauri)
+		if (isTauriApp() && this.nativeWorkspacePath()) {
+			const rootPath = this.nativeWorkspacePath()!;
+			try {
+				const branch = await invoke<string>('get_git_branch', { repoPath: rootPath });
+				if (!branch) return;
+
+				const gitignorePath = rootPath.endsWith('/')
+					? `${rootPath}.gitignore`
+					: `${rootPath}/.gitignore`;
+
+				let content = '';
+				try {
+					content = await invoke<string>('read_file_text', { filePath: gitignorePath });
+				} catch {
+					content = '';
+				}
+
+				const lines = content.split(/\r?\n/).map((l) => l.trim());
+				const isPresent = lines.some((l) => {
+					if (l.startsWith('#')) return false;
+					const norm = l.replace(/^\/+/, '').replace(/\/+$/, '');
+					return norm === '.vide' || norm === '**/.vide';
+				});
+
+				if (!isPresent) {
+					let newContent = content;
+					if (newContent.length > 0 && !newContent.endsWith('\n')) {
+						newContent += '\n';
+					}
+					newContent += '.vide/\n';
+
+					await invoke('write_file_text', {
+						filePath: gitignorePath,
+						content: newContent,
+					});
+
+					const gitignoreFile = this.files().find(
+						(f) =>
+							f.name === '.gitignore' ||
+							f.path === '.gitignore' ||
+							f.path === '/.gitignore',
+					);
+					if (gitignoreFile) {
+						gitignoreFile.content = newContent;
+						gitignoreFile.savedContent = newContent;
+						this.pendingContentReplacement.set({
+							fileId: gitignoreFile.id,
+							newContent,
+						});
+					}
+
+					this.showNotification('✓ Added .vide/ to .gitignore');
+					await this.refreshFileTree();
+					await this.refreshGitStatus();
+				}
+			} catch (err) {
+				console.warn('Could not check or update .gitignore for .vide:', err);
+			}
+			return;
+		}
+
+		// 2. Web browser (File System Access API)
+		if (this.recentDirHandle) {
+			try {
+				let hasGit = false;
+				try {
+					await this.recentDirHandle.getDirectoryHandle('.git', { create: false });
+					hasGit = true;
+				} catch {
+					hasGit = false;
+				}
+				if (!hasGit) return;
+
+				let gitignoreHandle: any = null;
+				let content = '';
+				try {
+					gitignoreHandle = await this.recentDirHandle.getFileHandle('.gitignore', {
+						create: false,
+					});
+					const file = await gitignoreHandle.getFile();
+					content = await file.text();
+				} catch {
+					gitignoreHandle = null;
+				}
+
+				const lines = content.split(/\r?\n/).map((l) => l.trim());
+				const isPresent = lines.some((l) => {
+					if (l.startsWith('#')) return false;
+					const norm = l.replace(/^\/+/, '').replace(/\/+$/, '');
+					return norm === '.vide' || norm === '**/.vide';
+				});
+
+				if (!isPresent) {
+					let newContent = content;
+					if (newContent.length > 0 && !newContent.endsWith('\n')) {
+						newContent += '\n';
+					}
+					newContent += '.vide/\n';
+
+					const targetHandle =
+						gitignoreHandle ||
+						(await this.recentDirHandle.getFileHandle('.gitignore', { create: true }));
+					const writable = await targetHandle.createWritable();
+					await writable.write(newContent);
+					await writable.close();
+
+					const gitignoreFile = this.files().find(
+						(f) =>
+							f.name === '.gitignore' ||
+							f.path === '.gitignore' ||
+							f.path === '/.gitignore',
+					);
+					if (gitignoreFile) {
+						gitignoreFile.content = newContent;
+						gitignoreFile.savedContent = newContent;
+						this.pendingContentReplacement.set({
+							fileId: gitignoreFile.id,
+							newContent,
+						});
+					}
+
+					this.showNotification('✓ Added .vide/ to .gitignore');
+					await this.refreshFileTree();
+					await this.refreshGitStatus(this.recentDirHandle);
+				}
+			} catch (err) {
+				console.warn('Could not check or update .gitignore in browser:', err);
+			}
+		}
+	}
+
 	public async loadWorkspaceSessionState(dirHandle?: any): Promise<{
 		openFiles: Array<{
 			path: string;
@@ -4294,6 +4472,7 @@ export class WorkspaceService {
 			this.diffModeActive.set(false);
 			this.activeDiffFile.set(null);
 			this.lastGitStatusSignature = '';
+			this.hasEnsuredVideInGitignore = false;
 			this.onWorkspaceReset?.();
 		});
 
@@ -4502,6 +4681,9 @@ export class WorkspaceService {
 
 		// Persist session state so new folders get their .vide/workspace.json saved
 		this.saveWorkspaceSessionState();
+
+		// Ensure .vide/ is added to .gitignore if this is a Git repo
+		this.ensureVideInGitignore().catch((err) => console.warn('Gitignore check error:', err));
 
 		// Launch Git refresh and background file indexing asynchronously without blocking UI
 		this.refreshGitStatus().catch((err) => console.warn('Git refresh error:', err));
@@ -4740,6 +4922,7 @@ export class WorkspaceService {
 		try {
 			// Save to IndexedDB and localStorage for one-click reopening
 			this.saveLastDirectoryHandle(dirHandle);
+			this.hasEnsuredVideInGitignore = false;
 
 			// Load .editorconfig if present in web directory
 			try {
@@ -4893,6 +5076,9 @@ export class WorkspaceService {
 		}
 
 		this.saveWorkspaceSessionState();
+
+		// Ensure .vide/ is added to .gitignore if this is a Git repo
+		this.ensureVideInGitignore().catch((err) => console.warn('Gitignore check error:', err));
 
 		// Read real git branch and initial status asynchronously
 		this.refreshGitStatus(dirHandle).catch((err) => console.warn('Git refresh error:', err));

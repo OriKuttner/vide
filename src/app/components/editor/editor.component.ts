@@ -1973,10 +1973,13 @@ ${rawContent}
 				modModel.setValue(file.content);
 			}
 
-			// Original model (HEAD baseline)
+			// Original model (HEAD baseline or disk baseline)
 			const safeId = encodeURIComponent(file.id || file.path || file.name);
-			const origUri = monaco.Uri.parse(`inmemory://diff-original/${safeId}`);
-			let origModel = this.originalDiffModels.get(file.id);
+			const modelKey = file.isDiskDiff ? `disk_${file.id}` : file.id;
+			const origUri = monaco.Uri.parse(
+				`inmemory://diff-original/${file.isDiskDiff ? 'disk-' : ''}${safeId}`,
+			);
+			let origModel = this.originalDiffModels.get(modelKey);
 			const originalText =
 				file.originalContent !== undefined ? file.originalContent : file.content;
 
@@ -1992,7 +1995,7 @@ ${rawContent}
 					insertSpaces: modOpts.insertSpaces,
 					tabSize: modOpts.tabSize,
 				});
-				this.originalDiffModels.set(file.id, origModel);
+				this.originalDiffModels.set(modelKey, origModel);
 			}
 
 			if (origModel.getValue() !== originalText) {
@@ -2021,6 +2024,53 @@ ${rawContent}
 		} finally {
 			this.isProgrammaticUpdate = false;
 		}
+	}
+
+	public async saveDiskDiff(fileId: string): Promise<void> {
+		const file = this.workspaceService.files().find((f) => f.id === fileId);
+		if (!file) return;
+
+		if (this.diffEditorInstance) {
+			const modVal = this.diffEditorInstance.getModifiedEditor().getValue();
+			file.content = modVal;
+			const modModel = this.fileModels.get(fileId);
+			if (modModel && modModel.getValue() !== modVal) {
+				modModel.setValue(modVal);
+			}
+		}
+
+		await this.workspaceService.saveFile(file, true);
+		this.workspaceService.closeDiffView(false);
+	}
+
+	public async discardDiskDiff(fileId: string): Promise<void> {
+		const file = this.workspaceService.files().find((f) => f.id === fileId);
+		if (!file) return;
+
+		let diskContent = file.savedContent;
+		try {
+			if (isTauriApp() && file.fsPath) {
+				diskContent = await invoke<string>('read_file_text', { filePath: file.fsPath });
+			} else if (file.handle && typeof file.handle.getFile === 'function') {
+				const fileObj = await file.handle.getFile();
+				diskContent = await fileObj.text();
+			} else if (file.rawFile) {
+				diskContent = await file.rawFile.text();
+			}
+		} catch (e) {
+			console.warn('Failed to read live disk content on discard, using savedContent:', e);
+		}
+
+		if (diskContent === undefined) {
+			diskContent = file.savedContent ?? '';
+		}
+
+		await this.workspaceService.reloadFileWithContent(file, diskContent);
+		const modModel = this.fileModels.get(fileId);
+		if (modModel) {
+			modModel.setValue(diskContent);
+		}
+		this.workspaceService.closeDiffView(false);
 	}
 
 	public discardChanges(fileId: string): void {

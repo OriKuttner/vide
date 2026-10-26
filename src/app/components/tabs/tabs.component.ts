@@ -144,6 +144,14 @@ export class TabsComponent {
 		this.closeTabContextMenu();
 	}
 
+	public openDiskDiffFromContext(): void {
+		const menu = this.tabContextMenu();
+		if (menu && this.workspaceService.isFileModified(menu.tab)) {
+			this.workspaceService.openDiskDiffView(menu.tab);
+			this.closeTabContextMenu();
+		}
+	}
+
 	public closeTabFromContext(): void {
 		const menu = this.tabContextMenu();
 		if (menu) {

@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "vide",
   "mainBinaryName": "vide",
-  "version": "0.2.7",
+  "version": "0.4.9",
   "identifier": "com.vector.ide",
   "build": {
     "frontendDist": "../dist/Vector-ide/browser",

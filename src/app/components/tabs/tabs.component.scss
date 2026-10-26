@@ -825,6 +825,16 @@ body.theme-dark .nav-stack-dropdown {
 			color: var(--primary-color, #007acc);
 		}
 
+		&.disabled {
+			opacity: 0.4;
+			cursor: not-allowed;
+
+			&:hover {
+				background-color: transparent;
+				color: inherit;
+			}
+		}
+
 		.menu-icon {
 			font-size: 12px;
 			width: 14px;
