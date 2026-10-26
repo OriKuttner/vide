@@ -7,13 +7,17 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
+#[cfg(unix)]
+use std::io::{BufRead, BufReader};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
+#[cfg(unix)]
+use tauri::Manager;
 
 struct PtySession {
 	writer: Box<dyn Write + Send>,
@@ -1447,6 +1451,7 @@ fn read_file_hex(
 	let has_more = (offset + bytes_read as u64) < total_size;
 
 	// Get file type description
+	#[allow(unused_mut)]
 	let mut file_type = String::from("Binary data");
 	#[cfg(unix)]
 	{
@@ -2003,7 +2008,7 @@ fn register_active_workspace(app: tauri::AppHandle, workspace_path: String) -> R
 		let _ = canon_ws;
 		let _ = sock_path;
 		let _ = info_path;
-		let _ = guard;
+		drop(guard);
 	}
 
 	Ok(())
@@ -2313,8 +2318,11 @@ pub fn run() {
 	// 3. Handle IPC to existing running instance if workspace is provided
 	let parsed = parse_cli_arguments(&raw_args);
 	let positional = parsed.positional;
+	#[allow(unused_assignments, unused_variables)]
 	let mut goto_file = parsed.goto_file;
+	#[allow(unused_variables)]
 	let hl_start = parsed.highlight_start;
+	#[allow(unused_variables)]
 	let hl_end = parsed.highlight_end;
 
 	let mut workspace_opt = positional.first().and_then(|w| normalize_workspace_path(w));
