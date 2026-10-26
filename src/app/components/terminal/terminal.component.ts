@@ -120,10 +120,23 @@ export class TerminalComponent implements AfterViewInit, OnDestroy {
 			}
 		});
 
+		// Auto-restart terminal when workspace folder changes
+		effect(() => {
+			const currentPath = this.workspaceService.nativeWorkspacePath();
+			if (this.isInitialized) {
+				if (currentPath !== this.lastWorkspacePath) {
+					this.lastWorkspacePath = currentPath;
+					this.terminalService.restartTerminal();
+				}
+			}
+		});
+
 		// Listen to restart trigger
 		effect(() => {
 			this.terminalService.restartTrigger();
 			if (this.isInitialized) {
+				this.term?.reset();
+				this.applyTheme();
 				this.initSession();
 			}
 		});
@@ -219,12 +232,7 @@ export class TerminalComponent implements AfterViewInit, OnDestroy {
 		// 1. Check native workspace path from WorkspaceService signal
 		let cwd = this.workspaceService.nativeWorkspacePath();
 
-		// 2. Fallback to localStorage saved native path (available synchronously on startup)
-		if (!cwd && typeof window !== 'undefined') {
-			cwd = localStorage.getItem('vector_last_native_path');
-		}
-
-		// 3. Fallback to active file directory if available
+		// 2. Fallback to active file directory if available
 		if (!cwd) {
 			const active = this.workspaceService.activeFile();
 			if (active?.fsPath) {
