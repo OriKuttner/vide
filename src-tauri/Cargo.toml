@@ -4,7 +4,7 @@ version = "0.2.5"
 description = "Vector IDE"
 authors = ["Ori Kuttner <ori@heliconbooks.com>"]
 license = "GPL-3.0-only"
-repository = "https://github.com/helicon/vide"
+repository = "https://github.com/OriKuttner/vide"
 edition = "2024"
 rust-version = "1.90"
 

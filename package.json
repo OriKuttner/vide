@@ -26,6 +26,13 @@
     ]
   },
   "private": true,
+  "description": "A fast, zero-bloat desktop IDE built with Tauri v2, Rust, and Angular",
+  "author": "Ori Kuttner <ori@heliconbooks.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OriKuttner/vide.git"
+  },
+  "license": "GPL-3.0-only",
   "packageManager": "npm@11.6.4",
   "dependencies": {
     "@angular/common": "^21.0.0",

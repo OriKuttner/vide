@@ -15,7 +15,7 @@ Along the way, I integrated practical AI capabilities powered by Google’s cost
 
 > **Planning a complex AI initiative or high-scale platform?**  
 > VIDE showcases my architectural philosophy: lean, high-performance systems with zero bloat and disciplined engineering. Beyond tooling, I work as a **senior technical advisor and systems architect**, helping companies design and scale **advanced AI systems**, **complex e-commerce platforms**, and mission-critical software.  
-> Contact: **[info@heliconbooks.com](mailto:info@heliconbooks.com)**
+> Contact: **Ori Kuttner** &mdash; **[ori@heliconbooks.com](mailto:ori@heliconbooks.com)**
 
 ---
 
@@ -112,7 +112,7 @@ Ensure you have the following installed on your system:
 Clone the repository and install npm packages:
 
 ```bash
-git clone https://github.com/helicon/vide.git
+git clone https://github.com/OriKuttner/vide.git
 cd vide
 npm install
 ```
@@ -205,7 +205,7 @@ I advise CTOs, founders, and engineering leaders on designing resilient, cost-ef
 * **System Modernization & Performance Audits:** Identifying hidden bottlenecks, eliminating architecture debt, evaluating technology stacks, and guiding teams transitioning from bloated runtimes to lean, high-throughput architectures.
 * **Technical Strategy & Codebase Health:** High-level code and architecture reviews, technology selection, and helping leadership avoid costly engineering missteps early on.
 
-Looking for an experienced eye on your architecture? Reach out at **[info@heliconbooks.com](mailto:info@heliconbooks.com)**.
+Looking for an experienced eye on your architecture? Reach out to Ori Kuttner at **[ori@heliconbooks.com](mailto:ori@heliconbooks.com)**.
 
 ---
 
@@ -217,7 +217,7 @@ Contributions are welcome! Please follow these guidelines:
 2. Ensure code formatting is clean and tests/builds pass: `npm run build && cargo check --manifest-path src-tauri/Cargo.toml`.
 3. Keep all UI strings, identifiers, and comments in **English**.
 4. Open a Pull Request detailing your changes.
-5. **Contributor License Agreement (CLA):** By contributing code to Vector IDE, you agree that your contributions are licensed under GPLv3 and that the project owners (Helicon Books) retain the right to re-license or dual-license your contributions as part of commercial/proprietary distributions.
+5. Bug fixes, documentation, and routine enhancements are welcome without any formalities under GPLv3. See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ---
 
@@ -230,5 +230,5 @@ Vector IDE (`vide`) is distributed under a **Dual Licensing model**:
 
 ### Need a Custom or Commercial Build?
 For enterprise inquiries, dedicated proprietary builds, custom feature development, or dual-license exemptions, please contact:
-**[info@heliconbooks.com](mailto:info@heliconbooks.com)**
+**Ori Kuttner: [ori@heliconbooks.com](mailto:ori@heliconbooks.com)**
 
