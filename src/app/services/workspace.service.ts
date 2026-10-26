@@ -32,6 +32,12 @@ import {
 	HexLine,
 	FileInspectionResult,
 	isBinaryFile,
+	SUPPORTED_ENCODINGS,
+	EncodingOption,
+	encodeStringToBytes,
+	uint8ArrayToBase64,
+	decodeBytesWithEncoding,
+	decodeBase64WithEncoding,
 } from '../models/file.model';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -165,6 +171,7 @@ export class WorkspaceService {
 		| 'open-folder-path'
 		| 'indentation'
 		| 'change-language'
+		| 'change-encoding'
 		| 'unsaved-changes'
 		| 'close-editor-confirm'
 		| 'ai-settings'
@@ -226,6 +233,13 @@ export class WorkspaceService {
 		highlightStart: number;
 		highlightEnd: number;
 	} | null>(null);
+
+	// Goto line request signal
+	readonly pendingGotoLine = signal<number>(0);
+
+	public triggerGotoLine(): void {
+		this.pendingGotoLine.update((v) => v + 1);
+	}
 
 	// Background indexing state for real workspace search & grep
 	readonly isIndexing = signal<boolean>(false);
@@ -634,14 +648,7 @@ export class WorkspaceService {
 	public async openDiskDiffView(file: WorkspaceFile): Promise<void> {
 		let diskContent = file.savedContent;
 		try {
-			if (isTauriApp() && file.fsPath) {
-				diskContent = await invoke<string>('read_file_text', { filePath: file.fsPath });
-			} else if (file.handle && typeof file.handle.getFile === 'function') {
-				const fileObj = await file.handle.getFile();
-				diskContent = await fileObj.text();
-			} else if (file.rawFile) {
-				diskContent = await file.rawFile.text();
-			}
+			diskContent = await this.readFileTextWithEncoding(file, file.encoding);
 		} catch (err) {
 			console.warn('Failed to read live disk content for disk diff, using savedContent:', err);
 		}
@@ -1932,13 +1939,10 @@ export class WorkspaceService {
 			// Signature differs or was uninitialized: read full text from disk
 			let diskContent: string | null = null;
 
-			if (isTauriApp() && active.fsPath) {
-				diskContent = await invoke<string>('read_file_text', { filePath: active.fsPath });
-			} else if (active.handle && typeof active.handle.getFile === 'function') {
-				const fileObj = await active.handle.getFile();
-				diskContent = await fileObj.text();
-			} else if (active.rawFile) {
-				diskContent = await active.rawFile.text();
+			try {
+				diskContent = await this.readFileTextWithEncoding(active, active.encoding);
+			} catch (err) {
+				console.warn('Failed to read live disk content for polling:', err);
 			}
 
 			if (diskContent === null) return;
@@ -2226,6 +2230,105 @@ export class WorkspaceService {
 		this.closeModal();
 	}
 
+	public async readFileTextWithEncoding(
+		file: WorkspaceFile,
+		encoding?: string,
+	): Promise<string> {
+		const enc = (encoding || file.encoding || 'utf-8').toLowerCase();
+		if (isTauriApp() && file.fsPath) {
+			if (enc === 'utf-8') {
+				return await invoke<string>('read_file_text', { filePath: file.fsPath });
+			}
+			const b64 = await invoke<string>('read_file_base64', {
+				filePath: file.fsPath,
+			});
+			return decodeBase64WithEncoding(b64, enc);
+		} else if (file.handle && typeof file.handle.getFile === 'function') {
+			const fileObj = await file.handle.getFile();
+			if (enc === 'utf-8') {
+				return await fileObj.text();
+			}
+			const buf = await fileObj.arrayBuffer();
+			return decodeBytesWithEncoding(new Uint8Array(buf), enc);
+		} else if (file.rawFile) {
+			if (enc === 'utf-8') {
+				return await file.rawFile.text();
+			}
+			const buf = await file.rawFile.arrayBuffer();
+			return decodeBytesWithEncoding(new Uint8Array(buf), enc);
+		}
+		return file.content ?? '';
+	}
+
+	public async reopenActiveFileWithEncoding(encoding: string): Promise<void> {
+		const active = this.activeFile();
+		if (!active || active.isBinary || active.isImage) return;
+
+		active.encoding = encoding;
+		try {
+			const content = await this.readFileTextWithEncoding(active, encoding);
+			active.content = content;
+			active.savedContent = content;
+			active.originalContent = content;
+			active.isModified = false;
+			active.isLoaded = true;
+
+			this.files.update((list) =>
+				list.map((f) =>
+					f.id === active.id
+						? {
+								...f,
+								encoding,
+								content,
+								savedContent: content,
+								originalContent: content,
+								isModified: false,
+								isLoaded: true,
+						  }
+						: f,
+				),
+			);
+			this.openTabs.update((tabs) =>
+				tabs.map((t) =>
+					t.id === active.id
+						? {
+								...t,
+								encoding,
+								content,
+								isModified: false,
+						  }
+						: t,
+				),
+			);
+			this.triggerSaveSessionState();
+			this.showNotification(
+				`Reopened ${active.name} with ${encoding.toUpperCase()}`,
+			);
+		} catch (err: any) {
+			console.error('Failed to reopen file with encoding:', err);
+			this.showNotification(
+				`Failed to reload with ${encoding}: ${err.message || err}`,
+			);
+		}
+	}
+
+	public async saveActiveFileWithEncoding(encoding: string): Promise<void> {
+		const active = this.activeFile();
+		if (!active || active.isBinary || active.isImage) return;
+
+		active.encoding = encoding;
+		this.files.update((list) =>
+			list.map((f) => (f.id === active.id ? { ...f, encoding } : f)),
+		);
+		this.openTabs.update((tabs) =>
+			tabs.map((t) => (t.id === active.id ? { ...t, encoding } : t)),
+		);
+		await this.saveFile(active, true);
+		this.showNotification(
+			`Saved ${active.name} with encoding ${encoding.toUpperCase()}`,
+		);
+	}
+
 	private fallbackFilesList: File[] = [];
 	private fallbackRootName = '';
 
@@ -2238,6 +2341,7 @@ export class WorkspaceService {
 			| 'open-folder-path'
 			| 'indentation'
 			| 'change-language'
+			| 'change-encoding'
 			| 'unsaved-changes'
 			| 'close-editor-confirm'
 			| 'ai-settings'
@@ -2734,18 +2838,7 @@ export class WorkspaceService {
 			return '';
 		}
 		try {
-			if (isTauriApp() && file.fsPath) {
-				return await invoke<string>('read_file_text', { filePath: file.fsPath });
-			} else if (file.handle && typeof file.handle.getFile === 'function') {
-				const fileObj = await file.handle.getFile();
-				if (fileObj.size <= 1024 * 1024) {
-					return await fileObj.text();
-				}
-			} else if (file.rawFile) {
-				if (file.rawFile.size <= 1024 * 1024) {
-					return await file.rawFile.text();
-				}
-			}
+			return await this.readFileTextWithEncoding(file, file.encoding);
 		} catch {
 			// Skip inaccessible or locked files gracefully
 		}
@@ -2846,21 +2939,59 @@ export class WorkspaceService {
 		}
 		try {
 			if (isTauriApp() && file.fsPath) {
-				const content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+				const inspection = await invoke<FileInspectionResult>('inspect_file', {
+					filePath: file.fsPath,
+				});
+				if (inspection && inspection.is_binary) {
+					file.isBinary = true;
+					file.fileTypeDescription = inspection.file_type;
+					file.language = 'binary';
+					file.content = '';
+					file.isLoaded = true;
+					return '';
+				}
+				if (!file.encoding && inspection?.detected_encoding) {
+					file.encoding = inspection.detected_encoding;
+				}
+				const content = await this.readFileTextWithEncoding(file, file.encoding);
 				file.content = content;
 				file.isLoaded = true;
 				return content;
 			} else if (file.handle && typeof file.handle.getFile === 'function') {
 				const fileObj = await file.handle.getFile();
 				if (fileObj.size <= 2 * 1024 * 1024) {
-					const content = await fileObj.text();
+					const slice = await fileObj
+						.slice(0, Math.min(8192, fileObj.size))
+						.arrayBuffer();
+					const u8 = new Uint8Array(slice);
+					if (u8.includes(0)) {
+						file.isBinary = true;
+						file.fileTypeDescription = 'Binary data';
+						file.language = 'binary';
+						file.content = '';
+						file.isLoaded = true;
+						return '';
+					}
+					const content = await this.readFileTextWithEncoding(file, file.encoding);
 					file.content = content;
 					file.isLoaded = true;
 					return content;
 				}
 			} else if (file.rawFile) {
 				if (file.rawFile.size <= 2 * 1024 * 1024) {
-					const content = await file.rawFile.text();
+					const slice = await file.rawFile
+						.slice(0, Math.min(8192, file.rawFile.size))
+						.arrayBuffer();
+					const u8 = new Uint8Array(slice);
+					if (u8.includes(0)) {
+						file.isBinary = true;
+						file.fileTypeDescription = 'Binary data';
+						file.language = 'binary';
+						file.content = '';
+						file.isLoaded = true;
+						return '';
+					}
+					const content = await this.readFileTextWithEncoding(file, file.encoding);
 					file.content = content;
 					file.isLoaded = true;
 					return content;
@@ -2966,7 +3097,7 @@ export class WorkspaceService {
 
 		if (!file.isLoaded && file.fsPath && isTauriApp()) {
 			try {
-				file.content = await invoke<string>('read_file_text', { filePath: file.fsPath });
+				file.content = await this.readFileTextWithEncoding(file, file.encoding);
 				file.isLoaded = true;
 			} catch (err: any) {
 				return { success: false, message: `Could not read file: ${err?.message || err}` };
@@ -3023,16 +3154,11 @@ export class WorkspaceService {
 		// Broadcast to Monaco editor
 		this.pendingContentReplacement.set({ fileId: file.id, newContent });
 
-		// In desktop mode, write to disk
-		if (file.fsPath && isTauriApp()) {
-			try {
-				await invoke('write_file_text', { filePath: file.fsPath, content: newContent });
-				file.savedContent = newContent;
-				file.isModified = false;
-				this.updateContent(file.id, newContent);
-			} catch (err: any) {
-				console.warn('Failed to save to disk immediately:', err);
-			}
+		// Save to disk
+		try {
+			await this.saveFile(file, true);
+		} catch (err: any) {
+			console.warn('Failed to save to disk immediately:', err);
 		}
 
 		return { success: true, message: `Successfully replaced text in ${file.path}.` };
@@ -3135,15 +3261,17 @@ export class WorkspaceService {
 								} catch (hexErr) {
 									console.warn('read_file_hex failed:', hexErr);
 								}
+							} else if (inspection) {
+								if (!file.encoding && inspection.detected_encoding) {
+									file.encoding = inspection.detected_encoding;
+								}
 							}
 						} catch (inspErr) {
 							console.warn('inspect_file failed:', inspErr);
 						}
 
 						if (!isBinary) {
-							content = await invoke<string>('read_file_text', {
-								filePath: file.fsPath,
-							});
+							content = await this.readFileTextWithEncoding(file, file.encoding);
 							try {
 								const meta = await invoke<{ mtime_ms: number; size: number }>(
 									'get_file_metadata',
@@ -3187,7 +3315,21 @@ export class WorkspaceService {
 								0,
 							);
 						} else {
-							content = await fileObj.text();
+							if (!file.encoding) {
+								let detectedEnc = 'utf-8';
+								if (u8[0] === 0xff && u8[1] === 0xfe) detectedEnc = 'utf-16le';
+								else if (u8[0] === 0xfe && u8[1] === 0xff) detectedEnc = 'utf-16be';
+								else {
+									try {
+										new TextDecoder('utf-8', { fatal: true }).decode(u8);
+									} catch {
+										const hasHebrew = u8.some((b) => b >= 0xe0 && b <= 0xfa);
+										detectedEnc = hasHebrew ? 'windows-1255' : 'windows-1252';
+									}
+								}
+								file.encoding = detectedEnc;
+							}
+							content = await this.readFileTextWithEncoding(file, file.encoding);
 						}
 					} else if (file.rawFile) {
 						const fileObj = file.rawFile;
@@ -3219,7 +3361,21 @@ export class WorkspaceService {
 								0,
 							);
 						} else {
-							content = await fileObj.text();
+							if (!file.encoding) {
+								let detectedEnc = 'utf-8';
+								if (u8[0] === 0xff && u8[1] === 0xfe) detectedEnc = 'utf-16le';
+								else if (u8[0] === 0xfe && u8[1] === 0xff) detectedEnc = 'utf-16be';
+								else {
+									try {
+										new TextDecoder('utf-8', { fatal: true }).decode(u8);
+									} catch {
+										const hasHebrew = u8.some((b) => b >= 0xe0 && b <= 0xfa);
+										detectedEnc = hasHebrew ? 'windows-1255' : 'windows-1252';
+									}
+								}
+								file.encoding = detectedEnc;
+							}
+							content = await this.readFileTextWithEncoding(file, file.encoding);
 						}
 					}
 
@@ -4080,9 +4236,11 @@ export class WorkspaceService {
 				mtime?: number;
 				size?: number;
 				cursor?: { line: number; column: number };
+				encoding?: string;
 			} = {
 				path: t.path || t.id,
 			};
+			if (t.encoding) item.encoding = t.encoding;
 			if (t.lastDiskMtime !== undefined) item.mtime = t.lastDiskMtime;
 			if (t.lastDiskSize !== undefined || t.fileSize !== undefined) {
 				item.size = t.lastDiskSize ?? t.fileSize;
@@ -4284,6 +4442,7 @@ export class WorkspaceService {
 			mtime?: number;
 			size?: number;
 			cursor?: { line: number; column: number };
+			encoding?: string;
 		}>;
 		activeFile: string | null;
 	} | null> {
@@ -4299,6 +4458,7 @@ export class WorkspaceService {
 						mtime?: number;
 						size?: number;
 						cursor?: { line: number; column: number };
+						encoding?: string;
 					}> = [];
 					for (const item of parsed.openFiles) {
 						if (typeof item === 'string' && item.trim()) {
@@ -4316,6 +4476,10 @@ export class WorkspaceService {
 								cursor:
 									item.cursor && typeof item.cursor.line === 'number'
 										? item.cursor
+										: undefined,
+								encoding:
+									typeof item.encoding === 'string'
+										? item.encoding
 										: undefined,
 							});
 						}
@@ -4619,6 +4783,7 @@ export class WorkspaceService {
 								lastDiskSize: item.size,
 								fileSize: item.size,
 								cursor: item.cursor,
+								encoding: item.encoding,
 							};
 							this.files.update((files) => [...files, fileToOpen!]);
 						} else {
@@ -4626,6 +4791,9 @@ export class WorkspaceService {
 							if (item.size !== undefined) {
 								fileToOpen.lastDiskSize = item.size;
 								fileToOpen.fileSize = item.size;
+							}
+							if (item.encoding) {
+								fileToOpen.encoding = item.encoding;
 							}
 						}
 						if (item.cursor) {
@@ -5028,6 +5196,7 @@ export class WorkspaceService {
 							lastDiskSize: item.size,
 							fileSize: item.size,
 							cursor: item.cursor,
+							encoding: item.encoding,
 						};
 						this.files.update((files) => [...files, fileToOpen!]);
 					} else {
@@ -5035,6 +5204,9 @@ export class WorkspaceService {
 						if (item.size !== undefined) {
 							fileToOpen.lastDiskSize = item.size;
 							fileToOpen.fileSize = item.size;
+						}
+						if (item.encoding) {
+							fileToOpen.encoding = item.encoding;
 						}
 					}
 					if (item.cursor) {
@@ -5577,9 +5749,10 @@ export class WorkspaceService {
 			if (!isConflict) {
 				if (isTauriApp() && file.fsPath) {
 					try {
-						const currentOnDisk = await invoke<string>('read_file_text', {
-							filePath: file.fsPath,
-						});
+						const currentOnDisk = await this.readFileTextWithEncoding(
+							file,
+							file.encoding,
+						);
 						const baseContent = file.savedContent ?? file.originalContent;
 						if (
 							baseContent !== undefined &&
@@ -5594,8 +5767,10 @@ export class WorkspaceService {
 					}
 				} else if (file.handle && typeof file.handle.getFile === 'function') {
 					try {
-						const fileObj = await file.handle.getFile();
-						const currentOnDisk = await fileObj.text();
+						const currentOnDisk = await this.readFileTextWithEncoding(
+							file,
+							file.encoding,
+						);
 						const baseContent = file.savedContent ?? file.originalContent;
 						if (
 							baseContent !== undefined &&
@@ -5623,10 +5798,19 @@ export class WorkspaceService {
 
 		if (isTauriApp() && file.fsPath) {
 			try {
-				await invoke('write_file_text', {
-					filePath: file.fsPath,
-					content: file.content,
-				});
+				if (file.encoding && file.encoding !== 'utf-8') {
+					const encodedBytes = encodeStringToBytes(file.content, file.encoding);
+					const b64 = uint8ArrayToBase64(encodedBytes);
+					await invoke('write_file_base64', {
+						filePath: file.fsPath,
+						base64Content: b64,
+					});
+				} else {
+					await invoke('write_file_text', {
+						filePath: file.fsPath,
+						content: file.content,
+					});
+				}
 				try {
 					const meta = await invoke<{ mtime_ms: number; size: number }>(
 						'get_file_metadata',
@@ -5686,7 +5870,12 @@ export class WorkspaceService {
 		if (file.handle && typeof file.handle.createWritable === 'function') {
 			try {
 				const writable = await file.handle.createWritable();
-				await writable.write(file.content);
+				if (file.encoding && file.encoding !== 'utf-8') {
+					const encodedBytes = encodeStringToBytes(file.content, file.encoding);
+					await writable.write(encodedBytes);
+				} else {
+					await writable.write(file.content);
+				}
 				await writable.close();
 
 				if (typeof file.handle.getFile === 'function') {

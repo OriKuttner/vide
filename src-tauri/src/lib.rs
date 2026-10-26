@@ -126,6 +126,7 @@ pub struct FileInspectionResult {
 	pub file_type: String,
 	pub mime_type: String,
 	pub size: u64,
+	pub detected_encoding: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1309,6 +1310,9 @@ fn inspect_file(file_path: String) -> Result<FileInspectionResult, String> {
 	let bytes_read = file.read(&mut buffer).unwrap_or(0);
 	let sample = &buffer[..bytes_read];
 
+	let is_utf16_le = sample.starts_with(b"\xFF\xFE");
+	let is_utf16_be = sample.starts_with(b"\xFE\xFF");
+	let is_utf8_bom = sample.starts_with(b"\xEF\xBB\xBF");
 	let contains_null = sample.contains(&0u8);
 	let is_utf8 = std::str::from_utf8(sample).is_ok();
 
@@ -1334,7 +1338,10 @@ fn inspect_file(file_path: String) -> Result<FileInspectionResult, String> {
 		} else if sample.starts_with(b"SQLite format 3\0") {
 			file_type = "SQLite 3.x database".to_string();
 			mime_type = "application/x-sqlite3".to_string();
-		} else if contains_null || !is_utf8 {
+		} else if sample.starts_with(b"\xde\x12\x04\x95") || sample.starts_with(b"\x95\x04\x12\xde") {
+			file_type = "GNU gettext message catalog (compiled .mo)".to_string();
+			mime_type = "application/x-gettext-translation".to_string();
+		} else if contains_null && !is_utf16_le && !is_utf16_be {
 			file_type = "Binary data".to_string();
 		} else {
 			file_type = "Text document".to_string();
@@ -1342,8 +1349,7 @@ fn inspect_file(file_path: String) -> Result<FileInspectionResult, String> {
 		}
 	}
 
-	let is_binary = contains_null
-		|| (!is_utf8 && !mime_type.starts_with("text/"))
+	let is_binary = (contains_null && !is_utf16_le && !is_utf16_be)
 		|| mime_type.starts_with("application/x-")
 		|| mime_type == "application/octet-stream"
 		|| mime_type == "application/pdf"
@@ -1356,11 +1362,29 @@ fn inspect_file(file_path: String) -> Result<FileInspectionResult, String> {
 			&& mime_type != "application/javascript"
 			&& mime_type != "application/xml");
 
+	let detected_encoding = if is_binary {
+		"binary".to_string()
+	} else if is_utf16_le {
+		"utf-16le".to_string()
+	} else if is_utf16_be {
+		"utf-16be".to_string()
+	} else if is_utf8 || is_utf8_bom {
+		"utf-8".to_string()
+	} else {
+		let has_hebrew = sample.iter().any(|&b| b >= 0xE0 && b <= 0xFA);
+		if has_hebrew {
+			"windows-1255".to_string()
+		} else {
+			"windows-1252".to_string()
+		}
+	};
+
 	Ok(FileInspectionResult {
 		is_binary,
 		file_type,
 		mime_type,
 		size,
+		detected_encoding,
 	})
 }
 
@@ -1485,6 +1509,20 @@ fn write_file_text(file_path: String, content: String) -> Result<(), String> {
 	}
 	fs::write(&clean_path, content)
 		.map_err(|e| format!("Failed to write file '{}': {}", clean_path, e))
+}
+
+#[tauri::command]
+fn write_file_base64(file_path: String, base64_content: String) -> Result<(), String> {
+	use base64::Engine;
+	let clean_path = expand_path(&file_path);
+	if let Some(parent) = std::path::Path::new(&clean_path).parent() {
+		let _ = fs::create_dir_all(parent);
+	}
+	let bytes = base64::engine::general_purpose::STANDARD
+		.decode(&base64_content)
+		.map_err(|e| format!("Invalid base64: {}", e))?;
+	fs::write(&clean_path, bytes)
+		.map_err(|e| format!("Failed to write binary/encoded file '{}': {}", clean_path, e))
 }
 
 #[tauri::command]
@@ -2434,6 +2472,7 @@ pub fn run() {
 			read_file_text,
 			read_file_base64,
 			write_file_text,
+			write_file_base64,
 			get_file_metadata,
 			create_directory,
 			open_system_terminal,

@@ -115,4 +115,27 @@ export class StatusBarComponent implements OnInit {
 				return lang.toUpperCase();
 		}
 	}
+
+	public activeEncodingLabel(): string {
+		const file = this.workspaceService.activeFile();
+		const enc = (file?.encoding || 'utf-8').toLowerCase();
+		switch (enc) {
+			case 'utf-8':
+				return 'UTF-8';
+			case 'windows-1255':
+				return 'Windows 1255';
+			case 'iso-8859-8':
+				return 'ISO-8859-8';
+			case 'windows-1252':
+				return 'Windows 1252';
+			case 'iso-8859-1':
+				return 'ISO-8859-1';
+			case 'utf-16le':
+				return 'UTF-16 LE';
+			case 'utf-16be':
+				return 'UTF-16 BE';
+			default:
+				return enc.toUpperCase();
+		}
+	}
 }

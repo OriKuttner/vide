@@ -82,7 +82,14 @@
 	</div>
 
 	<div class="right-group">
-		<span class="status-item"> Ln {{ cursor().line }}, Col {{ cursor().column }} </span>
+		<button
+			type="button"
+			class="status-btn line-col-btn"
+			(click)="workspaceService.triggerGotoLine()"
+			title="Go to Line/Column (Ctrl+G)"
+		>
+			Line: {{ cursor().line }}:{{ cursor().column }}
+		</button>
 
 		<button
 			type="button"
@@ -93,7 +100,16 @@
 			{{ indentationLabel() }}
 		</button>
 
-		<span class="status-item">UTF-8</span>
+		@if (!workspaceService.activeFile()?.isBinary && workspaceService.activeFile()?.language !== 'binary') {
+			<button
+				type="button"
+				class="status-btn encoding-badge"
+				(click)="workspaceService.openModal('change-encoding')"
+				[title]="'File Encoding: ' + activeEncodingLabel() + ' (Click to change)'"
+			>
+				{{ activeEncodingLabel() }}
+			</button>
+		}
 
 		<button
 			type="button"

@@ -26,6 +26,8 @@ import {
 	isPerlFile,
 	GitBranchItem,
 	GitCommitDetails,
+	SUPPORTED_ENCODINGS,
+	EncodingOption,
 } from '../../models/file.model';
 
 export interface LanguageItem {
@@ -81,6 +83,11 @@ export class SearchModalComponent {
 	// Language selection state
 	public languageResults = signal<LanguageItem[]>(SUPPORTED_LANGUAGES);
 
+	// Encoding selection state
+	public encodingStep = signal<'action' | 'select'>('action');
+	public encodingAction = signal<'reopen' | 'save'>('reopen');
+	public encodingResults = signal<EncodingOption[]>(SUPPORTED_ENCODINGS);
+
 	// Git Branches & Tags state
 	public filteredBranches = signal<GitBranchItem[]>([]);
 	public filteredTags = signal<string[]>([]);
@@ -116,6 +123,10 @@ export class SearchModalComponent {
 					this.fileResults.set(this.workspaceService.findFiles(''));
 				} else if (mode === 'change-language') {
 					this.languageResults.set(SUPPORTED_LANGUAGES);
+				} else if (mode === 'change-encoding') {
+					this.encodingStep.set('action');
+					this.encodingAction.set('reopen');
+					this.encodingResults.set(SUPPORTED_ENCODINGS);
 				} else if (mode === 'git-branches') {
 					this.filteredBranches.set(this.workspaceService.gitBranches());
 					this.filteredTags.set(this.workspaceService.gitTags());
@@ -218,6 +229,12 @@ export class SearchModalComponent {
 				return 'Configure Indentation';
 			case 'change-language':
 				return 'Select Language Mode';
+			case 'change-encoding':
+				return this.encodingStep() === 'action'
+					? 'File Encoding'
+					: this.encodingAction() === 'reopen'
+						? 'Reopen with Encoding'
+						: 'Save with Encoding';
 			case 'git-branches':
 				return 'Git: Switch or Create Branch';
 			case 'git-create-tag':
@@ -275,6 +292,12 @@ export class SearchModalComponent {
 				return 'Type file name to filter:';
 			case 'change-language':
 				return 'Select language mode (type to filter):';
+			case 'change-encoding':
+				return this.encodingStep() === 'action'
+					? 'Select action or type encoding to filter:'
+					: this.encodingAction() === 'reopen'
+						? 'Select encoding to reopen file from disk:'
+						: 'Select encoding to save file with:';
 			case 'git-branches':
 				return 'Select a branch to checkout, or type a new name to create:';
 			case 'git-create-tag':
@@ -304,6 +327,23 @@ export class SearchModalComponent {
 							l.name.toLowerCase().includes(q) ||
 							l.id.toLowerCase().includes(q) ||
 							l.extensions.toLowerCase().includes(q),
+					),
+				);
+			}
+		} else if (mode === 'change-encoding') {
+			if (this.encodingStep() === 'action' && val.trim()) {
+				this.encodingStep.set('select');
+			}
+			const q = val.trim().toLowerCase();
+			if (!q) {
+				this.encodingResults.set(SUPPORTED_ENCODINGS);
+			} else {
+				this.encodingResults.set(
+					SUPPORTED_ENCODINGS.filter(
+						(e) =>
+							e.label.toLowerCase().includes(q) ||
+							e.id.toLowerCase().includes(q) ||
+							e.description.toLowerCase().includes(q),
 					),
 				);
 			}
@@ -404,6 +444,15 @@ export class SearchModalComponent {
 			const langs = this.languageResults();
 			if (langs.length > 0) {
 				this.selectLanguage(langs[0].id);
+			}
+		} else if (mode === 'change-encoding') {
+			if (this.encodingStep() === 'action') {
+				this.chooseEncodingAction('reopen');
+			} else {
+				const encs = this.encodingResults();
+				if (encs.length > 0) {
+					await this.selectEncoding(encs[0].id);
+				}
 			}
 		} else if (mode === 'git-branches') {
 			if (!val) {
@@ -516,6 +565,25 @@ export class SearchModalComponent {
 
 	public selectLanguage(languageId: string): void {
 		this.workspaceService.changeActiveFileLanguage(languageId);
+	}
+
+	public chooseEncodingAction(action: 'reopen' | 'save'): void {
+		this.encodingAction.set(action);
+		this.encodingStep.set('select');
+		this.inputValue.set('');
+		this.encodingResults.set(SUPPORTED_ENCODINGS);
+		setTimeout(() => {
+			this.inputField?.nativeElement?.focus();
+		}, 50);
+	}
+
+	public async selectEncoding(encodingId: string): Promise<void> {
+		this.close();
+		if (this.encodingAction() === 'reopen') {
+			await this.workspaceService.reopenActiveFileWithEncoding(encodingId);
+		} else {
+			await this.workspaceService.saveActiveFileWithEncoding(encodingId);
+		}
 	}
 
 	public selectFile(file: WorkspaceFile): void {

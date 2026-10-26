@@ -691,6 +691,34 @@
 				</div>
 			}
 
+			@if (workspaceService.activeModal() === 'change-encoding') {
+				<div class="results-list">
+					@if (encodingStep() === 'action') {
+						<div class="result-item" (click)="chooseEncodingAction('reopen')">
+							<span class="file-badge">📖</span>
+							<span class="file-name">Reopen with Encoding</span>
+							<span class="file-dir">Reload and decode the active file from disk using a different encoding</span>
+						</div>
+						<div class="result-item" (click)="chooseEncodingAction('save')">
+							<span class="file-badge">💾</span>
+							<span class="file-name">Save with Encoding</span>
+							<span class="file-dir">Save the current editor buffer to disk using a different encoding</span>
+						</div>
+					} @else {
+						@for (enc of encodingResults(); track enc.id) {
+							<div class="result-item" (click)="selectEncoding(enc.id)">
+								<span class="file-badge">ENC</span>
+								<span class="file-name">{{ enc.label }}</span>
+								<span class="file-dir">{{ enc.description }}</span>
+							</div>
+						}
+						@if (encodingResults().length === 0) {
+							<div class="no-results">No encodings matching query</div>
+						}
+					}
+				</div>
+			}
+
 			@if (workspaceService.activeModal() === 'git-branches') {
 				<div class="results-list">
 					@if (workspaceService.isLoadingBranches()) {

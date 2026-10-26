@@ -41,6 +41,7 @@ export interface WorkspaceFile {
 		modifiedTitle: string;
 	};
 	isDiskDiff?: boolean;
+	encoding?: string;
 }
 
 export interface HexLine {
@@ -63,6 +64,7 @@ export interface FileInspectionResult {
 	file_type: string;
 	mime_type: string;
 	size: number;
+	detected_encoding?: string;
 }
 
 export interface FileTreeNode {
@@ -335,8 +337,135 @@ export function isBinaryFile(filename?: string): boolean {
 		'.epub',
 		'.mobi',
 		'.azw3',
+		'.mo',
+		'.gmo',
+		'.woff',
+		'.woff2',
+		'.ttf',
+		'.otf',
+		'.eot',
 	];
 	return binaryExts.some((ext) => lower.endsWith(ext));
+}
+
+export interface EncodingOption {
+	id: string;
+	label: string;
+	description: string;
+}
+
+export const SUPPORTED_ENCODINGS: EncodingOption[] = [
+	{ id: 'utf-8', label: 'UTF-8', description: 'Unicode (UTF-8)' },
+	{ id: 'windows-1255', label: 'Windows 1255', description: 'Hebrew (Windows-1255)' },
+	{ id: 'iso-8859-8', label: 'ISO-8859-8', description: 'Hebrew (ISO-8859-8 Logical)' },
+	{ id: 'windows-1252', label: 'Windows 1252', description: 'Western European (Windows-1252)' },
+	{ id: 'iso-8859-1', label: 'ISO-8859-1', description: 'Western European (Latin-1)' },
+	{ id: 'utf-16le', label: 'UTF-16 LE', description: 'Unicode (UTF-16 Little Endian)' },
+	{ id: 'utf-16be', label: 'UTF-16 BE', description: 'Unicode (UTF-16 Big Endian)' },
+];
+
+export function encodeStringToWindows1255(str: string): Uint8Array {
+	const bytes = new Uint8Array(str.length);
+	for (let i = 0; i < str.length; i++) {
+		const code = str.charCodeAt(i);
+		if (code <= 0x7F) {
+			bytes[i] = code;
+		} else if (code >= 0x05D0 && code <= 0x05EA) {
+			bytes[i] = 0xE0 + (code - 0x05D0);
+		} else if (code >= 0x05B0 && code <= 0x05DA) {
+			bytes[i] = 0xC0 + (code - 0x05B0);
+		} else if (code === 0x05F3) {
+			bytes[i] = 0xDE;
+		} else if (code === 0x05F4) {
+			bytes[i] = 0xDF;
+		} else if (code >= 0xA0 && code <= 0xFF) {
+			bytes[i] = code;
+		} else {
+			bytes[i] = 0x3F;
+		}
+	}
+	return bytes;
+}
+
+export function encodeStringToWindows1252(str: string): Uint8Array {
+	const bytes = new Uint8Array(str.length);
+	for (let i = 0; i < str.length; i++) {
+		const code = str.charCodeAt(i);
+		bytes[i] = code <= 0xFF ? code : 0x3F;
+	}
+	return bytes;
+}
+
+export function encodeStringToUtf16Le(str: string): Uint8Array {
+	const bytes = new Uint8Array(str.length * 2);
+	for (let i = 0; i < str.length; i++) {
+		const code = str.charCodeAt(i);
+		bytes[i * 2] = code & 0xFF;
+		bytes[i * 2 + 1] = (code >> 8) & 0xFF;
+	}
+	return bytes;
+}
+
+export function encodeStringToUtf16Be(str: string): Uint8Array {
+	const bytes = new Uint8Array(str.length * 2);
+	for (let i = 0; i < str.length; i++) {
+		const code = str.charCodeAt(i);
+		bytes[i * 2] = (code >> 8) & 0xFF;
+		bytes[i * 2 + 1] = code & 0xFF;
+	}
+	return bytes;
+}
+
+export function encodeStringToBytes(str: string, encoding: string): Uint8Array {
+	const enc = (encoding || 'utf-8').toLowerCase();
+	if (enc === 'windows-1255' || enc === 'iso-8859-8') {
+		return encodeStringToWindows1255(str);
+	}
+	if (enc === 'windows-1252' || enc === 'iso-8859-1') {
+		return encodeStringToWindows1252(str);
+	}
+	if (enc === 'utf-16le') {
+		return encodeStringToUtf16Le(str);
+	}
+	if (enc === 'utf-16be') {
+		return encodeStringToUtf16Be(str);
+	}
+	return new TextEncoder().encode(str);
+}
+
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
+	let binary = '';
+	const chunkSize = 8192;
+	for (let i = 0; i < bytes.length; i += chunkSize) {
+		const chunk = bytes.subarray(i, i + chunkSize);
+		binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+	}
+	return btoa(binary);
+}
+
+export function base64ToUint8Array(b64: string): Uint8Array {
+	const binaryString = atob(b64);
+	const len = binaryString.length;
+	const bytes = new Uint8Array(len);
+	for (let i = 0; i < len; i++) {
+		bytes[i] = binaryString.charCodeAt(i);
+	}
+	return bytes;
+}
+
+export function decodeBytesWithEncoding(bytes: Uint8Array, encoding: string): string {
+	const enc = (encoding || 'utf-8').toLowerCase();
+	try {
+		const decoder = new TextDecoder(enc);
+		return decoder.decode(bytes);
+	} catch {
+		return new TextDecoder('utf-8').decode(bytes);
+	}
+}
+
+export function decodeBase64WithEncoding(b64: string, encoding: string): string {
+	const bytes = base64ToUint8Array(b64);
+	return decodeBytesWithEncoding(bytes, encoding);
 }
 
 export function getImageMimeType(filename: string): string {

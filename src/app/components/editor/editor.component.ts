@@ -534,6 +534,16 @@ ${rawContent}
 			}
 		});
 
+		// Effect to trigger goto line prompt on demand
+		effect(() => {
+			const req = this.workspaceService.pendingGotoLine();
+			if (req > 0) {
+				untracked(() => {
+					this.triggerGotoLine();
+				});
+			}
+		});
+
 		// Effect to toggle Sticky Scroll dynamically
 		effect(() => {
 			const enabled = this.workspaceService.stickyScrollEnabled();
