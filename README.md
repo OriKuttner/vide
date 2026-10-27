@@ -92,7 +92,28 @@ Along the way, I integrated practical AI capabilities powered by Google’s cost
 
 ## Getting Started
 
-### Prerequisites
+### Pre-built Binaries
+
+Pre-compiled packages for Linux (`.deb`, `.rpm`, `.AppImage`), macOS (`.dmg`), and Windows (`.exe` / `.msi`) are available on the [GitHub Releases](https://github.com/OriKuttner/vide/releases) page.
+
+#### macOS Gatekeeper & Quarantine Notice
+
+Because release builds are currently unsigned (pending Apple Developer ID certification), macOS Gatekeeper (especially on macOS Sonoma and Sequoia) may display a misleading alert:
+> *"vide is damaged and can’t be opened. You should move it to the Trash."*
+
+This is standard macOS quarantine behavior for unsigned binaries downloaded from the web. To allow Vector IDE to open, drag `vide.app` to your `/Applications` folder and remove the quarantine attribute via Terminal:
+
+```bash
+xattr -cr /Applications/vide.app
+```
+
+*(Alternatively, run `xattr -d com.apple.quarantine <path-to-dmg>` directly on the downloaded installer before mounting).*
+
+---
+
+### Building from Source
+
+#### Prerequisites
 
 Ensure you have the following installed on your system:
 
@@ -107,7 +128,7 @@ Ensure you have the following installed on your system:
    - **macOS:** Xcode Command Line Tools (`xcode-select --install`).
    - **Windows:** Microsoft Visual Studio C++ Build Tools and WebView2.
 
-### Installation
+#### Installation
 
 Clone the repository and install npm packages:
 
@@ -117,7 +138,7 @@ cd vide
 npm install
 ```
 
-### Running in Development
+#### Running in Development
 
 To start the local Angular development server and launch the Tauri desktop application:
 
@@ -131,7 +152,7 @@ Or run Tauri directly:
 npx tauri dev
 ```
 
-### Building for Production
+#### Building for Production
 
 To compile both frontend and native desktop release binaries:
 
