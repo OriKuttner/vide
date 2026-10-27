@@ -109,6 +109,8 @@ export class StatusBarComponent implements OnInit {
 				return 'Bash';
 			case 'python':
 				return 'Python';
+			case 'rust':
+				return 'Rust';
 			case 'plaintext':
 				return 'Plain Text';
 			default:

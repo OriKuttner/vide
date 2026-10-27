@@ -512,6 +512,13 @@ export function isPerlFile(filename?: string, lang?: string): boolean {
 	return lower.endsWith('.pl') || lower.endsWith('.pm') || lower.endsWith('.t');
 }
 
+export function isRustFile(filename?: string, lang?: string): boolean {
+	if (lang === 'rust') return true;
+	if (!filename) return false;
+	const lower = filename.toLowerCase();
+	return lower.endsWith('.rs');
+}
+
 export function isMarkdownFile(filename?: string, lang?: string): boolean {
 	if (lang === 'markdown') return true;
 	if (!filename) return false;

@@ -24,6 +24,7 @@ import {
 	isOmniFluxFile,
 	isPhpFile,
 	isPerlFile,
+	isRustFile,
 	GitBranchItem,
 	GitCommitDetails,
 	SUPPORTED_ENCODINGS,
@@ -51,6 +52,7 @@ const SUPPORTED_LANGUAGES: LanguageItem[] = [
 	{ id: 'markdown', name: 'Markdown', badge: 'MD', extensions: '.md' },
 	{ id: 'shell', name: 'Bash / Shell', badge: 'SH', extensions: '.sh, .bash' },
 	{ id: 'python', name: 'Python', badge: 'PY', extensions: '.py, .pyw' },
+	{ id: 'rust', name: 'Rust', badge: 'RS', extensions: '.rs' },
 	{ id: 'plaintext', name: 'Plain Text', badge: 'TXT', extensions: '.txt' },
 ];
 
@@ -688,6 +690,10 @@ export class SearchModalComponent {
 
 	public isPerl(file: WorkspaceFile): boolean {
 		return isPerlFile(file.name, file.language);
+	}
+
+	public isRust(file: WorkspaceFile): boolean {
+		return isRustFile(file.name, file.language);
 	}
 
 	public getUniqueFileCount(results: GrepResult[]): number {

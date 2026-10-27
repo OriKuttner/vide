@@ -27,6 +27,7 @@ import {
 	isOmniFluxFile,
 	isPhpFile,
 	isPerlFile,
+	isRustFile,
 	isBinaryFile,
 	GitCommit,
 } from '../../models/file.model';
@@ -264,6 +265,13 @@ export class SidebarComponent {
 		return isPerlFile(name, lang);
 	}
 
+	public isRustNode(item: WorkspaceFile | FileTreeNode | undefined | null): boolean {
+		if (!item) return false;
+		const name = item.name || '';
+		const lang = ('language' in item ? item.language : '') || '';
+		return isRustFile(name, lang);
+	}
+
 	public isBinaryNode(item: WorkspaceFile | FileTreeNode | undefined | null): boolean {
 		if (!item) return false;
 		if ('isBinary' in item && item.isBinary) return true;
@@ -314,6 +322,8 @@ export class SidebarComponent {
 				return 'SH';
 			case 'python':
 				return 'PY';
+			case 'rust':
+				return 'RS';
 			default:
 				return 'TXT';
 		}
@@ -577,6 +587,7 @@ export class SidebarComponent {
 	// Git Commit & History state
 	public aiService = inject(AiService);
 	public commitMessage = signal<string>('');
+	public commitTag = signal<string>('');
 	public commitsExpanded = signal<boolean>(true);
 	public readonly isPushing = signal<boolean>(false);
 	public readonly isCommitting = signal<boolean>(false);
@@ -621,6 +632,11 @@ export class SidebarComponent {
 		this.commitMessage.set(val);
 	}
 
+	public onCommitTagChange(event: Event): void {
+		const val = (event.target as HTMLInputElement).value;
+		this.commitTag.set(val);
+	}
+
 	public async submitCommit(): Promise<void> {
 		const msg = this.commitMessage().trim();
 		if (
@@ -645,6 +661,11 @@ export class SidebarComponent {
 		try {
 			const success = await this.workspaceService.commitChanges(msg);
 			if (success) {
+				const tag = this.commitTag().trim();
+				if (tag) {
+					await this.workspaceService.createGitTag(tag, msg);
+					this.commitTag.set('');
+				}
 				this.commitMessage.set('');
 			}
 		} finally {
@@ -680,6 +701,11 @@ export class SidebarComponent {
 		try {
 			const success = await this.workspaceService.commitChanges(msg);
 			if (success) {
+				const tag = this.commitTag().trim();
+				if (tag) {
+					await this.workspaceService.createGitTag(tag, msg);
+					this.commitTag.set('');
+				}
 				this.commitMessage.set('');
 				await this.workspaceService.pushChanges();
 			}

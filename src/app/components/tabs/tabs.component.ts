@@ -26,6 +26,7 @@ import {
 	isOmniFluxFile,
 	isPhpFile,
 	isPerlFile,
+	isRustFile,
 	isPreviewableFile,
 	isBinaryFile,
 } from '../../models/file.model';
@@ -90,6 +91,10 @@ export class TabsComponent {
 
 	public isPerl(tab: WorkspaceFile): boolean {
 		return isPerlFile(tab.name, tab.language);
+	}
+
+	public isRust(tab: WorkspaceFile): boolean {
+		return isRustFile(tab.name, tab.language);
 	}
 
 	public isPreviewable(tab: WorkspaceFile): boolean {

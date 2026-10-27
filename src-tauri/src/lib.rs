@@ -918,7 +918,7 @@ fn git_push(repo_path: String) -> Result<String, String> {
 
 	let output = if has_upstream {
 		Command::new("git")
-			.args(["-C", &clean_repo, "push"])
+			.args(["-C", &clean_repo, "push", "--follow-tags"])
 			.output()
 			.map_err(|e| format!("Failed to execute git push: {}", e))?
 	} else {
@@ -942,7 +942,7 @@ fn git_push(repo_path: String) -> Result<String, String> {
 		}
 
 		Command::new("git")
-			.args(["-C", &clean_repo, "push", "-u", remote, &branch])
+			.args(["-C", &clean_repo, "push", "--follow-tags", "-u", remote, &branch])
 			.output()
 			.map_err(|e| format!("Failed to execute git push: {}", e))?
 	};

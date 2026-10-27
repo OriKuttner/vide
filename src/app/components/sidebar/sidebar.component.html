@@ -329,6 +329,14 @@
 											alt="Perl"
 										/>
 									</span>
+								} @else if (isRustNode(node.file || node)) {
+									<span class="file-badge icon-badge" title="Rust">
+										<img
+											src="rust-gear.svg"
+											class="file-badge-img"
+											alt="Rust"
+										/>
+									</span>
 								} @else {
 									<span
 										class="file-badge"
@@ -595,6 +603,10 @@
 								<span class="file-badge icon-badge" title="Perl">
 									<img src="perl-onion.svg" class="file-badge-img" alt="Perl" />
 								</span>
+							} @else if (isRustNode(group.file)) {
+								<span class="file-badge icon-badge" title="Rust">
+									<img src="rust-gear.svg" class="file-badge-img" alt="Rust" />
+								</span>
 							} @else {
 								<span
 									class="file-badge"
@@ -739,6 +751,35 @@
 								rows="2"
 							></textarea>
 						</div>
+						<div class="commit-tag-wrapper">
+							<div class="commit-tag-label-row">
+								<label class="commit-tag-label" for="commitTagInput">Tag (optional)</label>
+								@if (commitTag()) {
+									<button
+										type="button"
+										class="btn-clear-tag"
+										(click)="commitTag.set('')"
+										title="Clear tag"
+									>
+										✕ Clear
+									</button>
+								}
+							</div>
+							<div class="commit-tag-input-box">
+								<span class="commit-tag-icon">🏷️</span>
+								<input
+									id="commitTagInput"
+									type="text"
+									class="commit-tag-input"
+									[value]="commitTag()"
+									[disabled]="isCommitting() || workspaceService.isCommitting()"
+									(input)="onCommitTagChange($event)"
+									(keydown.control.enter)="submitCommit()"
+									(keydown.meta.enter)="submitCommit()"
+									aria-label="Git tag name"
+								/>
+							</div>
+						</div>
 						<div class="commit-buttons-row">
 							<button
 								type="button"
@@ -755,7 +796,11 @@
 									workspaceService.isPushing()
 								"
 								(click)="submitCommit()"
-								title="Commit changes locally (Ctrl+Enter)"
+								[title]="
+									commitTag().trim()
+										? 'Commit and create tag locally (Ctrl+Enter)'
+										: 'Commit changes locally (Ctrl+Enter)'
+								"
 							>
 								@if (
 									(isCommitting() || workspaceService.isCommitting()) &&
@@ -764,7 +809,7 @@
 									<span class="btn-spinner"></span>
 									<span>Committing...</span>
 								} @else {
-									<span>✓ Commit</span>
+									<span>✓ {{ commitTag().trim() ? 'Commit & Tag' : 'Commit' }}</span>
 								}
 							</button>
 							@if (workspaceService.gitSyncStatus()?.has_remote) {
@@ -780,13 +825,19 @@
 										workspaceService.isPushing()
 									"
 									(click)="submitCommitAndPush()"
-									title="Commit changes and push immediately to remote"
+									[title]="
+										commitTag().trim()
+											? 'Commit, tag, and push immediately to remote'
+											: 'Commit changes and push immediately to remote'
+									"
 								>
 									@if (isCommitAndPushing()) {
 										<span class="btn-spinner"></span>
 										<span>Syncing...</span>
 									} @else {
-										<span>🚀 Commit & Push</span>
+										<span>🚀 {{
+											commitTag().trim() ? 'Commit, Tag & Push' : 'Commit & Push'
+										}}</span>
 									}
 								</button>
 							}
@@ -905,6 +956,14 @@
 											src="perl-onion.svg"
 											class="file-badge-img"
 											alt="Perl"
+										/>
+									</span>
+								} @else if (isRustNode(file)) {
+									<span class="file-icon-badge icon-badge" title="Rust">
+										<img
+											src="rust-gear.svg"
+											class="file-badge-img"
+											alt="Rust"
 										/>
 									</span>
 								} @else {

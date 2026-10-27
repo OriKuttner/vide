@@ -684,6 +684,10 @@
 			background-color: #3572a5;
 			color: #fff;
 		}
+		&[data-lang='rust'] {
+			background-color: #ce412b;
+			color: #fff;
+		}
 		&[data-lang='image'] {
 			background-color: #107c41;
 			color: #fff;
@@ -1299,6 +1303,72 @@
 				&:focus {
 					border-color: #007acc;
 					box-shadow: 0 0 0 1px #007acc;
+				}
+			}
+		}
+
+		.commit-tag-wrapper {
+			display: flex;
+			flex-direction: column;
+			gap: 3px;
+
+			.commit-tag-label-row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+
+				.commit-tag-label {
+					font-size: 11px;
+					font-weight: 600;
+					text-transform: uppercase;
+					letter-spacing: 0.5px;
+					color: var(--text-muted, #717171);
+				}
+
+				.btn-clear-tag {
+					background: none;
+					border: none;
+					cursor: pointer;
+					font-size: 11px;
+					color: var(--text-muted, #717171);
+					padding: 0 4px;
+
+					&:hover {
+						color: #e5534b;
+					}
+				}
+			}
+
+			.commit-tag-input-box {
+				display: flex;
+				align-items: center;
+				border: 1px solid var(--border-color, #dcdcdc);
+				border-radius: 4px;
+				background-color: var(--bg-primary, #ffffff);
+				padding: 0 6px;
+				gap: 4px;
+
+				&:focus-within {
+					border-color: #007acc;
+					box-shadow: 0 0 0 1px #007acc;
+				}
+
+				.commit-tag-icon {
+					font-size: 11px;
+					user-select: none;
+					opacity: 0.7;
+				}
+
+				.commit-tag-input {
+					flex: 1;
+					border: none;
+					outline: none;
+					background: transparent;
+					color: var(--text-primary, #1e1e1e);
+					font-size: 12.5px;
+					font-family: inherit;
+					height: 26px;
+					padding: 0;
 				}
 			}
 		}
