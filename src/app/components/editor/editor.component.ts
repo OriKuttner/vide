@@ -158,6 +158,8 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 				parsed = this.resolveMarkdownImages(parsed, f);
 			}
 
+			parsed = this.applyRtlToMarkdown(parsed);
+
 			return this.sanitizer.bypassSecurityTrustHtml(parsed);
 		} catch (err) {
 			console.error('Error parsing markdown:', err);
@@ -264,6 +266,77 @@ export class EditorComponent implements OnInit, AfterViewInit, OnDestroy {
 			}
 		}
 		return parts.join('/');
+	}
+
+	/**
+	 * Inspects blocks in rendered markdown and sets dir="rtl" on elements
+	 * where Hebrew characters make up more than 30% of the line.
+	 */
+	private applyRtlToMarkdown(html: string): string {
+		if (!html) return html;
+		try {
+			const parser = new DOMParser();
+			const doc = parser.parseFromString(html, 'text/html');
+
+			// Target block elements that contain text content
+			const elements = doc.body.querySelectorAll<HTMLElement>(
+				'p, h1, h2, h3, h4, h5, h6, li, blockquote, th, td',
+			);
+
+			const hebrewRegex = /[\u0590-\u05FF]/g;
+
+			elements.forEach((el) => {
+				// Don't modify code blocks or their children
+				if (el.closest('pre') || el.closest('.code-block-wrapper')) {
+					return;
+				}
+
+				// Check text content of this element (trimmed)
+				const text = el.textContent?.trim() || '';
+				if (!text) return;
+
+				const hebrewMatches = text.match(hebrewRegex);
+				const hebrewCount = hebrewMatches ? hebrewMatches.length : 0;
+				if (hebrewCount === 0) {
+					if (el.parentElement?.closest('[dir="rtl"]')) {
+						el.setAttribute('dir', 'ltr');
+					}
+					return;
+				}
+
+				// Calculate ratio of Hebrew characters across the whole line
+				// Compare against non-whitespace characters
+				const nonWhitespace = text.replace(/\s+/g, '');
+				const charRatio = nonWhitespace.length > 0 ? hebrewCount / nonWhitespace.length : 0;
+
+				// Also check ratio of Hebrew letters out of all letters (Hebrew + Latin)
+				// so lines with long numbers, timestamps, or symbols don't suppress Hebrew
+				const letters = text.replace(/[^a-zA-Z\u0590-\u05FF]/g, '');
+				const letterRatio = letters.length > 0 ? hebrewCount / letters.length : 0;
+
+				// If either ratio is greater than 30%, it is considered Hebrew
+				if (charRatio > 0.3 || letterRatio > 0.3) {
+					el.setAttribute('dir', 'rtl');
+				} else if (el.parentElement?.closest('[dir="rtl"]')) {
+					el.setAttribute('dir', 'ltr');
+				}
+			});
+
+			// For lists, if more than 30% of list items are RTL, set dir="rtl" on the list container
+			doc.body.querySelectorAll<HTMLUListElement | HTMLOListElement>('ul, ol').forEach((list) => {
+				const directItems = Array.from(list.querySelectorAll(':scope > li'));
+				if (directItems.length === 0) return;
+				const rtlItems = directItems.filter((li) => li.getAttribute('dir') === 'rtl');
+				if (rtlItems.length / directItems.length > 0.3) {
+					list.setAttribute('dir', 'rtl');
+				}
+			});
+
+			return doc.body.innerHTML;
+		} catch (err) {
+			console.error('Failed to apply RTL to markdown:', err);
+			return html;
+		}
 	}
 
 	readonly renderedHtmlDoc = computed<string>(() => {

@@ -369,11 +369,29 @@
 		border: 0;
 	}
 
+	/* RTL / LTR text direction support */
+	[dir='rtl'] {
+		direction: rtl;
+		text-align: right;
+	}
+
+	[dir='ltr'] {
+		direction: ltr;
+		text-align: left;
+	}
+
 	blockquote {
 		padding: 0 1em;
 		color: var(--text-muted, #57606a);
 		border-left: 3.5px solid #007acc;
 		margin: 0 0 16px 0;
+
+		&[dir='rtl'] {
+			direction: rtl;
+			text-align: right;
+			border-left: none;
+			border-right: 3.5px solid #007acc;
+		}
 	}
 
 	ul,
@@ -381,6 +399,13 @@
 		margin-top: 0;
 		margin-bottom: 16px;
 		padding-left: 2em;
+
+		&[dir='rtl'] {
+			direction: rtl;
+			text-align: right;
+			padding-left: 0;
+			padding-right: 2em;
+		}
 	}
 
 	li {
@@ -389,6 +414,11 @@
 		& > p {
 			margin-top: 0.5em;
 			margin-bottom: 0;
+		}
+
+		&[dir='rtl'] {
+			direction: rtl;
+			text-align: right;
 		}
 	}
 
@@ -402,6 +432,8 @@
 	}
 
 	pre {
+		direction: ltr !important;
+		text-align: left !important;
 		padding: 14px 16px;
 		overflow: auto;
 		font-size: 85%;
@@ -436,6 +468,11 @@
 		td {
 			padding: 6px 13px;
 			border: 1px solid var(--border-color, #d0d7de);
+
+			&[dir='rtl'] {
+				direction: rtl;
+				text-align: right;
+			}
 		}
 
 		th {
@@ -451,6 +488,11 @@
 	input[type='checkbox'] {
 		margin: 0 0.35em 0.25em -1.4em;
 		vertical-align: middle;
+	}
+
+	li[dir='rtl'] > input[type='checkbox'],
+	[dir='rtl'] > input[type='checkbox'] {
+		margin: 0 -1.4em 0.25em 0.35em;
 	}
 
 	img {
