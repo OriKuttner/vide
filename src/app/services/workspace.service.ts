@@ -1516,10 +1516,12 @@ export class WorkspaceService {
 				this.lastGitStatusSignature = statusSignature;
 
 				const statusMap = new Map(
-					gitItems.map((item) => [
-						item.path.replace(/^\.\//, '').replace(/^\//, ''),
-						item,
-					]),
+					gitItems
+						.filter((item) => !item.path.endsWith('/'))
+						.map((item) => [
+							item.path.replace(/^\.\//, '').replace(/^\//, ''),
+							item,
+						]),
 				);
 				const currentFiles = [...this.files()];
 				const knownPaths = new Set(
@@ -1528,9 +1530,15 @@ export class WorkspaceService {
 
 				for (const item of gitItems) {
 					const normItemPath = item.path.replace(/^\.\//, '').replace(/^\//, '');
+					if (!normItemPath || normItemPath.endsWith('/')) {
+						continue;
+					}
 					if (!knownPaths.has(normItemPath)) {
 						const parts = normItemPath.split('/');
 						const name = parts[parts.length - 1];
+						if (!name) {
+							continue;
+						}
 						const newFile: WorkspaceFile = {
 							id: normItemPath,
 							name,
@@ -2853,10 +2861,79 @@ export class WorkspaceService {
 		const rawTerm = query.trim();
 		if (!rawTerm) return [];
 
+		if (abortSignal?.aborted) return [];
+
 		const matchCase = options?.matchCase ?? false;
 		const wholeWord = options?.wholeWord ?? false;
 		const isRegex = options?.isRegex ?? false;
+		const maxTotalResults = 250;
 
+		// 1. Fast native desktop search in Tauri (zero UI-thread blocking)
+		if (isTauriApp() && this.nativeWorkspacePath()) {
+			try {
+				const repoPath = this.nativeWorkspacePath()!;
+				const nativeResults = await invoke<
+					Array<{
+						rel_path: string;
+						fs_path: string;
+						line_number: number;
+						line_text: string;
+						match_start: number;
+						match_length: number;
+					}>
+				>('search_in_files', {
+					repoPath,
+					query: rawTerm,
+					matchCase,
+					wholeWord,
+					isRegex,
+					maxResults: maxTotalResults,
+				});
+
+				if (abortSignal?.aborted) return [];
+
+				const currentFiles = this.files();
+				const filesMap = new Map<string, WorkspaceFile>();
+				for (const f of currentFiles) {
+					filesMap.set(f.path.replace(/^\.\//, '').replace(/^\//, ''), f);
+				}
+
+				const results: GrepResult[] = [];
+				for (const nr of nativeResults) {
+					const normPath = nr.rel_path.replace(/^\.\//, '').replace(/^\//, '');
+					let file = filesMap.get(normPath);
+					if (!file) {
+						const parts = normPath.split('/');
+						const name = parts[parts.length - 1] || normPath;
+						file = {
+							id: normPath,
+							name,
+							path: normPath,
+							fsPath: nr.fs_path || `${repoPath}/${normPath}`,
+							language: detectLanguageFromFilename(name),
+							content: '',
+							isLoaded: false,
+							isModified: false,
+						};
+						filesMap.set(normPath, file);
+					}
+
+					results.push({
+						file,
+						lineNumber: nr.line_number,
+						lineText: nr.line_text,
+						matchStart: nr.match_start,
+						matchLength: nr.match_length,
+					});
+				}
+
+				return results;
+			} catch (nativeErr) {
+				console.warn('Native search_in_files failed, falling back to in-memory search:', nativeErr);
+			}
+		}
+
+		// 2. Fallback in-memory search (Web mode or when native search is unavailable)
 		let regex: RegExp;
 		try {
 			let pattern = rawTerm;
@@ -2873,9 +2950,9 @@ export class WorkspaceService {
 
 		const results: GrepResult[] = [];
 		const allFiles = this.files();
-		const maxTotalResults = 250;
 		const maxMatchesPerFile = 15;
 		let scannedFiles = 0;
+		let lastYield = performance.now();
 
 		for (const file of allFiles) {
 			if (abortSignal?.aborted) {
@@ -2917,9 +2994,11 @@ export class WorkspaceService {
 			}
 
 			scannedFiles++;
-			// Yield to the browser event loop periodically to keep the search UI snappy and allow abort
-			if (scannedFiles % 10 === 0) {
+			// Time-slice yielding every file if >12ms elapsed to keep UI completely responsive
+			const now = performance.now();
+			if (now - lastYield > 12) {
 				await new Promise((r) => setTimeout(r, 0));
+				lastYield = performance.now();
 				if (abortSignal?.aborted) {
 					return [];
 				}

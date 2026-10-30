@@ -5,11 +5,9 @@
  */
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::io::{Read, Write};
-#[cfg(unix)]
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -158,6 +156,17 @@ fn expand_path(p: &str) -> String {
 	p.to_string()
 }
 
+fn truncate_utf8(text: &str, max_bytes: usize) -> &str {
+	if text.len() <= max_bytes {
+		return text;
+	}
+	let mut end = max_bytes;
+	while end > 0 && !text.is_char_boundary(end) {
+		end -= 1;
+	}
+	&text[..end]
+}
+
 fn normalize_git_relative_path(repo_path: &str, file_path: &str) -> String {
 	let clean_repo_str = expand_path(repo_path);
 	let clean_repo = Path::new(&clean_repo_str);
@@ -279,7 +288,7 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
 			&clean_repo,
 			"status",
 			"--porcelain=v1",
-			"-unormal",
+			"-uall",
 			".",
 		])
 		.output()
@@ -318,6 +327,14 @@ fn get_git_status(repo_path: String) -> Result<Vec<GitFileItem>, String> {
 		// Strip the prefix so file_path is relative to the open workspace (clean_repo).
 		if !prefix.is_empty() && file_path.starts_with(&prefix) {
 			file_path = file_path[prefix.len()..].to_string();
+		}
+
+		// Skip empty paths or directories (e.g. untracked folders or submodules ending with '/')
+		if file_path.is_empty()
+			|| file_path.ends_with('/')
+			|| Path::new(&clean_repo).join(&file_path).is_dir()
+		{
+			continue;
 		}
 
 		let status = if index_status == '?' && worktree_status == '?' {
@@ -604,7 +621,7 @@ fn get_git_commit_details(
 	let patch = if raw_patch.len() > 300_000 {
 		format!(
 			"{}\n\n... [Diff truncated: commit diff exceeds 300 KB]",
-			&raw_patch[..300_000]
+			truncate_utf8(&raw_patch, 300_000)
 		)
 	} else {
 		raw_patch.to_string()
@@ -2266,6 +2283,355 @@ fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> 
 	window.set_title(&title).map_err(|e| e.to_string())
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NativeGrepResult {
+	pub rel_path: String,
+	pub fs_path: String,
+	pub line_number: usize,
+	pub line_text: String,
+	pub match_start: usize,
+	pub match_length: usize,
+}
+
+fn build_search_regex(query: &str, match_case: bool, whole_word: bool, is_regex: bool) -> Option<regex::Regex> {
+	let pattern = if is_regex {
+		if whole_word {
+			format!(r"\b(?:{})\b", query)
+		} else {
+			query.to_string()
+		}
+	} else {
+		let escaped = regex::escape(query);
+		if whole_word {
+			format!(r"\b{}\b", escaped)
+		} else {
+			escaped
+		}
+	};
+
+	regex::RegexBuilder::new(&pattern)
+		.case_insensitive(!match_case)
+		.build()
+		.ok()
+}
+
+fn run_git_grep_search(
+	clean_repo: &str,
+	query: &str,
+	match_case: bool,
+	whole_word: bool,
+	is_regex: bool,
+	max_results: usize,
+) -> Option<Vec<NativeGrepResult>> {
+	let is_git = Command::new("git")
+		.args(["-C", clean_repo, "rev-parse", "--is-inside-work-tree"])
+		.output()
+		.map(|o| o.status.success())
+		.unwrap_or(false);
+
+	if !is_git {
+		return None;
+	}
+
+	let mut cmd = Command::new("git");
+	cmd.args([
+		"-C",
+		clean_repo,
+		"grep",
+		"--untracked",
+		"--exclude-standard",
+		"-n",
+		"--column",
+		"-I",
+	]);
+
+	if !match_case {
+		cmd.arg("-i");
+	}
+	if whole_word {
+		cmd.arg("-w");
+	}
+	if is_regex {
+		cmd.arg("-E");
+	} else {
+		cmd.arg("-F");
+	}
+
+	cmd.arg("-e").arg(query);
+
+	let output = cmd.output().ok()?;
+
+	if !output.status.success() {
+		if output.status.code() == Some(1) {
+			return Some(Vec::new());
+		}
+		return None;
+	}
+
+	let text = String::from_utf8_lossy(&output.stdout);
+	let mut results = Vec::new();
+	let base_path = Path::new(clean_repo);
+	let compiled_re = build_search_regex(query, match_case, whole_word, is_regex);
+
+	for line in text.lines() {
+		let mut parts = line.splitn(4, ':');
+		let rel_path_raw = match parts.next() {
+			Some(p) => p.trim_matches('"'),
+			None => continue,
+		};
+		let line_num: usize = match parts.next().and_then(|l| l.parse().ok()) {
+			Some(n) => n,
+			None => continue,
+		};
+		let col: usize = match parts.next().and_then(|c| c.parse().ok()) {
+			Some(c) => c,
+			None => continue,
+		};
+		let line_text_raw = parts.next().unwrap_or("");
+
+		let fs_path = base_path.join(rel_path_raw).to_string_lossy().to_string();
+		let (match_start, match_length) = if let Some(ref re) = compiled_re {
+			if let Some(m) = re.find(line_text_raw) {
+				(m.start(), m.end() - m.start())
+			} else {
+				(if col > 0 { col - 1 } else { 0 }, query.len())
+			}
+		} else {
+			(if col > 0 { col - 1 } else { 0 }, query.len())
+		};
+
+		let trimmed_text = if line_text_raw.len() > 1000 {
+			format!("{}...", truncate_utf8(line_text_raw, 1000))
+		} else {
+			line_text_raw.trim().to_string()
+		};
+
+		results.push(NativeGrepResult {
+			rel_path: rel_path_raw.to_string(),
+			fs_path,
+			line_number: line_num,
+			line_text: trimmed_text,
+			match_start,
+			match_length,
+		});
+
+		if results.len() >= max_results {
+			break;
+		}
+	}
+
+	Some(results)
+}
+
+fn run_native_walk_search(
+	clean_repo: &str,
+	query: &str,
+	match_case: bool,
+	whole_word: bool,
+	is_regex: bool,
+	max_results: usize,
+) -> Result<Vec<NativeGrepResult>, String> {
+	let base_path = Path::new(clean_repo);
+	if !base_path.exists() {
+		return Ok(Vec::new());
+	}
+
+	let re = match build_search_regex(query, match_case, whole_word, is_regex) {
+		Some(r) => r,
+		None => return Ok(Vec::new()),
+	};
+
+	let mut results = Vec::new();
+	const MAX_MATCHES_PER_FILE: usize = 20;
+
+	let ignored_dirs: HashSet<&'static str> = [
+		".git", ".vide", "node_modules", "vendor", ".cache", "dist", "build",
+		".angular", "target", ".cargo", "tmp", "temp", ".turbo", ".next", ".nuxt",
+	]
+	.into_iter()
+	.collect();
+
+	let ignored_files: HashSet<&'static str> = [
+		"package-lock.json",
+		"pnpm-lock.yaml",
+		"yarn.lock",
+		"Cargo.lock",
+		"composer.lock",
+	]
+	.into_iter()
+	.collect();
+
+	let ignored_exts: HashSet<&'static str> = [
+		"png", "jpg", "jpeg", "gif", "webp", "ico", "svgz", "mp3", "mp4", "wav", "ogg", "flac",
+		"zip", "tar", "gz", "7z", "rar", "deb", "rpm", "exe", "dll", "so", "dylib", "wasm",
+		"pdf", "doc", "docx", "xls", "xlsx", "bin", "iso", "lock", "map",
+	]
+	.into_iter()
+	.collect();
+
+	let mut queue = VecDeque::new();
+	queue.push_back(base_path.to_path_buf());
+
+	let mut files_scanned = 0usize;
+	const MAX_FILES_TO_SCAN: usize = 25000;
+
+	while let Some(current_dir) = queue.pop_front() {
+		let read_dir = match fs::read_dir(&current_dir) {
+			Ok(rd) => rd,
+			Err(_) => continue,
+		};
+
+		for entry in read_dir.flatten() {
+			let file_type = match entry.file_type() {
+				Ok(ft) => ft,
+				Err(_) => continue,
+			};
+
+			let file_name = entry.file_name();
+			let file_name_str = file_name.to_string_lossy();
+
+			if file_type.is_dir() {
+				if file_name_str.starts_with('.') || ignored_dirs.contains(file_name_str.as_ref()) {
+					continue;
+				}
+				queue.push_back(entry.path());
+			} else if file_type.is_file() {
+				if ignored_files.contains(file_name_str.as_ref()) {
+					continue;
+				}
+
+				let path = entry.path();
+				if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+					if ignored_exts.contains(ext.to_lowercase().as_str()) {
+						continue;
+					}
+				}
+
+				let metadata = match entry.metadata() {
+					Ok(m) => m,
+					Err(_) => continue,
+				};
+				if metadata.len() > 1024 * 1024 {
+					continue;
+				}
+
+				let file = match fs::File::open(&path) {
+					Ok(f) => f,
+					Err(_) => continue,
+				};
+
+				let mut reader = BufReader::new(file);
+				let mut buffer = [0u8; 512];
+				let bytes_read = match reader.read(&mut buffer) {
+					Ok(n) => n,
+					Err(_) => continue,
+				};
+				if buffer[..bytes_read].contains(&0) {
+					continue;
+				}
+
+				use std::io::Seek;
+				if reader.seek(std::io::SeekFrom::Start(0)).is_err() {
+					continue;
+				}
+
+				let rel_path = match path.strip_prefix(base_path) {
+					Ok(p) => p.to_string_lossy().to_string(),
+					Err(_) => file_name_str.to_string(),
+				};
+				let fs_path = path.to_string_lossy().to_string();
+
+				let mut file_matches = 0;
+				let mut line_buf = String::new();
+				let mut line_num = 1;
+
+				loop {
+					line_buf.clear();
+					match reader.read_line(&mut line_buf) {
+						Ok(0) => break,
+						Ok(_) => {
+							let trimmed_line = line_buf.trim_end_matches(&['\r', '\n'][..]);
+							if let Some(m) = re.find(trimmed_line) {
+								let line_text = if trimmed_line.len() > 1000 {
+									format!("{}...", truncate_utf8(trimmed_line, 1000))
+								} else {
+									trimmed_line.trim().to_string()
+								};
+
+								results.push(NativeGrepResult {
+									rel_path: rel_path.clone(),
+									fs_path: fs_path.clone(),
+									line_number: line_num,
+									line_text,
+									match_start: m.start(),
+									match_length: m.end() - m.start(),
+								});
+
+								file_matches += 1;
+								if file_matches >= MAX_MATCHES_PER_FILE || results.len() >= max_results {
+									break;
+								}
+							}
+							line_num += 1;
+						}
+						Err(_) => break,
+					}
+				}
+
+				files_scanned += 1;
+				if results.len() >= max_results || files_scanned >= MAX_FILES_TO_SCAN {
+					return Ok(results);
+				}
+			}
+		}
+	}
+
+	Ok(results)
+}
+
+#[tauri::command]
+fn search_in_files(
+	repo_path: String,
+	query: String,
+	match_case: Option<bool>,
+	whole_word: Option<bool>,
+	is_regex: Option<bool>,
+	max_results: Option<usize>,
+) -> Result<Vec<NativeGrepResult>, String> {
+	let clean_repo = expand_path(&repo_path);
+	let q = query.trim().to_string();
+	if q.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let match_case = match_case.unwrap_or(false);
+	let whole_word = whole_word.unwrap_or(false);
+	let is_regex = is_regex.unwrap_or(false);
+	let max_results = max_results.unwrap_or(300);
+
+	// 1. Try git grep first (fastest, respects .gitignore and untracked files)
+	if let Some(git_results) = run_git_grep_search(
+		&clean_repo,
+		&q,
+		match_case,
+		whole_word,
+		is_regex,
+		max_results,
+	) {
+		return Ok(git_results);
+	}
+
+	// 2. Fallback to native recursive filesystem scan
+	run_native_walk_search(
+		&clean_repo,
+		&q,
+		match_case,
+		whole_word,
+		is_regex,
+		max_results,
+	)
+}
+
 #[tauri::command]
 fn log_to_terminal(level: String, message: String) {
 	println!("[{}] {}", level.to_uppercase(), message);
@@ -2495,6 +2861,7 @@ pub fn run() {
 			inspect_file,
 			read_file_hex,
 			run_git_read,
+			search_in_files,
 			exit_app,
 		])
 		.run(tauri::generate_context!())
